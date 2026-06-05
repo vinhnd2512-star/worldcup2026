@@ -30,8 +30,16 @@ create table if not exists public.teams (
   code text not null unique,
   name text not null,
   country text not null,
+  group_name text,
+  group_slot integer,
+  confederation text,
   logo_url text
 );
+
+alter table public.teams
+  add column if not exists group_name text,
+  add column if not exists group_slot integer,
+  add column if not exists confederation text;
 
 create table if not exists public.matches (
   id bigint generated always as identity primary key,

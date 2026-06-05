@@ -1,62 +1,95 @@
--- Seed teams, matches, and markets. Run after schema.sql.
+-- Seed official FIFA World Cup 2026 group-stage teams, fixtures, and default markets.
+-- Run after schema.sql. This file replaces the old MVP demo teams/matches.
 
-insert into public.teams (provider_id, code, name, country)
+alter table public.teams
+  add column if not exists group_name text,
+  add column if not exists group_slot integer,
+  add column if not exists confederation text;
+
+-- Remove old demo rows from the earlier MVP seed without touching live provider sync rows.
+delete from public.sync_runs
+where provider = 'api-football'
+  and job_type = 'metadata'
+  and message = 'Seed data active. Add API keys before provider sync.';
+
+delete from public.outright_markets
+where source = 'internal'
+  and market_key = 'tournament_winner';
+
+delete from public.matches
+where provider_id like 'seed-%';
+
+delete from public.teams
+where provider_id like 'seed-team-%';
+
+insert into public.teams (provider_id, code, name, country, group_name, group_slot, confederation)
 values
-  ('seed-team-1', 'BRA', 'Brazil', 'Brazil'),
-  ('seed-team-2', 'FRA', 'Pháp', 'France'),
-  ('seed-team-3', 'ARG', 'Argentina', 'Argentina'),
-  ('seed-team-4', 'NED', 'Hà Lan', 'Netherlands'),
-  ('seed-team-5', 'MEX', 'Mexico', 'Mexico'),
-  ('seed-team-6', 'GER', 'Đức', 'Germany'),
-  ('seed-team-7', 'ESP', 'Tây Ban Nha', 'Spain'),
-  ('seed-team-8', 'POR', 'Bồ Đào Nha', 'Portugal'),
-  ('seed-team-9', 'URU', 'Uruguay', 'Uruguay'),
-  ('seed-team-10', 'SRB', 'Serbia', 'Serbia')
-on conflict (code) do update set name = excluded.name, country = excluded.country;
+  ('fifa-2026-team-mex', 'MEX', 'Mexico', 'Mexico', 'A', 1, 'CONCACAF'),
+  ('fifa-2026-team-rsa', 'RSA', 'South Africa', 'South Africa', 'A', 2, 'CAF'),
+  ('fifa-2026-team-kor', 'KOR', 'Korea Republic', 'South Korea', 'A', 3, 'AFC'),
+  ('fifa-2026-team-cze', 'CZE', 'Czechia', 'Czechia', 'A', 4, 'UEFA'),
+  ('fifa-2026-team-can', 'CAN', 'Canada', 'Canada', 'B', 1, 'CONCACAF'),
+  ('fifa-2026-team-bih', 'BIH', 'Bosnia and Herzegovina', 'Bosnia and Herzegovina', 'B', 2, 'UEFA'),
+  ('fifa-2026-team-qat', 'QAT', 'Qatar', 'Qatar', 'B', 3, 'AFC'),
+  ('fifa-2026-team-sui', 'SUI', 'Switzerland', 'Switzerland', 'B', 4, 'UEFA'),
+  ('fifa-2026-team-bra', 'BRA', 'Brazil', 'Brazil', 'C', 1, 'CONMEBOL'),
+  ('fifa-2026-team-mar', 'MAR', 'Morocco', 'Morocco', 'C', 2, 'CAF'),
+  ('fifa-2026-team-hai', 'HAI', 'Haiti', 'Haiti', 'C', 3, 'CONCACAF'),
+  ('fifa-2026-team-sco', 'SCO', 'Scotland', 'Scotland', 'C', 4, 'UEFA'),
+  ('fifa-2026-team-usa', 'USA', 'United States', 'United States', 'D', 1, 'CONCACAF'),
+  ('fifa-2026-team-par', 'PAR', 'Paraguay', 'Paraguay', 'D', 2, 'CONMEBOL'),
+  ('fifa-2026-team-aus', 'AUS', 'Australia', 'Australia', 'D', 3, 'AFC'),
+  ('fifa-2026-team-tur', 'TUR', 'Türkiye', 'Türkiye', 'D', 4, 'UEFA'),
+  ('fifa-2026-team-ger', 'GER', 'Germany', 'Germany', 'E', 1, 'UEFA'),
+  ('fifa-2026-team-cuw', 'CUW', 'Curaçao', 'Curaçao', 'E', 2, 'CONCACAF'),
+  ('fifa-2026-team-civ', 'CIV', 'Côte d''Ivoire', 'Côte d''Ivoire', 'E', 3, 'CAF'),
+  ('fifa-2026-team-ecu', 'ECU', 'Ecuador', 'Ecuador', 'E', 4, 'CONMEBOL'),
+  ('fifa-2026-team-ned', 'NED', 'Netherlands', 'Netherlands', 'F', 1, 'UEFA'),
+  ('fifa-2026-team-jpn', 'JPN', 'Japan', 'Japan', 'F', 2, 'AFC'),
+  ('fifa-2026-team-swe', 'SWE', 'Sweden', 'Sweden', 'F', 3, 'UEFA'),
+  ('fifa-2026-team-tun', 'TUN', 'Tunisia', 'Tunisia', 'F', 4, 'CAF'),
+  ('fifa-2026-team-bel', 'BEL', 'Belgium', 'Belgium', 'G', 1, 'UEFA'),
+  ('fifa-2026-team-egy', 'EGY', 'Egypt', 'Egypt', 'G', 2, 'CAF'),
+  ('fifa-2026-team-irn', 'IRN', 'IR Iran', 'Iran', 'G', 3, 'AFC'),
+  ('fifa-2026-team-nzl', 'NZL', 'New Zealand', 'New Zealand', 'G', 4, 'OFC'),
+  ('fifa-2026-team-esp', 'ESP', 'Spain', 'Spain', 'H', 1, 'UEFA'),
+  ('fifa-2026-team-cpv', 'CPV', 'Cabo Verde', 'Cabo Verde', 'H', 2, 'CAF'),
+  ('fifa-2026-team-ksa', 'KSA', 'Saudi Arabia', 'Saudi Arabia', 'H', 3, 'AFC'),
+  ('fifa-2026-team-uru', 'URU', 'Uruguay', 'Uruguay', 'H', 4, 'CONMEBOL'),
+  ('fifa-2026-team-fra', 'FRA', 'France', 'France', 'I', 1, 'UEFA'),
+  ('fifa-2026-team-sen', 'SEN', 'Senegal', 'Senegal', 'I', 2, 'CAF'),
+  ('fifa-2026-team-irq', 'IRQ', 'Iraq', 'Iraq', 'I', 3, 'AFC'),
+  ('fifa-2026-team-nor', 'NOR', 'Norway', 'Norway', 'I', 4, 'UEFA'),
+  ('fifa-2026-team-arg', 'ARG', 'Argentina', 'Argentina', 'J', 1, 'CONMEBOL'),
+  ('fifa-2026-team-alg', 'ALG', 'Algeria', 'Algeria', 'J', 2, 'CAF'),
+  ('fifa-2026-team-aut', 'AUT', 'Austria', 'Austria', 'J', 3, 'UEFA'),
+  ('fifa-2026-team-jor', 'JOR', 'Jordan', 'Jordan', 'J', 4, 'AFC'),
+  ('fifa-2026-team-por', 'POR', 'Portugal', 'Portugal', 'K', 1, 'UEFA'),
+  ('fifa-2026-team-cod', 'COD', 'Congo DR', 'Democratic Republic of the Congo', 'K', 2, 'CAF'),
+  ('fifa-2026-team-uzb', 'UZB', 'Uzbekistan', 'Uzbekistan', 'K', 3, 'AFC'),
+  ('fifa-2026-team-col', 'COL', 'Colombia', 'Colombia', 'K', 4, 'CONMEBOL'),
+  ('fifa-2026-team-eng', 'ENG', 'England', 'England', 'L', 1, 'UEFA'),
+  ('fifa-2026-team-cro', 'CRO', 'Croatia', 'Croatia', 'L', 2, 'UEFA'),
+  ('fifa-2026-team-gha', 'GHA', 'Ghana', 'Ghana', 'L', 3, 'CAF'),
+  ('fifa-2026-team-pan', 'PAN', 'Panama', 'Panama', 'L', 4, 'CONCACAF')
+on conflict (code) do update
+set provider_id = excluded.provider_id,
+    name = excluded.name,
+    country = excluded.country,
+    group_name = excluded.group_name,
+    group_slot = excluded.group_slot,
+    confederation = excluded.confederation;
 
 insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
 values
   ('correct_score', 'Dự đoán tỷ số', 'score', 'correct_score', false, 2.45, 1),
   ('match_result', 'Kết quả 1X2', 'single', 'match_result', false, 1.80, 2),
-  ('total_goals', 'Tổng bàn thắng', 'line', 'total_goals', false, 1.90, 3),
-  ('btts', 'Hai đội cùng ghi bàn', 'single', 'btts', false, 1.95, 4),
-  ('corners_total', 'Tổng phạt góc', 'line', 'corners_total', true, 1.90, 5),
-  ('cards_total', 'Tổng thẻ', 'line', 'cards_total', true, 1.90, 6),
-  ('tournament_winner', 'Vô địch giải', 'outright', 'tournament_winner', false, 4.00, 7)
-on conflict (key) do update set name = excluded.name, internal_only = excluded.internal_only;
-
-with t as (select code, id from public.teams)
-insert into public.matches (provider_id, stage, group_name, home_team_id, away_team_id, starts_at, status, venue, city)
-values
-  ('seed-1', 'Group Stage - 1', 'Bảng G', (select id from t where code='BRA'), (select id from t where code='FRA'), '2026-06-11 19:00:00+00', 'SCHEDULED', 'Estadio Azteca', 'Mexico City'),
-  ('seed-2', 'Group Stage - 1', 'Bảng C', (select id from t where code='ARG'), (select id from t where code='MEX'), '2026-06-14 02:00:00+00', 'SCHEDULED', 'MetLife Stadium', 'New York'),
-  ('seed-3', 'Group Stage - 1', 'Bảng E', (select id from t where code='GER'), (select id from t where code='ESP'), '2026-06-15 23:45:00+00', 'SCHEDULED', 'SoFi Stadium', 'Los Angeles'),
-  ('seed-4', 'Quarter-finals', null, (select id from t where code='ARG'), (select id from t where code='NED'), '2026-06-20 21:00:00+00', 'SCHEDULED', 'AT&T Stadium', 'Dallas')
-on conflict (provider_id) do nothing;
-
-insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
-select m.id, x.market_key, x.label, x.selection_key, x.selection_label, x.line, x.odds_multiplier, x.source, m.starts_at
-from public.matches m
-cross join (
-  values
-    ('correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null::numeric, 2.45, 'internal'),
-    ('match_result', 'Kết quả 1X2', 'home', 'Đội nhà thắng', null::numeric, 1.85, 'odds-api'),
-    ('match_result', 'Kết quả 1X2', 'draw', 'Hòa', null::numeric, 3.10, 'odds-api'),
-    ('match_result', 'Kết quả 1X2', 'away', 'Đội khách thắng', null::numeric, 2.05, 'odds-api'),
-    ('total_goals', 'Tổng bàn thắng 2.5', 'over', 'Tài 2.5', 2.5::numeric, 1.92, 'odds-api'),
-    ('total_goals', 'Tổng bàn thắng 2.5', 'under', 'Xỉu 2.5', 2.5::numeric, 1.88, 'odds-api'),
-    ('btts', 'Hai đội cùng ghi bàn', 'yes', 'Có', null::numeric, 1.95, 'odds-api'),
-    ('btts', 'Hai đội cùng ghi bàn', 'no', 'Không', null::numeric, 1.82, 'odds-api'),
-    ('corners_total', 'Tổng phạt góc 8.5', 'over', 'Tài góc 8.5', 8.5::numeric, 1.90, 'internal'),
-    ('corners_total', 'Tổng phạt góc 8.5', 'under', 'Xỉu góc 8.5', 8.5::numeric, 1.90, 'internal'),
-    ('cards_total', 'Tổng thẻ 3.5', 'over', 'Tài thẻ 3.5', 3.5::numeric, 1.90, 'internal'),
-    ('cards_total', 'Tổng thẻ 3.5', 'under', 'Xỉu thẻ 3.5', 3.5::numeric, 1.90, 'internal')
-) as x(market_key, label, selection_key, selection_label, line, odds_multiplier, source)
-where m.provider_id like 'seed-%'
-on conflict (match_id, market_key, selection_key, line_key) do nothing;
-
-insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
-values ('draw_no_bet', 'Draw no bet', 'single', 'draw_no_bet', false, 1.65, 3)
+  ('draw_no_bet', 'Draw no bet', 'single', 'draw_no_bet', false, 1.65, 3),
+  ('total_goals', 'Tổng bàn thắng', 'line', 'total_goals', false, 1.90, 4),
+  ('btts', 'Hai đội cùng ghi bàn', 'single', 'btts', false, 1.95, 5),
+  ('corners_total', 'Tổng phạt góc', 'line', 'corners_total', true, 1.90, 6),
+  ('cards_total', 'Tổng thẻ', 'line', 'cards_total', true, 1.90, 7),
+  ('tournament_winner', 'Vô địch giải', 'outright', 'tournament_winner', false, 4.00, 8)
 on conflict (key) do update
 set name = excluded.name,
     market_type = excluded.market_type,
@@ -65,32 +98,149 @@ set name = excluded.name,
     default_multiplier = excluded.default_multiplier,
     display_order = excluded.display_order;
 
+with t as (select code, id from public.teams)
+insert into public.matches (provider_id, stage, group_name, home_team_id, away_team_id, starts_at, status, venue, city)
+values
+  ('fifa-2026-001', 'Group Stage - Matchday 1', 'A', (select id from t where code='MEX'), (select id from t where code='RSA'), '2026-06-11 19:00:00+00', 'SCHEDULED', 'Mexico City Stadium', 'Mexico City'),
+  ('fifa-2026-002', 'Group Stage - Matchday 1', 'A', (select id from t where code='KOR'), (select id from t where code='CZE'), '2026-06-12 02:00:00+00', 'SCHEDULED', 'Estadio Guadalajara', 'Guadalajara'),
+  ('fifa-2026-003', 'Group Stage - Matchday 1', 'B', (select id from t where code='CAN'), (select id from t where code='BIH'), '2026-06-12 19:00:00+00', 'SCHEDULED', 'Toronto Stadium', 'Toronto'),
+  ('fifa-2026-004', 'Group Stage - Matchday 1', 'D', (select id from t where code='USA'), (select id from t where code='PAR'), '2026-06-13 01:00:00+00', 'SCHEDULED', 'Los Angeles Stadium', 'Los Angeles'),
+  ('fifa-2026-005', 'Group Stage - Matchday 1', 'C', (select id from t where code='HAI'), (select id from t where code='SCO'), '2026-06-14 01:00:00+00', 'SCHEDULED', 'Boston Stadium', 'Boston'),
+  ('fifa-2026-006', 'Group Stage - Matchday 1', 'D', (select id from t where code='AUS'), (select id from t where code='TUR'), '2026-06-14 04:00:00+00', 'SCHEDULED', 'BC Place Vancouver', 'Vancouver'),
+  ('fifa-2026-007', 'Group Stage - Matchday 1', 'C', (select id from t where code='BRA'), (select id from t where code='MAR'), '2026-06-13 22:00:00+00', 'SCHEDULED', 'New York New Jersey Stadium', 'New York/New Jersey'),
+  ('fifa-2026-008', 'Group Stage - Matchday 1', 'B', (select id from t where code='QAT'), (select id from t where code='SUI'), '2026-06-13 19:00:00+00', 'SCHEDULED', 'San Francisco Bay Area Stadium', 'San Francisco Bay Area'),
+  ('fifa-2026-009', 'Group Stage - Matchday 1', 'E', (select id from t where code='CIV'), (select id from t where code='ECU'), '2026-06-14 23:00:00+00', 'SCHEDULED', 'Philadelphia Stadium', 'Philadelphia'),
+  ('fifa-2026-010', 'Group Stage - Matchday 1', 'E', (select id from t where code='GER'), (select id from t where code='CUW'), '2026-06-14 17:00:00+00', 'SCHEDULED', 'Houston Stadium', 'Houston'),
+  ('fifa-2026-011', 'Group Stage - Matchday 1', 'F', (select id from t where code='NED'), (select id from t where code='JPN'), '2026-06-14 20:00:00+00', 'SCHEDULED', 'Dallas Stadium', 'Dallas'),
+  ('fifa-2026-012', 'Group Stage - Matchday 1', 'F', (select id from t where code='SWE'), (select id from t where code='TUN'), '2026-06-15 02:00:00+00', 'SCHEDULED', 'Estadio Monterrey', 'Monterrey'),
+  ('fifa-2026-013', 'Group Stage - Matchday 1', 'H', (select id from t where code='KSA'), (select id from t where code='URU'), '2026-06-15 22:00:00+00', 'SCHEDULED', 'Miami Stadium', 'Miami'),
+  ('fifa-2026-014', 'Group Stage - Matchday 1', 'H', (select id from t where code='ESP'), (select id from t where code='CPV'), '2026-06-15 16:00:00+00', 'SCHEDULED', 'Atlanta Stadium', 'Atlanta'),
+  ('fifa-2026-015', 'Group Stage - Matchday 1', 'G', (select id from t where code='IRN'), (select id from t where code='NZL'), '2026-06-16 01:00:00+00', 'SCHEDULED', 'Los Angeles Stadium', 'Los Angeles'),
+  ('fifa-2026-016', 'Group Stage - Matchday 1', 'G', (select id from t where code='BEL'), (select id from t where code='EGY'), '2026-06-15 19:00:00+00', 'SCHEDULED', 'Seattle Stadium', 'Seattle'),
+  ('fifa-2026-017', 'Group Stage - Matchday 1', 'I', (select id from t where code='FRA'), (select id from t where code='SEN'), '2026-06-16 19:00:00+00', 'SCHEDULED', 'New York New Jersey Stadium', 'New York/New Jersey'),
+  ('fifa-2026-018', 'Group Stage - Matchday 1', 'I', (select id from t where code='IRQ'), (select id from t where code='NOR'), '2026-06-16 22:00:00+00', 'SCHEDULED', 'Boston Stadium', 'Boston'),
+  ('fifa-2026-019', 'Group Stage - Matchday 1', 'J', (select id from t where code='ARG'), (select id from t where code='ALG'), '2026-06-17 01:00:00+00', 'SCHEDULED', 'Kansas City Stadium', 'Kansas City'),
+  ('fifa-2026-020', 'Group Stage - Matchday 1', 'J', (select id from t where code='AUT'), (select id from t where code='JOR'), '2026-06-17 04:00:00+00', 'SCHEDULED', 'San Francisco Bay Area Stadium', 'San Francisco Bay Area'),
+  ('fifa-2026-021', 'Group Stage - Matchday 1', 'L', (select id from t where code='GHA'), (select id from t where code='PAN'), '2026-06-17 23:00:00+00', 'SCHEDULED', 'Toronto Stadium', 'Toronto'),
+  ('fifa-2026-022', 'Group Stage - Matchday 1', 'L', (select id from t where code='ENG'), (select id from t where code='CRO'), '2026-06-17 20:00:00+00', 'SCHEDULED', 'Dallas Stadium', 'Dallas'),
+  ('fifa-2026-023', 'Group Stage - Matchday 1', 'K', (select id from t where code='POR'), (select id from t where code='COD'), '2026-06-17 17:00:00+00', 'SCHEDULED', 'Houston Stadium', 'Houston'),
+  ('fifa-2026-024', 'Group Stage - Matchday 1', 'K', (select id from t where code='UZB'), (select id from t where code='COL'), '2026-06-18 02:00:00+00', 'SCHEDULED', 'Mexico City Stadium', 'Mexico City'),
+  ('fifa-2026-025', 'Group Stage - Matchday 2', 'A', (select id from t where code='CZE'), (select id from t where code='RSA'), '2026-06-18 16:00:00+00', 'SCHEDULED', 'Atlanta Stadium', 'Atlanta'),
+  ('fifa-2026-026', 'Group Stage - Matchday 2', 'B', (select id from t where code='SUI'), (select id from t where code='BIH'), '2026-06-18 19:00:00+00', 'SCHEDULED', 'Los Angeles Stadium', 'Los Angeles'),
+  ('fifa-2026-027', 'Group Stage - Matchday 2', 'B', (select id from t where code='CAN'), (select id from t where code='QAT'), '2026-06-18 22:00:00+00', 'SCHEDULED', 'BC Place Vancouver', 'Vancouver'),
+  ('fifa-2026-028', 'Group Stage - Matchday 2', 'A', (select id from t where code='MEX'), (select id from t where code='KOR'), '2026-06-19 01:00:00+00', 'SCHEDULED', 'Estadio Guadalajara', 'Guadalajara'),
+  ('fifa-2026-029', 'Group Stage - Matchday 2', 'C', (select id from t where code='BRA'), (select id from t where code='HAI'), '2026-06-20 00:30:00+00', 'SCHEDULED', 'Philadelphia Stadium', 'Philadelphia'),
+  ('fifa-2026-030', 'Group Stage - Matchday 2', 'C', (select id from t where code='SCO'), (select id from t where code='MAR'), '2026-06-19 22:00:00+00', 'SCHEDULED', 'Boston Stadium', 'Boston'),
+  ('fifa-2026-031', 'Group Stage - Matchday 2', 'D', (select id from t where code='TUR'), (select id from t where code='PAR'), '2026-06-20 03:00:00+00', 'SCHEDULED', 'San Francisco Bay Area Stadium', 'San Francisco Bay Area'),
+  ('fifa-2026-032', 'Group Stage - Matchday 2', 'D', (select id from t where code='USA'), (select id from t where code='AUS'), '2026-06-19 19:00:00+00', 'SCHEDULED', 'Seattle Stadium', 'Seattle'),
+  ('fifa-2026-033', 'Group Stage - Matchday 2', 'E', (select id from t where code='GER'), (select id from t where code='CIV'), '2026-06-20 20:00:00+00', 'SCHEDULED', 'Toronto Stadium', 'Toronto'),
+  ('fifa-2026-034', 'Group Stage - Matchday 2', 'E', (select id from t where code='ECU'), (select id from t where code='CUW'), '2026-06-21 00:00:00+00', 'SCHEDULED', 'Kansas City Stadium', 'Kansas City'),
+  ('fifa-2026-035', 'Group Stage - Matchday 2', 'F', (select id from t where code='NED'), (select id from t where code='SWE'), '2026-06-20 17:00:00+00', 'SCHEDULED', 'Houston Stadium', 'Houston'),
+  ('fifa-2026-036', 'Group Stage - Matchday 2', 'F', (select id from t where code='TUN'), (select id from t where code='JPN'), '2026-06-21 04:00:00+00', 'SCHEDULED', 'Estadio Monterrey', 'Monterrey'),
+  ('fifa-2026-037', 'Group Stage - Matchday 2', 'H', (select id from t where code='URU'), (select id from t where code='CPV'), '2026-06-21 22:00:00+00', 'SCHEDULED', 'Miami Stadium', 'Miami'),
+  ('fifa-2026-038', 'Group Stage - Matchday 2', 'H', (select id from t where code='ESP'), (select id from t where code='KSA'), '2026-06-21 16:00:00+00', 'SCHEDULED', 'Atlanta Stadium', 'Atlanta'),
+  ('fifa-2026-039', 'Group Stage - Matchday 2', 'G', (select id from t where code='BEL'), (select id from t where code='IRN'), '2026-06-21 19:00:00+00', 'SCHEDULED', 'Los Angeles Stadium', 'Los Angeles'),
+  ('fifa-2026-040', 'Group Stage - Matchday 2', 'G', (select id from t where code='NZL'), (select id from t where code='EGY'), '2026-06-22 01:00:00+00', 'SCHEDULED', 'BC Place Vancouver', 'Vancouver'),
+  ('fifa-2026-041', 'Group Stage - Matchday 2', 'I', (select id from t where code='NOR'), (select id from t where code='SEN'), '2026-06-23 00:00:00+00', 'SCHEDULED', 'New York New Jersey Stadium', 'New York/New Jersey'),
+  ('fifa-2026-042', 'Group Stage - Matchday 2', 'I', (select id from t where code='FRA'), (select id from t where code='IRQ'), '2026-06-22 21:00:00+00', 'SCHEDULED', 'Philadelphia Stadium', 'Philadelphia'),
+  ('fifa-2026-043', 'Group Stage - Matchday 2', 'J', (select id from t where code='ARG'), (select id from t where code='AUT'), '2026-06-22 17:00:00+00', 'SCHEDULED', 'Dallas Stadium', 'Dallas'),
+  ('fifa-2026-044', 'Group Stage - Matchday 2', 'J', (select id from t where code='JOR'), (select id from t where code='ALG'), '2026-06-23 03:00:00+00', 'SCHEDULED', 'San Francisco Bay Area Stadium', 'San Francisco Bay Area'),
+  ('fifa-2026-045', 'Group Stage - Matchday 2', 'L', (select id from t where code='ENG'), (select id from t where code='GHA'), '2026-06-23 20:00:00+00', 'SCHEDULED', 'Boston Stadium', 'Boston'),
+  ('fifa-2026-046', 'Group Stage - Matchday 2', 'L', (select id from t where code='PAN'), (select id from t where code='CRO'), '2026-06-23 23:00:00+00', 'SCHEDULED', 'Toronto Stadium', 'Toronto'),
+  ('fifa-2026-047', 'Group Stage - Matchday 2', 'K', (select id from t where code='POR'), (select id from t where code='UZB'), '2026-06-23 17:00:00+00', 'SCHEDULED', 'Houston Stadium', 'Houston'),
+  ('fifa-2026-048', 'Group Stage - Matchday 2', 'K', (select id from t where code='COL'), (select id from t where code='COD'), '2026-06-24 02:00:00+00', 'SCHEDULED', 'Estadio Guadalajara', 'Guadalajara'),
+  ('fifa-2026-049', 'Group Stage - Matchday 3', 'C', (select id from t where code='SCO'), (select id from t where code='BRA'), '2026-06-24 22:00:00+00', 'SCHEDULED', 'Miami Stadium', 'Miami'),
+  ('fifa-2026-050', 'Group Stage - Matchday 3', 'C', (select id from t where code='MAR'), (select id from t where code='HAI'), '2026-06-24 22:00:00+00', 'SCHEDULED', 'Atlanta Stadium', 'Atlanta'),
+  ('fifa-2026-051', 'Group Stage - Matchday 3', 'B', (select id from t where code='SUI'), (select id from t where code='CAN'), '2026-06-24 19:00:00+00', 'SCHEDULED', 'BC Place Vancouver', 'Vancouver'),
+  ('fifa-2026-052', 'Group Stage - Matchday 3', 'B', (select id from t where code='BIH'), (select id from t where code='QAT'), '2026-06-24 19:00:00+00', 'SCHEDULED', 'Seattle Stadium', 'Seattle'),
+  ('fifa-2026-053', 'Group Stage - Matchday 3', 'A', (select id from t where code='CZE'), (select id from t where code='MEX'), '2026-06-25 01:00:00+00', 'SCHEDULED', 'Mexico City Stadium', 'Mexico City'),
+  ('fifa-2026-054', 'Group Stage - Matchday 3', 'A', (select id from t where code='RSA'), (select id from t where code='KOR'), '2026-06-25 01:00:00+00', 'SCHEDULED', 'Estadio Monterrey', 'Monterrey'),
+  ('fifa-2026-055', 'Group Stage - Matchday 3', 'E', (select id from t where code='CUW'), (select id from t where code='CIV'), '2026-06-25 20:00:00+00', 'SCHEDULED', 'Philadelphia Stadium', 'Philadelphia'),
+  ('fifa-2026-056', 'Group Stage - Matchday 3', 'E', (select id from t where code='ECU'), (select id from t where code='GER'), '2026-06-25 20:00:00+00', 'SCHEDULED', 'New York New Jersey Stadium', 'New York/New Jersey'),
+  ('fifa-2026-057', 'Group Stage - Matchday 3', 'F', (select id from t where code='JPN'), (select id from t where code='SWE'), '2026-06-25 23:00:00+00', 'SCHEDULED', 'Dallas Stadium', 'Dallas'),
+  ('fifa-2026-058', 'Group Stage - Matchday 3', 'F', (select id from t where code='TUN'), (select id from t where code='NED'), '2026-06-25 23:00:00+00', 'SCHEDULED', 'Kansas City Stadium', 'Kansas City'),
+  ('fifa-2026-059', 'Group Stage - Matchday 3', 'D', (select id from t where code='TUR'), (select id from t where code='USA'), '2026-06-26 02:00:00+00', 'SCHEDULED', 'Los Angeles Stadium', 'Los Angeles'),
+  ('fifa-2026-060', 'Group Stage - Matchday 3', 'D', (select id from t where code='PAR'), (select id from t where code='AUS'), '2026-06-26 02:00:00+00', 'SCHEDULED', 'San Francisco Bay Area Stadium', 'San Francisco Bay Area'),
+  ('fifa-2026-061', 'Group Stage - Matchday 3', 'I', (select id from t where code='NOR'), (select id from t where code='FRA'), '2026-06-26 19:00:00+00', 'SCHEDULED', 'Boston Stadium', 'Boston'),
+  ('fifa-2026-062', 'Group Stage - Matchday 3', 'I', (select id from t where code='SEN'), (select id from t where code='IRQ'), '2026-06-26 19:00:00+00', 'SCHEDULED', 'Toronto Stadium', 'Toronto'),
+  ('fifa-2026-063', 'Group Stage - Matchday 3', 'G', (select id from t where code='EGY'), (select id from t where code='IRN'), '2026-06-27 03:00:00+00', 'SCHEDULED', 'Seattle Stadium', 'Seattle'),
+  ('fifa-2026-064', 'Group Stage - Matchday 3', 'G', (select id from t where code='NZL'), (select id from t where code='BEL'), '2026-06-27 03:00:00+00', 'SCHEDULED', 'BC Place Vancouver', 'Vancouver'),
+  ('fifa-2026-065', 'Group Stage - Matchday 3', 'H', (select id from t where code='CPV'), (select id from t where code='KSA'), '2026-06-27 00:00:00+00', 'SCHEDULED', 'Houston Stadium', 'Houston'),
+  ('fifa-2026-066', 'Group Stage - Matchday 3', 'H', (select id from t where code='URU'), (select id from t where code='ESP'), '2026-06-27 00:00:00+00', 'SCHEDULED', 'Estadio Guadalajara', 'Guadalajara'),
+  ('fifa-2026-067', 'Group Stage - Matchday 3', 'L', (select id from t where code='PAN'), (select id from t where code='ENG'), '2026-06-27 21:00:00+00', 'SCHEDULED', 'New York New Jersey Stadium', 'New York/New Jersey'),
+  ('fifa-2026-068', 'Group Stage - Matchday 3', 'L', (select id from t where code='CRO'), (select id from t where code='GHA'), '2026-06-27 21:00:00+00', 'SCHEDULED', 'Philadelphia Stadium', 'Philadelphia'),
+  ('fifa-2026-069', 'Group Stage - Matchday 3', 'J', (select id from t where code='ALG'), (select id from t where code='AUT'), '2026-06-28 02:00:00+00', 'SCHEDULED', 'Kansas City Stadium', 'Kansas City'),
+  ('fifa-2026-070', 'Group Stage - Matchday 3', 'J', (select id from t where code='JOR'), (select id from t where code='ARG'), '2026-06-28 02:00:00+00', 'SCHEDULED', 'Dallas Stadium', 'Dallas'),
+  ('fifa-2026-071', 'Group Stage - Matchday 3', 'K', (select id from t where code='COL'), (select id from t where code='POR'), '2026-06-27 23:30:00+00', 'SCHEDULED', 'Miami Stadium', 'Miami'),
+  ('fifa-2026-072', 'Group Stage - Matchday 3', 'K', (select id from t where code='COD'), (select id from t where code='UZB'), '2026-06-27 23:30:00+00', 'SCHEDULED', 'Atlanta Stadium', 'Atlanta')
+on conflict (provider_id) do update
+set stage = excluded.stage,
+    group_name = excluded.group_name,
+    home_team_id = excluded.home_team_id,
+    away_team_id = excluded.away_team_id,
+    starts_at = excluded.starts_at,
+    status = excluded.status,
+    venue = excluded.venue,
+    city = excluded.city,
+    updated_at = now();
+
 insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
 select m.id, x.market_key, x.label, x.selection_key, x.selection_label, x.line, x.odds_multiplier, x.source, m.starts_at
 from public.matches m
 cross join (
   values
+    ('correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null::numeric, 2.45, 'internal'),
+    ('match_result', 'Kết quả 1X2', 'home', 'Đội nhà thắng', null::numeric, 1.85, 'internal'),
+    ('match_result', 'Kết quả 1X2', 'draw', 'Hòa', null::numeric, 3.10, 'internal'),
+    ('match_result', 'Kết quả 1X2', 'away', 'Đội khách thắng', null::numeric, 2.05, 'internal'),
     ('draw_no_bet', 'Draw no bet', 'home', 'Home DNB', null::numeric, 1.65, 'internal'),
-    ('draw_no_bet', 'Draw no bet', 'away', 'Away DNB', null::numeric, 1.75, 'internal')
+    ('draw_no_bet', 'Draw no bet', 'away', 'Away DNB', null::numeric, 1.75, 'internal'),
+    ('total_goals', 'Tổng bàn thắng 2.5', 'over', 'Tài 2.5', 2.5::numeric, 1.92, 'internal'),
+    ('total_goals', 'Tổng bàn thắng 2.5', 'under', 'Xỉu 2.5', 2.5::numeric, 1.88, 'internal'),
+    ('btts', 'Hai đội cùng ghi bàn', 'yes', 'Có', null::numeric, 1.95, 'internal'),
+    ('btts', 'Hai đội cùng ghi bàn', 'no', 'Không', null::numeric, 1.82, 'internal'),
+    ('corners_total', 'Tổng phạt góc 8.5', 'over', 'Tài góc 8.5', 8.5::numeric, 1.90, 'internal'),
+    ('corners_total', 'Tổng phạt góc 8.5', 'under', 'Xỉu góc 8.5', 8.5::numeric, 1.90, 'internal'),
+    ('cards_total', 'Tổng thẻ 3.5', 'over', 'Tài thẻ 3.5', 3.5::numeric, 1.90, 'internal'),
+    ('cards_total', 'Tổng thẻ 3.5', 'under', 'Xỉu thẻ 3.5', 3.5::numeric, 1.90, 'internal')
 ) as x(market_key, label, selection_key, selection_label, line, odds_multiplier, source)
-where m.provider_id like 'seed-%'
-on conflict (match_id, market_key, selection_key, line_key) do nothing;
+where m.provider_id like 'fifa-2026-%'
+on conflict (match_id, market_key, selection_key, line_key) do update
+set label = excluded.label,
+    selection_label = excluded.selection_label,
+    odds_multiplier = excluded.odds_multiplier,
+    source = excluded.source,
+    closes_at = excluded.closes_at;
 
 insert into public.outright_markets (market_key, label, selection_key, selection_label, odds_multiplier, source, closes_at)
-values
-  ('tournament_winner', 'Vô địch World Cup 2026', 'BRA', 'Brazil', 5.50, 'internal', '2026-06-11 19:00:00+00'),
-  ('tournament_winner', 'Vô địch World Cup 2026', 'FRA', 'Pháp', 6.00, 'internal', '2026-06-11 19:00:00+00'),
-  ('tournament_winner', 'Vô địch World Cup 2026', 'ARG', 'Argentina', 6.50, 'internal', '2026-06-11 19:00:00+00'),
-  ('tournament_winner', 'Vô địch World Cup 2026', 'GER', 'Đức', 8.00, 'internal', '2026-06-11 19:00:00+00'),
-  ('tournament_winner', 'Vô địch World Cup 2026', 'ESP', 'Tây Ban Nha', 8.00, 'internal', '2026-06-11 19:00:00+00'),
-  ('tournament_winner', 'Vô địch World Cup 2026', 'POR', 'Bồ Đào Nha', 9.00, 'internal', '2026-06-11 19:00:00+00'),
-  ('tournament_winner', 'Vô địch World Cup 2026', 'NED', 'Hà Lan', 11.00, 'internal', '2026-06-11 19:00:00+00'),
-  ('tournament_winner', 'Vô địch World Cup 2026', 'URU', 'Uruguay', 18.00, 'internal', '2026-06-11 19:00:00+00')
+select
+  'tournament_winner',
+  'Vô địch World Cup 2026',
+  t.code,
+  t.name,
+  case t.code
+    when 'BRA' then 5.50
+    when 'ARG' then 6.00
+    when 'FRA' then 6.50
+    when 'ENG' then 7.50
+    when 'ESP' then 8.00
+    when 'GER' then 9.00
+    when 'POR' then 9.00
+    when 'NED' then 11.00
+    when 'BEL' then 14.00
+    when 'URU' then 18.00
+    else 25.00
+  end,
+  'internal',
+  '2026-06-11 19:00:00+00'::timestamptz
+from public.teams t
+where t.provider_id like 'fifa-2026-team-%'
 on conflict (market_key, selection_key) do update
 set selection_label = excluded.selection_label,
     odds_multiplier = excluded.odds_multiplier,
+    source = excluded.source,
     closes_at = excluded.closes_at;
 
 insert into public.sync_runs (provider, job_type, status, finished_at, request_count, message)
-values ('api-football', 'metadata', 'skipped', now(), 0, 'Seed data active. Add API keys before provider sync.')
+values ('fifa', 'seed', 'success', now(), 0, 'Seeded FIFA World Cup 2026 group teams, fixtures, and default internal markets.')
 on conflict do nothing;
