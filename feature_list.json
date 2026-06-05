@@ -1,0 +1,142 @@
+{
+  "_comment": "Harness-style backlog for WorldCup Predict.",
+  "_statuses": ["todo", "in_progress", "done", "blocked", "deferred"],
+  "features": [
+    {
+      "id": "F001",
+      "name": "Supabase + Vercel MVP scaffold",
+      "description": "Static Vercel app with Supabase Auth/Postgres/RLS/RPC, seed data, login, matches, betting, history, leaderboard, and admin dashboard.",
+      "status": "done",
+      "priority": "high",
+      "acceptance_criteria": [
+        "Supabase schema defines the MVP data model",
+        "Static frontend can call Supabase directly",
+        "Vercel function can create admin-provisioned player accounts"
+      ],
+      "notes": "Preferred route now requires no local npm/Python install."
+    },
+    {
+      "id": "F002",
+      "name": "Provider sync implementation",
+      "description": "Implement scheduled API-FOOTBALL and The Odds API sync with quota-aware caching.",
+      "status": "in_progress",
+      "priority": "high",
+      "acceptance_criteria": [
+        "Fixtures and teams sync from API-FOOTBALL",
+        "Odds provider status and mapped markets are recorded without exposing keys",
+        "Player UI shows odds source, bookmaker when available, and provider update freshness",
+        "Admin can override match-market and outright multiplier, lock time, and open/closed state with audit logging",
+        "Match statistics sync fills corners/cards settlement data with quota caps",
+        "Sync runs record request counts and failures",
+        "Data source and market reference doc exists"
+      ],
+      "notes": "Fixtures and capped match statistics sync implemented as Vercel Function. The Odds API h2h/draw_no_bet/totals mapping updates match_markets and odds_snapshots; outrights update outright_markets when team names match confidently. Live API-key verification is still required."
+    },
+    {
+      "id": "F003",
+      "name": "Production deployment",
+      "description": "Deploy vercel-static with Supabase env vars and a configured first admin account.",
+      "status": "todo",
+      "priority": "medium",
+      "acceptance_criteria": [
+        "Supabase schema and seed scripts have run",
+        "Vercel Root Directory is vercel-static",
+        "Service role key is only configured as a Vercel server env var",
+        "No-install deploy checklist, deployment verifier, launch smoke test, and env example are available"
+      ],
+      "notes": "Checklist, env example, and deployment verifier are ready; live Supabase/Vercel deployment still needs a deployment URL or callable Vercel integration in this Codex session."
+    },
+    {
+      "id": "F007",
+      "name": "No-install static verification",
+      "description": "Provide a local verification gate and Vercel health check for the Supabase/Vercel static deploy path without installing packages.",
+      "status": "done",
+      "priority": "medium",
+      "acceptance_criteria": [
+        "Verification checks required static deploy files",
+        "Verification checks JavaScript syntax and JSON config",
+        "Verification checks env template and Supabase SQL contract tokens",
+        "Verification checks common hardcoded secret patterns",
+        "Verification checks obvious encoding issues",
+        "Admin can see Vercel environment readiness without exposing secret values"
+      ],
+      "notes": "Run `node scripts/verify-static.mjs` before deploying to Vercel; `/api/health` and the Admin Dashboard verify env presence after deploy."
+    },
+    {
+      "id": "F008",
+      "name": "Prediction bonus scoring",
+      "description": "Leaderboard uses settled net points plus accuracy bonuses while wallet balance remains pure stake/payout accounting.",
+      "status": "done",
+      "priority": "high",
+      "acceptance_criteria": [
+        "Bets store prediction_bonus separately from wallet payout",
+        "Settlement assigns market-specific bonuses for winning predictions",
+        "Draw-no-bet draws refund stake without awarding prediction bonus",
+        "Leaderboard score includes net points plus bonuses",
+        "Wallet ledger records stake deductions, winning payouts, and void refunds",
+        "Reports and CSV exports expose bonus and net components"
+      ],
+      "notes": "Correct score, tournament winner, 1X2, totals/BTTS, corners, and cards each have separate bonus values."
+    },
+    {
+      "id": "F009",
+      "name": "Admin audit logs",
+      "description": "Important user/admin actions are written to audit_logs and visible/exportable from Admin Dashboard.",
+      "status": "done",
+      "priority": "high",
+      "acceptance_criteria": [
+        "Bet placements write audit logs",
+        "Admin single-bet void/refund actions write audit logs",
+        "Wallet adjustments write audit logs",
+        "Market multiplier/open-state changes write audit logs",
+        "User creation and password reset write audit logs",
+        "Match and tournament settlements write audit logs",
+        "Admin can view and export audit logs"
+      ],
+      "notes": "Implemented through Supabase RPC inserts, Vercel service-role function inserts, Admin Dashboard table, and CSV export."
+    },
+    {
+      "id": "F005",
+      "name": "Admin reporting and CSV exports",
+      "description": "Admin can inspect player performance, market performance, recent predictions, wallet ledger, and export reports as CSV.",
+      "status": "done",
+      "priority": "high",
+      "acceptance_criteria": [
+        "Admin report includes player wallet, score, accuracy, ROI, profit/loss, bonus points, open bets, and settled bets",
+        "Admin market report includes bets, stake, profit/loss, bonus points, score, accuracy, and ROI by market",
+        "Admin can inspect recent predictions across users",
+        "Admin can filter recent predictions, wallet ledger, audit logs, and CSV exports by user/date range",
+        "Admin can void/refund a single placed bet with a reason",
+        "Admin can inspect wallet ledger entries",
+        "Admin can export leaderboard, user/market reports, bets, wallet ledger, and audit log CSV files"
+      ],
+      "notes": "Implemented in the static Supabase app using admin RLS reads, admin_user_report/admin_market_report views, and client-side CSV generation."
+    },
+    {
+      "id": "F006",
+      "name": "Tournament winner market",
+      "description": "Players can bet on the World Cup champion and admin can settle final outright results.",
+      "status": "done",
+      "priority": "high",
+      "acceptance_criteria": [
+        "Schema stores tournament winner selections separately from match markets",
+        "Players can place tournament winner bets from the app",
+        "Admin can manage tournament winner multipliers, lock time, and open/closed state",
+        "Admin can settle tournament winner bets",
+        "Outright bets appear in history, reports, and leaderboard scoring"
+      ],
+      "notes": "Implemented with `outright_markets`, `place_outright_bet`, `admin_update_outright_market`, and `settle_tournament_winner`; bets still settle through the shared `bets` table."
+    },
+    {
+      "id": "F004",
+      "name": "Legacy FastAPI scaffold",
+      "description": "FastAPI + React/Vite scaffold retained as an alternate architecture.",
+      "status": "deferred",
+      "priority": "low",
+      "acceptance_criteria": [
+        "Only resume if Supabase limits become a blocker"
+      ],
+      "notes": "Supabase + Vercel is cheaper and simpler for MVP."
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+# Data Sources And Markets
+
+## Recommended Data Sources
+
+### Primary football data: API-FOOTBALL
+
+Use API-FOOTBALL as the primary football provider for the MVP.
+
+- World Cup 2026 uses `league=1` and `season=2026`.
+- Use `fixtures?league=1&season=2026` for the 104-match schedule, fixture IDs, UTC kickoff time, venue, and status.
+- Use `teams?league=1&season=2026` for the 48 teams.
+- Use `/fixtures/rounds`, `/standings`, `/predictions`, `/odds`, and match/player statistics later as quota allows.
+- The free API-Sports football plan is suitable for a private MVP only if polling is cached server-side.
+
+Current implementation:
+
+- `vercel-static/api/sync-football-data.js` fetches fixtures from API-FOOTBALL and upserts `teams` and `matches`.
+- It syncs match statistics from `/fixtures/statistics` into `match_stats` for live/recently finished matches, capped by `MAX_STATS_FIXTURES`.
+- API keys stay in Vercel server-side environment variables.
+
+References:
+
+- https://www.api-football.com/news/post/fifa-world-cup-2026-guide-to-using-data-with-api-sports
+- https://api-sports.io/sports/football
+
+### Odds source: The Odds API
+
+Use The Odds API for bookmaker-style markets where available.
+
+- Sport key: `soccer_fifa_world_cup`.
+- Start with `h2h`, `totals`, `draw_no_bet`, `spreads`, and `outrights`.
+- Keep regions narrow, for example `eu`, because each market/region consumes quota.
+- Map odds into `match_markets` conservatively; verify real 2026 provider event names after API keys are configured.
+
+Current implementation:
+
+- `vercel-static/api/sync-football-data.js` fetches World Cup odds events.
+- Events map to Supabase matches only when both team names match after normalization and kickoff times are within a 36-hour window.
+- Matched events update `match_markets` for 1X2 (`h2h`), draw-no-bet, and total goals (`totals`).
+- Outright outcomes update `outright_markets` for tournament winner when the provider team name matches a Supabase team.
+- Provider payloads are stored in `odds_snapshots`.
+- Player-facing markets show the odds source, bookmaker when available, and last provider update time from `extra_json`.
+- Admin can override match-market multipliers, lock times, and open/closed state through `admin_update_match_market`; manual changes are marked with source `admin` and audited.
+- Admin can override tournament-winner outright multipliers, lock times, and open/closed state through `admin_update_outright_market`, so the private game can still run if provider outrights are incomplete.
+- Unmatched events are skipped instead of guessed, so the first live provider sync should be reviewed in the Admin tab.
+
+References:
+
+- https://the-odds-api.com/sports/fifa-world-cup-odds.html
+- https://the-odds-api.com/liveapi/guides/v4/
+
+### Fallback fixture/result source: football-data.org
+
+Use football-data.org only as a fallback for basic fixture/result coverage if API-FOOTBALL quota or availability becomes a blocker.
+
+Reference:
+
+- https://www.football-data.org/coverage
+
+## MVP Betting Markets
+
+### Implemented In Schema/Settlement
+
+- Correct score
+- 1X2 match result
+- Draw no bet
+- Over/under total goals
+- Both teams to score
+- Over/under total corners
+- Over/under total cards
+- Tournament winner/outright picks
+
+Standard match markets settle on the 90-minute score stored in `matches.home_score` and `matches.away_score`. Markets that settle on qualification or extra-time result should use a different market key and label.
+
+`place_bet` validates and derives the submitted selection server-side. For all option markets, `selection_key` must match the selected `match_markets` row and the stored label/key come from that market row, not from the browser. Correct-score bets are the exception because players enter a free scoreline; those payloads must include non-negative `home_score` and `away_score`, then the stored key/label are derived from those scores.
+
+Tournament winner uses `outright_markets`, can be manually managed by admin, and settles through `settle_tournament_winner`, because it is not tied to one fixture.
+
+## Scoring Formula
+
+Wallet settlement stays bookmaker-style:
+
+- placing a bet deducts stake from wallet;
+- a winning bet credits `stake × locked_multiplier` and writes a payout ledger entry;
+- a losing bet credits nothing;
+- a void/refund credits the original stake and writes a refund ledger entry.
+
+Admin can void a single open bet through `admin_void_bet`. This is for operational correction only: it changes a `placed` bet to `refunded`, returns the stake, records a settlement row, writes a wallet ledger refund, and audits the reason.
+
+Leaderboard score is separate from wallet balance:
+
+```text
+leaderboard_score = settled_net_points + prediction_bonus
+```
+
+Prediction bonuses reward accuracy and do not top up the wallet:
+
+- correct score win: `+50`
+- tournament winner win: `+25`
+- 1X2 result win: `+10`
+- draw no bet, total goals, or BTTS win: `+8`
+- corners/cards internal market win: `+6`
+
+Admin top-ups only affect wallet balance and are excluded from leaderboard score.
+
+### Internal Markets
+
+Corners and cards stay internal until a reliable free odds feed is confirmed. The app settles them from `match_stats` using fixed internal multipliers, with API-FOOTBALL statistics sync filling corner and card counts when available.
+
+### Tournament/Fantasy Extensions
+
+Add these after the core flow is stable:
+
+- group winner/qualified teams;
+- clean sheet, first scorer, anytime scorer if provider coverage allows;
+- FPL-style bonus points for streaks, accuracy, correct-score count, ROI, and rank movement.
+
+Fantasy reference:
+
+- https://www.premierleague.com/en/news/2174909/fpl-basics-scoring
+
+## Polling Policy
+
+- Never call sports/odds providers from the browser.
+- Fixtures/teams: daily, or manual admin sync.
+- Odds: every few hours pre-match; tighter near kickoff only if quota allows.
+- Live scores/stats: only during active/recently finished match windows, capped by `MAX_STATS_FIXTURES`.
+- Settlement: after full time, then retry later for corrections.
