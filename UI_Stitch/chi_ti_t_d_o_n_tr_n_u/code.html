@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Chi Tiết Trận Đấu | WorldCup Predict</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;700;800;900&amp;family=Hanken+Grotesk:wght@400;600&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .active-tab-indicator {
+            view-transition-name: active-tab;
+        }
+        .diagonal-split {
+            clip-path: polygon(0 0, 100% 0, 85% 100%, 0% 100%);
+        }
+        .diagonal-split-reverse {
+            clip-path: polygon(15% 0, 100% 0, 100% 100%, 0% 100%);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-primary": "#705d00",
+                        "primary": "#fff6df",
+                        "on-error": "#690005",
+                        "on-secondary-fixed-variant": "#920703",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#323851",
+                        "surface-container": "#181e36",
+                        "tertiary-container": "#84efaf",
+                        "surface-dim": "#0b1229",
+                        "tertiary-fixed-dim": "#70db9d",
+                        "outline-variant": "#4d4732",
+                        "surface-tint": "#e9c400",
+                        "primary-container": "#ffd700",
+                        "surface-container-low": "#141a32",
+                        "on-primary": "#3a3000",
+                        "tertiary-fixed": "#8df8b7",
+                        "surface": "#0b1229",
+                        "on-primary-container": "#705e00",
+                        "on-secondary-fixed": "#410000",
+                        "surface-container-high": "#222941",
+                        "on-error-container": "#ffdad6",
+                        "inverse-surface": "#dce1ff",
+                        "on-primary-fixed-variant": "#544600",
+                        "on-secondary": "#690000",
+                        "surface-container-lowest": "#060d24",
+                        "on-surface": "#dce1ff",
+                        "on-tertiary-fixed": "#002110",
+                        "on-tertiary-fixed-variant": "#00522f",
+                        "on-surface-variant": "#d0c6ab",
+                        "primary-fixed-dim": "#e9c400",
+                        "outline": "#999077",
+                        "error-container": "#93000a",
+                        "surface-variant": "#2d344c",
+                        "surface-container-highest": "#2d344c",
+                        "primary-fixed": "#ffe16d",
+                        "secondary-fixed": "#ffdad4",
+                        "tertiary": "#dbffe3",
+                        "on-tertiary": "#00391f",
+                        "background": "#0b1229",
+                        "on-primary-fixed": "#221b00",
+                        "secondary-fixed-dim": "#ffb4a8",
+                        "secondary": "#ffb4a8",
+                        "on-tertiary-container": "#006d41",
+                        "on-background": "#dce1ff",
+                        "on-secondary-container": "#ff9a8a",
+                        "secondary-container": "#920703",
+                        "inverse-on-surface": "#292f48"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "margin-mobile": "16px",
+                        "lg": "48px",
+                        "sm": "12px",
+                        "gutter": "16px",
+                        "base": "8px",
+                        "md": "24px",
+                        "xl": "80px",
+                        "margin-desktop": "32px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["JetBrains Mono"],
+                        "headline-md": ["Anybody"],
+                        "score-display": ["Anybody"],
+                        "title-sm": ["Hanken Grotesk"],
+                        "display-lg": ["Anybody"],
+                        "display-lg-mobile": ["Anybody"],
+                        "body-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "headline-md": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                        "score-display": ["36px", {"lineHeight": "1", "fontWeight": "900"}],
+                        "title-sm": ["18px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "display-lg-mobile": ["32px", {"lineHeight": "1.1", "fontWeight": "800"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen overflow-x-hidden">
+<!-- TopAppBar Shell -->
+<header class="bg-surface-dim/80 backdrop-blur-xl fixed top-0 w-full z-50 border-b border-outline-variant/30 shadow-2xl flex justify-between items-center h-16 px-margin-mobile md:px-margin-desktop">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface cursor-pointer lg:hidden" id="menuToggle">menu</span>
+<div class="font-headline-md text-headline-md font-black text-primary-container tracking-tighter">WorldCup Predict</div>
+</div>
+<div class="hidden md:flex gap-md">
+<a class="font-label-caps text-label-caps text-primary border-b-2 border-primary py-2 transition-colors" href="#">Matches</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-colors py-2" href="#">Leaderboard</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-colors py-2" href="#">Rules</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-colors py-2" href="#">History</a>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden sm:flex flex-col items-end mr-2">
+<span class="font-label-caps text-[10px] text-on-surface-variant uppercase tracking-widest">SỐ DƯ</span>
+<span class="font-headline-md text-primary text-sm">2,450 pts</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer active:scale-95 duration-200">account_balance_wallet</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer active:scale-95 duration-200">notifications</span>
+<div class="w-8 h-8 rounded-full bg-surface-variant overflow-hidden border border-outline-variant">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="A professional close-up studio portrait of a young man with a friendly expression. The lighting is cinematic with soft key lights against a deep midnight blue background that matches a dark mode UI. The aesthetic is high-end, clean, and modern, reflecting an elite sport app's user profile image." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD9fDAKBcmZTqH1zxGngQ-s2KULrHZ23qagOXNwyuIM-2HmuOAsxliashqnv5cs81OGrGCHXRxOLQVX8h8D85mvWNTYAHelrAhELPo4AgG-n7Iwx_JYHzoZ8BaemSgolijPwlvCVUF_onyrDoGDfZja0GQe3rWBpAw2a-xeDTbaJ9h-waM-UMMGQV_Gi21dQ8DNInomEBhcud5TZzH4AJjDwj2hiwGm_F7GuU4Bpk3pn_O-3rx9uEDlXQ0-z3WzYcfrp9bB9kWRPLU"/>
+</div>
+</div>
+</header>
+<main class="pt-16 pb-24 md:pb-12 max-w-7xl mx-auto min-h-screen">
+<!-- Hero Match Header -->
+<section class="relative h-[400px] md:h-[500px] w-full overflow-hidden">
+<img alt="Stadium Background" class="absolute inset-0 w-full h-full object-cover" data-alt="A wide-angle, cinematic view of a massive, modern football stadium packed with fans under bright floodlights at night. The atmosphere is electric with a hazy, ethereal glow and deep blue and gold tones. The image is seen through a subtle dark vignette to allow the foreground UI elements to remain legible and prominent." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDouTccqzagsyUQ7uqgVoy6Tj3_GJfZM4csrUAmsAvi6BnYp3dJfu28Tw5IsYQU2gxN258oVbz8q9fD23dFHjhZRgcHZxYEJJ9gA2XW-8PphjWliKU51m2HlENeWe1li0gO8B_-Anw39pQf1LvySMBWexLdEyFxAj_w2gqEfAH3u25ss1cCkEOXFJjszQSjKpPx76V0cZAUNhEgbsydNRhbJ9cpCMp08z9xy1yOkcsq78vfp0Ca9MlgRVw1eaF-ZsuGy-bCbpnkyhk"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent"></div>
+<div class="relative z-10 h-full flex flex-col items-center justify-center px-margin-mobile text-center">
+<div class="bg-secondary-container/80 text-on-secondary-container px-4 py-1 rounded-full font-label-caps text-[10px] mb-6 animate-pulse">
+                    LIVE: PHÚT 74'
+                </div>
+<div class="flex items-center justify-center gap-6 md:gap-16 w-full max-w-4xl">
+<!-- Team A -->
+<div class="flex-1 flex flex-col items-center">
+<div class="w-20 h-20 md:w-32 md:h-32 rounded-full border-4 border-primary/20 bg-surface-container overflow-hidden shadow-2xl">
+<img alt="Argentina" class="w-full h-full object-cover" data-alt="A circular high-resolution national flag of Argentina, featuring the iconic sun emblem in the center. The fabric texture is visible and slightly rippled to give a premium, 3D feel. The lighting is focused and clean, set against a dark, minimalist background to maintain a high-stakes sport aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCr3k4OwM6KhEYCZkxkIRJKChH-zVZLAY1XNBiC-6hcPTKGrA93RhWpGgyJSm-MoFj8I3mbJJ2czoPr2oEwblIprVaXwZuLrZ3bPcLWZjqnnR0GnOePfgwDT_AAj_nUhtpc6xr6RH46aK1FPxu6lWWz_8QX4OZXaCTc0Aa1mt5D_BVccYLyl1Hr3qa7HfjSE63sAT09KhYXCtPPUC2Cq8jSOhOeYpETmxx_qGUMKmdBOUXnef0PEO3ZrwDWHOElqAC12nZojaTV86E"/>
+</div>
+<h2 class="mt-4 font-display-lg-mobile md:font-display-lg text-primary">ARGENTINA</h2>
+</div>
+<!-- Score / VS -->
+<div class="flex flex-col items-center">
+<div class="font-score-display text-primary text-5xl md:text-7xl flex gap-4">
+<span>2</span>
+<span class="text-primary/30">:</span>
+<span>1</span>
+</div>
+<p class="font-label-caps text-on-surface-variant mt-2">Vòng Tứ Kết</p>
+</div>
+<!-- Team B -->
+<div class="flex-1 flex flex-col items-center">
+<div class="w-20 h-20 md:w-32 md:h-32 rounded-full border-4 border-primary/20 bg-surface-container overflow-hidden shadow-2xl">
+<img alt="Netherlands" class="w-full h-full object-cover" data-alt="A circular high-resolution national flag of the Netherlands, displaying the bold red, white, and blue horizontal stripes. The material looks high-quality with subtle shadows and highlights. The presentation is professional and sharp, designed for a prestigious international tournament dashboard." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDAaY-btePwD5x55zblgoAsvHCqaRMFoKmKRmc6YLaG3IL9IbR1wQcwE95xAeJA6MX-mPFuzMNbIVwJ-gMW7tb02RTlaHgKIP2paint12p6X5M7QK5R2hE6XA6ZHHGR8fXeuieJ9JOIlvZ-f4PECFo9_-tEpycnvW_NbkzsMWbpmk6GcsKrT78zpG9_eJjMQ2cL-1g3Wo79BpAu0p50eC8M9reEiqNpnZh8XqxJw1E13hRJsZAv2vn5ezDME_2mJEV2GH60ebo_8RE"/>
+</div>
+<h2 class="mt-4 font-display-lg-mobile md:font-display-lg text-primary">HÀ LAN</h2>
+</div>
+</div>
+</div>
+</section>
+<!-- Prediction & Calc Section -->
+<div class="px-margin-mobile md:px-margin-desktop -mt-16 relative z-20 grid grid-cols-1 lg:grid-cols-3 gap-6">
+<!-- Prediction Card -->
+<div class="lg:col-span-2 glass-card rounded-xl p-6 md:p-8 flex flex-col gap-8 border-t-2 border-primary-container/30">
+<div class="flex justify-between items-center">
+<h3 class="font-headline-md text-primary">Dự đoán tỷ số</h3>
+<span class="font-label-caps text-on-surface-variant">Hạn chót: Còn 15:42</span>
+</div>
+<div class="flex flex-wrap items-center justify-center gap-8 md:gap-12">
+<!-- Input Team A -->
+<div class="flex flex-col items-center gap-4">
+<span class="font-label-caps text-xs text-on-surface-variant">ARGENTINA</span>
+<div class="flex items-center bg-surface-container-highest rounded-xl p-2 border border-outline-variant">
+<button class="w-10 h-10 flex items-center justify-center rounded-lg bg-surface-variant hover:bg-primary-container hover:text-on-primary-container transition-all active:scale-90" onclick="updateScore('a', -1)">
+<span class="material-symbols-outlined">remove</span>
+</button>
+<input class="w-16 bg-transparent border-none text-center font-score-display text-primary text-3xl focus:ring-0" id="scoreA" readonly="" type="number" value="2"/>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg bg-surface-variant hover:bg-primary-container hover:text-on-primary-container transition-all active:scale-90" onclick="updateScore('a', 1)">
+<span class="material-symbols-outlined">add</span>
+</button>
+</div>
+</div>
+<div class="font-score-display text-primary/20 text-4xl mt-6">-</div>
+<!-- Input Team B -->
+<div class="flex flex-col items-center gap-4">
+<span class="font-label-caps text-xs text-on-surface-variant">HÀ LAN</span>
+<div class="flex items-center bg-surface-container-highest rounded-xl p-2 border border-outline-variant">
+<button class="w-10 h-10 flex items-center justify-center rounded-lg bg-surface-variant hover:bg-primary-container hover:text-on-primary-container transition-all active:scale-90" onclick="updateScore('b', -1)">
+<span class="material-symbols-outlined">remove</span>
+</button>
+<input class="w-16 bg-transparent border-none text-center font-score-display text-primary text-3xl focus:ring-0" id="scoreB" readonly="" type="number" value="1"/>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg bg-surface-variant hover:bg-primary-container hover:text-on-primary-container transition-all active:scale-90" onclick="updateScore('b', 1)">
+<span class="material-symbols-outlined">add</span>
+</button>
+</div>
+</div>
+</div>
+<div class="flex flex-col md:flex-row gap-4 mt-4">
+<button class="flex-1 h-14 bg-primary-container text-on-primary-container font-headline-md text-sm rounded-xl flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined">check_circle</span>
+                        XÁC NHẬN DỰ ĐOÁN
+                    </button>
+<button class="px-8 h-14 bg-surface-variant text-on-surface font-label-caps text-xs rounded-xl hover:bg-surface-container-high transition-colors">
+                        HUỶ BỎ
+                    </button>
+</div>
+</div>
+<!-- Odds & Calculator Card -->
+<div class="glass-card rounded-xl p-6 flex flex-col gap-6 border-l-2 border-tertiary-container/30">
+<h3 class="font-headline-md text-tertiary">Points at stake</h3>
+<div class="flex flex-col gap-4">
+<div class="flex justify-between items-center p-3 bg-surface-container rounded-lg">
+<span class="text-on-surface-variant font-title-sm">Hệ số nhân (Odds)</span>
+<span class="text-primary-container font-label-caps text-lg">x2.45</span>
+</div>
+<div class="flex justify-between items-center p-3 bg-surface-container rounded-lg">
+<span class="text-on-surface-variant font-title-sm">Điểm cược tối thiểu</span>
+<span class="text-on-surface font-label-caps">100 pts</span>
+</div>
+</div>
+<div class="mt-auto pt-6 border-t border-outline-variant/30">
+<div class="flex justify-between items-end mb-4">
+<span class="text-on-surface-variant">Lợi nhuận dự kiến</span>
+<span class="text-tertiary font-score-display text-2xl" id="rewardDisplay">+540 pts</span>
+</div>
+<div class="w-full bg-surface-container-high rounded-full h-2 overflow-hidden">
+<div class="bg-gradient-to-r from-tertiary-container to-tertiary h-full w-[65%]"></div>
+</div>
+<p class="text-[10px] text-on-surface-variant font-label-caps mt-4 leading-relaxed">
+                        * Điểm thưởng được tính dựa trên độ chính xác của tỷ số và thời điểm đặt cược.
+                    </p>
+</div>
+</div>
+</div>
+<!-- Tabbed Content Section -->
+<div class="mt-12 px-margin-mobile md:px-margin-desktop">
+<div class="flex gap-8 border-b border-outline-variant/20 mb-8 overflow-x-auto no-scrollbar">
+<button class="pb-4 font-headline-md text-sm text-primary border-b-2 border-primary whitespace-nowrap" onclick="switchTab('h2h')">Thống kê đối đầu</button>
+<button class="pb-4 font-headline-md text-sm text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap" onclick="switchTab('community')">Dự đoán cộng đồng</button>
+<button class="pb-4 font-headline-md text-sm text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap" onclick="switchTab('lineup')">Đội hình ra sân</button>
+</div>
+<!-- H2H Tab Content -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500" id="tab-h2h">
+<div class="glass-card rounded-xl p-6">
+<h4 class="font-title-sm mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">history</span>
+                        Kết quả 5 trận gần nhất
+                    </h4>
+<div class="space-y-4">
+<!-- Match Item -->
+<div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg border border-outline-variant/10">
+<span class="text-xs font-label-caps text-on-surface-variant">09/12/2022</span>
+<div class="flex items-center gap-4 flex-1 justify-center">
+<span class="font-title-sm">ARG</span>
+<span class="bg-surface-variant px-2 py-0.5 rounded text-xs">2 - 2</span>
+<span class="font-title-sm">NED</span>
+</div>
+<span class="text-[10px] text-primary uppercase">World Cup</span>
+</div>
+<div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg border border-outline-variant/10">
+<span class="text-xs font-label-caps text-on-surface-variant">09/07/2014</span>
+<div class="flex items-center gap-4 flex-1 justify-center">
+<span class="font-title-sm">NED</span>
+<span class="bg-surface-variant px-2 py-0.5 rounded text-xs">0 - 0</span>
+<span class="font-title-sm">ARG</span>
+</div>
+<span class="text-[10px] text-primary uppercase">World Cup</span>
+</div>
+</div>
+</div>
+<div class="glass-card rounded-xl p-6">
+<h4 class="font-title-sm mb-6">Tỷ lệ thắng (Lịch sử)</h4>
+<div class="flex items-center justify-between gap-4 h-32">
+<div class="flex flex-col items-center flex-1">
+<div class="text-primary font-score-display text-3xl">40%</div>
+<div class="text-[10px] font-label-caps text-on-surface-variant">ARGENTINA</div>
+</div>
+<div class="flex-none w-1 h-full bg-outline-variant/30 rounded-full"></div>
+<div class="flex flex-col items-center flex-1">
+<div class="text-on-surface-variant font-score-display text-3xl">30%</div>
+<div class="text-[10px] font-label-caps text-on-surface-variant">HOÀ</div>
+</div>
+<div class="flex-none w-1 h-full bg-outline-variant/30 rounded-full"></div>
+<div class="flex flex-col items-center flex-1">
+<div class="text-secondary font-score-display text-3xl">30%</div>
+<div class="text-[10px] font-label-caps text-on-surface-variant">HÀ LAN</div>
+</div>
+</div>
+<div class="w-full h-4 rounded-full overflow-hidden flex mt-4">
+<div class="bg-primary-container w-[40%]"></div>
+<div class="bg-surface-variant w-[30%]"></div>
+<div class="bg-secondary-container w-[30%]"></div>
+</div>
+</div>
+</div>
+<!-- Community Tab Content (Hidden initially) -->
+<div class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500" id="tab-community">
+<div class="glass-card rounded-xl p-8 max-w-4xl mx-auto">
+<h4 class="font-headline-md text-center mb-10">Cộng đồng đang nghĩ gì?</h4>
+<div class="space-y-8">
+<div>
+<div class="flex justify-between mb-2">
+<span class="font-title-sm">Argentina Thắng</span>
+<span class="text-primary-container font-label-caps">62%</span>
+</div>
+<div class="h-8 bg-surface-container rounded-lg overflow-hidden flex">
+<div class="bg-primary-container h-full w-[62%] transition-all duration-1000"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between mb-2">
+<span class="font-title-sm">Hoà</span>
+<span class="text-on-surface-variant font-label-caps">20%</span>
+</div>
+<div class="h-8 bg-surface-container rounded-lg overflow-hidden flex">
+<div class="bg-surface-variant h-full w-[20%] transition-all duration-1000"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between mb-2">
+<span class="font-title-sm">Hà Lan Thắng</span>
+<span class="text-secondary font-label-caps">18%</span>
+</div>
+<div class="h-8 bg-surface-container rounded-lg overflow-hidden flex">
+<div class="bg-secondary-container h-full w-[18%] transition-all duration-1000"></div>
+</div>
+</div>
+</div>
+<div class="mt-12 flex justify-center items-center gap-12">
+<div class="text-center">
+<div class="text-on-surface-variant font-label-caps text-xs">DỰ ĐOÁN NHIỀU NHẤT</div>
+<div class="text-primary font-score-display text-4xl mt-2">2 - 1</div>
+</div>
+<div class="h-12 w-px bg-outline-variant/30"></div>
+<div class="text-center">
+<div class="text-on-surface-variant font-label-caps text-xs">SỐ LƯỢNG NGƯỜI CHƠI</div>
+<div class="text-on-surface font-score-display text-4xl mt-2">12,405</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Shell -->
+<footer class="bg-surface-container-lowest border-t border-outline-variant/10 w-full py-xl mt-xl">
+<div class="max-w-7xl mx-auto px-margin-mobile md:px-margin-desktop grid grid-cols-1 md:grid-cols-2 gap-md items-center">
+<div>
+<div class="font-label-caps text-label-caps text-primary mb-4">WORLD CUP PREDICT</div>
+<p class="text-on-surface-variant font-body-md max-w-md">© 2024 FIFA World Cup Predictor. Tham gia cộng đồng dự đoán bóng đá lớn nhất hành tinh.</p>
+</div>
+<div class="flex flex-wrap gap-x-8 gap-y-4 md:justify-end">
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4" href="#">Lịch thi đấu</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4" href="#">Quy định</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4" href="#">Chính sách bảo mật</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4" href="#">Hỗ trợ</a>
+</div>
+</div>
+</footer>
+<!-- BottomNavBar Shell (Mobile Only) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 pb-safe bg-surface-container-highest/90 backdrop-blur-md border-t border-primary/20 shadow-[0_-4px_20px_rgba(0,0,0,0.5)] lg:hidden">
+<div class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full w-12 h-12 mb-1 scale-110 transition-transform">
+<span class="material-symbols-outlined">sports_soccer</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary">
+<span class="material-symbols-outlined">emoji_events</span>
+<span class="font-label-caps text-[10px] mt-1">Hạng</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary">
+<span class="material-symbols-outlined">menu_book</span>
+<span class="font-label-caps text-[10px] mt-1">Luật</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-caps text-[10px] mt-1">Cá nhân</span>
+</div>
+</nav>
+<script>
+        function updateScore(team, delta) {
+            const input = document.getElementById(team === 'a' ? 'scoreA' : 'scoreB');
+            let val = parseInt(input.value) + delta;
+            if (val < 0) val = 0;
+            if (val > 15) val = 15;
+            input.value = val;
+            
+            // Randomly update reward display for interaction feel
+            const reward = 400 + (val * 45);
+            document.getElementById('rewardDisplay').innerText = `+${reward} pts`;
+            
+            // Interaction scale effect
+            input.parentElement.classList.add('scale-105');
+            setTimeout(() => input.parentElement.classList.remove('scale-105'), 100);
+        }
+
+        function switchTab(tabName) {
+            const tabs = ['h2h', 'community'];
+            tabs.forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                if (t === tabName) {
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
+            });
+
+            // Update tab button styles
+            const buttons = event.currentTarget.parentElement.querySelectorAll('button');
+            buttons.forEach(btn => {
+                btn.classList.remove('text-primary', 'border-primary');
+                btn.classList.add('text-on-surface-variant');
+            });
+            event.currentTarget.classList.add('text-primary', 'border-primary');
+            event.currentTarget.classList.remove('text-on-surface-variant');
+        }
+
+        // Atmosphere effect: subtle parallax on stadium image
+        window.addEventListener('mousemove', (e) => {
+            const stadium = document.querySelector('img[data-alt*="stadium"]');
+            if (stadium) {
+                const moveX = (e.clientX - window.innerWidth / 2) * 0.01;
+                const moveY = (e.clientY - window.innerHeight / 2) * 0.01;
+                stadium.style.transform = `scale(1.1) translate(${moveX}px, ${moveY}px)`;
+            }
+        });
+    </script>
+</body></html>

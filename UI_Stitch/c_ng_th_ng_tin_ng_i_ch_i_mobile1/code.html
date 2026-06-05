@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@100..900&amp;family=Hanken+Grotesk:wght@100..900&amp;family=JetBrains+Mono:wght@100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary": "#ffb4a8",
+                    "primary-container": "#ffd700",
+                    "surface-dim": "#0b1229",
+                    "secondary-fixed": "#ffdad4",
+                    "inverse-surface": "#dce1ff",
+                    "error": "#ffb4ab",
+                    "on-secondary": "#690000",
+                    "on-secondary-fixed-variant": "#920703",
+                    "on-surface-variant": "#d0c6ab",
+                    "surface-bright": "#323851",
+                    "on-primary-fixed-variant": "#544600",
+                    "on-primary-container": "#705e00",
+                    "on-error": "#690005",
+                    "surface-container-high": "#222941",
+                    "on-tertiary": "#00391f",
+                    "on-background": "#dce1ff",
+                    "background": "#0b1229",
+                    "surface-container": "#181e36",
+                    "on-error-container": "#ffdad6",
+                    "surface-container-highest": "#2d344c",
+                    "primary-fixed-dim": "#e9c400",
+                    "error-container": "#93000a",
+                    "tertiary-fixed-dim": "#70db9d",
+                    "on-secondary-fixed": "#410000",
+                    "surface": "#0b1229",
+                    "on-surface": "#dce1ff",
+                    "tertiary": "#dbffe3",
+                    "surface-container-lowest": "#060d24",
+                    "on-primary-fixed": "#221b00",
+                    "outline": "#999077",
+                    "on-secondary-container": "#ff9a8a",
+                    "inverse-primary": "#705d00",
+                    "surface-tint": "#e9c400",
+                    "surface-variant": "#2d344c",
+                    "tertiary-container": "#84efaf",
+                    "on-primary": "#3a3000",
+                    "secondary-container": "#920703",
+                    "primary": "#fff6df",
+                    "on-tertiary-fixed": "#002110",
+                    "on-tertiary-container": "#006d41",
+                    "outline-variant": "#4d4732",
+                    "on-tertiary-fixed-variant": "#00522f",
+                    "inverse-on-surface": "#292f48",
+                    "surface-container-low": "#141a32",
+                    "tertiary-fixed": "#8df8b7",
+                    "primary-fixed": "#ffe16d",
+                    "secondary-fixed-dim": "#ffb4a8"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "xs": "4px",
+                    "xl": "80px",
+                    "sm": "12px",
+                    "md": "24px",
+                    "gutter": "16px",
+                    "margin-mobile": "16px",
+                    "margin-desktop": "32px",
+                    "lg": "48px",
+                    "base": "8px"
+            },
+            "fontFamily": {
+                    "title-sm": ["Hanken Grotesk"],
+                    "display-lg": ["Anybody"],
+                    "headline-md": ["Anybody"],
+                    "body-md": ["Hanken Grotesk"],
+                    "label-caps": ["JetBrains Mono"],
+                    "display-lg-mobile": ["Anybody"],
+                    "score-display": ["Anybody"]
+            },
+            "fontSize": {
+                    "title-sm": ["18px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                    "headline-md": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                    "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "display-lg-mobile": ["32px", {"lineHeight": "1.1", "fontWeight": "800"}],
+                    "score-display": ["36px", {"lineHeight": "1", "fontWeight": "900"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .live-pulse {
+            box-shadow: 0 0 0 0 rgba(255, 180, 168, 0.7);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 180, 168, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 180, 168, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 180, 168, 0); }
+        }
+        ::-webkit-scrollbar { display: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background font-body-md min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-surface/80 dark:bg-surface/80 backdrop-blur-md border-b border-white/10 shadow-sm">
+<div class="flex justify-between items-center px-margin-mobile h-16 w-full max-w-7xl mx-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-container overflow-hidden border-2 border-primary-fixed">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="A high-quality 3D rendered avatar of a young male football fan wearing a premium sports jersey. The lighting is cinematic with golden highlights, reflecting a professional elite sports platform aesthetic. The background is a soft-focus deep navy blue, maintaining a clean and modern corporate appearance." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBGxq7zLOZakMXmUkdK3GoA2nCVzPv62dVbkHMMX32M4UbqFqP32F7fsxfzas_LN0F5Yp7JiYLu8trP8ejDEFwF2I7n_wen8rvqgL8UTKkZ6VhPOlwoMiqR0QqPNDoJXt5EAa9d_hrvS9TLZpikFkzwbTLykhkdG4hgVN-TDvRG22N_8W6aPSiPd0NF_tBqRWuXjZdg__dWc89HZ4z8_R3szVe4RERPRvCI-MvVfhWpEOoqEeGl7SMTEVVfjey7_UHZ9eBs2qJzGYM"/>
+</div>
+<span class="font-score-display text-headline-md-mobile text-primary-container dark:text-primary-fixed tracking-tight">MATCHDAY</span>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:bg-white/5 p-2 rounded-full active:scale-95 transition-transform duration-200" data-icon="notifications">notifications</button>
+</div>
+</header>
+<main class="pt-20 px-4 space-y-6">
+<!-- Personalized Greeting -->
+<section class="mt-4">
+<h1 class="font-headline-md text-headline-md-mobile text-on-surface">Chào mừng trở lại, Alex!</h1>
+<p class="text-on-surface-variant font-body-md">Hôm nay có 12 trận đấu quan trọng đang chờ bạn.</p>
+</section>
+<!-- Stats Bento Grid -->
+<section class="grid grid-cols-2 gap-3">
+<div class="glass-card p-4 rounded-xl flex flex-col justify-between h-32 border-l-4 border-l-primary-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Điểm số hiện tại</span>
+<div class="flex items-end gap-1">
+<span class="font-score-display text-score-display text-primary-container">2,840</span>
+<span class="font-label-caps text-label-caps text-tertiary-fixed mb-2">pts</span>
+</div>
+</div>
+<div class="glass-card p-4 rounded-xl flex flex-col justify-between h-32 border-l-4 border-l-tertiary-fixed">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Thứ hạng toàn cầu</span>
+<div class="flex items-end gap-1">
+<span class="font-score-display text-score-display text-tertiary-fixed">#142</span>
+<span class="material-symbols-outlined text-tertiary-fixed mb-2" data-icon="trending_up">trending_up</span>
+</div>
+</div>
+</section>
+<!-- Progress Chart (Micro Interaction Placeholder) -->
+<section class="glass-card rounded-xl p-4">
+<div class="flex justify-between items-center mb-4">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Lịch sử xếp hạng</span>
+<span class="font-label-caps text-label-caps text-primary-fixed bg-white/5 px-2 py-1 rounded">7 ngày qua</span>
+</div>
+<div class="relative h-24 w-full flex items-end justify-between px-2">
+<!-- Simple SVG Graph Representation -->
+<svg class="absolute inset-0 w-full h-full" preserveaspectratio="none" viewbox="0 0 100 100">
+<defs>
+<lineargradient id="grad" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:rgba(255,215,0,0.3);stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:rgba(255,215,0,0);stop-opacity:1"></stop>
+</lineargradient>
+</defs>
+<path d="M0,80 Q20,60 40,70 T80,30 T100,40 V100 H0 Z" fill="url(#grad)"></path>
+<path d="M0,80 Q20,60 40,70 T80,30 T100,40" fill="none" stroke="#ffd700" stroke-width="2"></path>
+</svg>
+</div>
+</section>
+<!-- Hot Matches Section -->
+<section class="space-y-4">
+<div class="flex justify-between items-end">
+<h2 class="font-headline-md text-title-sm text-on-surface">Trận đấu Hot nhất</h2>
+<a class="font-label-caps text-label-caps text-primary-fixed underline decoration-primary-fixed/30" href="#">Xem tất cả</a>
+</div>
+<!-- Match Fixture Card 1 (Live) -->
+<div class="glass-card rounded-xl overflow-hidden border-secondary/30 relative live-pulse">
+<div class="bg-secondary-container/20 px-4 py-2 flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<span class="font-label-caps text-label-caps text-secondary uppercase font-bold">Trực tiếp - 72'</span>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant">Premier League</span>
+</div>
+<div class="p-6 flex items-center justify-between">
+<div class="flex flex-col items-center gap-2 w-1/3">
+<img alt="Man City" class="w-12 h-12 rounded-full shadow-lg" data-alt="Official round emblem for Manchester City football club, presented in high resolution with a subtle inner glow. The background is a clean, dark glassmorphic surface typical of a premium sports broadcasting interface. The aesthetic is modern and sharp, using deep blues and whites to match the team identity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA_dJ8KvA107eC7KRQ6__ZSsohilYED2nFwtFN93KyM88MNk0zGPNICAb0nZ92fVufsw3eTRASH0LCHhEAidZypbzCIdlZyt9T6-IKAQAIw5nMK4kg-9B1esj1i5KE2HePQ6k9YBa118Cd6kTcfizWDMk4p0nSWuH9_jviFbI3bYge1IpplR7jWC-4ZWsFEFoRQQnxmGL4FWT_1Tr0Ph601FhtSqfrXIvmo6zI8U_LsVeUjtFEeEQ8Noik86BfYAGSzo9dgqEzXLzk"/>
+<span class="font-title-sm text-center">Man City</span>
+</div>
+<div class="flex flex-col items-center w-1/3">
+<span class="font-score-display text-score-display text-on-surface">2 - 1</span>
+</div>
+<div class="flex flex-col items-center gap-2 w-1/3">
+<img alt="Arsenal" class="w-12 h-12 rounded-full shadow-lg" data-alt="Official round emblem for Arsenal football club, featuring the iconic cannon logo in high definition. The image is set against a dark, translucent stadium backdrop with professional studio lighting. The style is athletic and high-prestige, part of a global football prediction app interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmSf6dpsghngdMY5QKfKb4mYQ1Hgf91bBMIebS5xKRKB7uMm0OSSv6m5TvU8IR-6Fxqf3FzDDto86p2NBKWJH8hbGJ1QFaAw01fuJ7KtwKmxBjTL7ZRyYNJS5X5kJkG_bOhI2rBJpR-CkrbXBnxhUlB-_ZcxO8XHDBKau7Iuw2YSxdytDYt9Lz3nTR5HvF6AZ8np-13sdjRYNdNbFP1vOoEVPYK3wwqBDxMMmwhUXQ22-UeY8nHnYGfj4DCZz-8ichUGjyisDu3Qc"/>
+<span class="font-title-sm text-center">Arsenal</span>
+</div>
+</div>
+<div class="px-4 pb-4">
+<button class="w-full bg-primary-container text-on-primary-container py-3 rounded-lg font-headline-md text-[14px] uppercase tracking-wider active:scale-95 transition-all">Dự đoán ngay</button>
+</div>
+</div>
+<!-- Match Fixture Card 2 (Upcoming) -->
+<div class="glass-card rounded-xl overflow-hidden border-white/5">
+<div class="bg-white/5 px-4 py-2 flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Hôm nay - 21:00</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant">La Liga</span>
+</div>
+<div class="p-6 flex items-center justify-between">
+<div class="flex flex-col items-center gap-2 w-1/3 text-center">
+<div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
+<img alt="Real Madrid" class="w-10 h-10 object-contain" data-alt="Circular national flag of Spain representing a La Liga team, designed with a 3D glass effect and subtle drop shadow. The icon sits on a deep midnight navy background within a high-end sports application. The lighting is sophisticated, creating a professional and sleek competitive atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_R16MuPH7v_3u0VBeqniHjg2YAluEz1XK7SII7nDo7fGdGeNYSWf4yFaNDuZZNSF2BBJdBbYu-nKnSVG1135akfq-R5wzE9FU3Bdw-PVSy0RFQGr-0AfLVsZg72iwr5gYHfYuvHEiFoEHs7kxYWS84OOvkeIcC14OY4LcT4PrJSQYdprxfOvPK5SxAeY0QCbrJhJQ8E5AX-YZ43fT4KXHsUg_LfRUIsXO-pN7sF98zIPqnSrzRZjBZf4wKsgAorUOkiMsMogSvfw"/>
+</div>
+<span class="font-title-sm text-[14px]">Real Madrid</span>
+</div>
+<div class="flex flex-col items-center w-1/3">
+<span class="font-label-caps text-label-caps text-on-surface-variant">VS</span>
+</div>
+<div class="flex flex-col items-center gap-2 w-1/3 text-center">
+<div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
+<img alt="Barcelona" class="w-10 h-10 object-contain" data-alt="Circular national flag of Spain representing a major football club in an upcoming match. The design is integrated into a premium, dark-mode mobile UI with glassmorphism effects. The visual style is fast, modern, and authoritative, emphasizing the excitement of El Clásico." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAlZKZeKUAn_kwwD5qzTNTuQx4dF8GIQZDRzIdKa2sMboc7d6mfQi7JRwMqEkXDPULAfg5QZUiM-IW1FX-aObgK5KgBgkiN2l0EVyZyi_590TuhWN3NupuTErfdR-Xerq59nSV7XyB4R5NUx3dtkoayTPUUmQXUZ0QL7Wk71PIuGpG_0vUzBmhlD-J3mIhErC4Q8cWZvYWLonOXJ4PZ7jEsqNVxBgVfPhB4l7mhpGtlUZVKv4f6jpX7nvhaVLroGZjtkWJp3lrRhK0"/>
+</div>
+<span class="font-title-sm text-[14px]">Barcelona</span>
+</div>
+</div>
+<div class="px-4 pb-4">
+<!-- Prediction Consensus Bar -->
+<div class="flex items-center gap-2 mb-3">
+<div class="flex-1 h-2 bg-surface-container-highest rounded-full overflow-hidden flex">
+<div class="h-full bg-tertiary-container" style="width: 65%"></div>
+<div class="h-full bg-outline-variant" style="width: 35%"></div>
+</div>
+<span class="font-label-caps text-[10px] text-tertiary-container">65% Win</span>
+</div>
+<button class="w-full border border-primary-container/30 text-primary-container py-3 rounded-lg font-headline-md text-[14px] uppercase tracking-wider hover:bg-primary-container/10 active:scale-95 transition-all">Đặt tỷ số</button>
+</div>
+</div>
+</section>
+<!-- Leaderboard Preview -->
+<section class="glass-card rounded-xl p-4">
+<h3 class="font-headline-md text-title-sm text-on-surface mb-4">Bạn bè</h3>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="font-label-caps text-primary-container w-4">1</span>
+<img alt="Friend" class="w-8 h-8 rounded-full" data-alt="A small circular avatar of a competitive football fan user profile. The image shows a friendly face with professional lighting in a modern sports app context. The background is a clean, corporate midnight navy, ensuring the focus is on the user's friendly and competitive persona." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBhc9luvj1OUzxDdVZGNm-jpNppEIMj-Zpep7JtoePPvrb3T_3j2Nh286AJXmMcBaqYTRNoXd2O5HpSQkTBrB_SO_4Jke2R6PZNFbSSaEweyyiUWGuNaraorp3c03F084Pkni3QQOSYNZX9ptBfYk1Zmw9ITzDZ-Uee32fVaLC0rxasLACcfkP9FENC-7VrLpXFQdvqehfU5wzzhulP_5R5sxY2xk5Ay1B5SsTfKfAFpjlXB0GyC0dCPSs4WpdpDUx2u2fFYU1fO-I"/>
+<span class="font-title-sm text-[14px]">Kevin De B.</span>
+</div>
+<span class="font-label-caps text-on-surface">3,120 pts</span>
+</div>
+<div class="flex items-center justify-between opacity-70">
+<div class="flex items-center gap-3">
+<span class="font-label-caps text-on-surface-variant w-4">2</span>
+<img alt="Friend" class="w-8 h-8 rounded-full" data-alt="A profile picture of a female sports enthusiast for a social leaderboard. The image is rendered with a high-end corporate modern style, featuring soft studio lighting and a deep navy aesthetic. She appears engaged and competitive, fitting for a prestigious global prediction platform." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCN1l1Zr8hXKmdzlzxwkBzjQ1LUch3eDBJqNdyb-ySD18PgWSdp1CA8L-Prmb4TilYKMcN-Uzt3ejJrrJE3l_hFh1rlTN46Gz36XA1doQ-xWw4pCb0lBZQKtutqzcwJPBBumUttkjsTyJSejJrfDpTTCtnOEZV_6U262EBi31XWGYoSR5DCsMVgl1M3rJfA5baOLylKXDPoo4cFJhXO-wczjnQGMquNNIu7fox53amU8zKPbVJj8tVyAXynYgThsdon3_b0U6UxWl0"/>
+<span class="font-title-sm text-[14px]">Sarah J.</span>
+</div>
+<span class="font-label-caps text-on-surface">2,990 pts</span>
+</div>
+<div class="flex items-center justify-between bg-white/10 -mx-4 px-4 py-2 border-l-4 border-primary-container">
+<div class="flex items-center gap-3">
+<span class="font-label-caps text-primary-container w-4">3</span>
+<img alt="Friend" class="w-8 h-8 rounded-full" data-alt="The current user's own profile avatar displayed in a leaderboard ranking. The lighting is bright and prestigious, highlighting a character that represents success and skill within the game. The style is consistent with a high-prestige elite sports mobile application interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYgxcgUikr6mHUDNCXCkzGf-carWvW87XR1HFC9L9jJIFEwNzx2evljy1DgpL1GKYBKqJW-XjELc2Sk3uADPFpmnPHTlJ_dFhQ6dKEQEuw3y3VRffxzc_wFigTP-yVeukRe26t8DStTrXRYaoaXpFx7B9Z5wXdCFXxtXur0uFLqZlhK6zwmiaAkeJocGxAWE1CZmvKJtMRU43zpAQTyVxjdmRwdL3AKhpiBwhOwGfkRRLMKki7dkqbe2A8Zx_WVmTen-cLiFi9sAw"/>
+<span class="font-title-sm text-[14px]">Alex (Bạn)</span>
+</div>
+<span class="font-label-caps text-primary-container">2,840 pts</span>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center pt-2 pb-6 px-4 bg-surface-container dark:bg-surface-container-highest/90 backdrop-blur-xl border-t border-white/5 shadow-lg rounded-t-xl">
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="sports_soccer">sports_soccer</span>
+<span class="font-label-caps text-label-caps">Matches</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="Ads_Click">ads_click</span>
+<span class="font-label-caps text-label-caps">Predict</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="leaderboard">leaderboard</span>
+<span class="font-label-caps text-label-caps">Rankings</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-label-caps text-label-caps">Profile</span>
+</a>
+</nav>
+<!-- Micro Interaction Script -->
+<script>
+        document.querySelectorAll('button, a').forEach(elem => {
+            elem.addEventListener('touchstart', function() {
+                this.classList.add('opacity-70');
+            });
+            elem.addEventListener('touchend', function() {
+                this.classList.remove('opacity-70');
+            });
+        });
+
+        // Simple scroll parallax for glass cards
+        window.addEventListener('scroll', () => {
+            const cards = document.querySelectorAll('.glass-card');
+            cards.forEach(card => {
+                const speed = 0.05;
+                const rect = card.getBoundingClientRect();
+                const visible = rect.top < window.innerHeight && rect.bottom > 0;
+                if (visible) {
+                    const shift = (rect.top - window.innerHeight / 2) * speed;
+                    card.style.transform = `translateY(${shift}px)`;
+                }
+            });
+        });
+    </script>
+</body></html>

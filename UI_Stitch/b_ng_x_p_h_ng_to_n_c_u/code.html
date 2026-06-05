@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Bảng Xếp Hạng Toàn Cầu | WorldCup Predict</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@700;800;900&amp;family=Hanken+Grotesk:wght@400;600&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .podium-gradient-1 { background: linear-gradient(180deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 215, 0, 0) 100%); }
+        .podium-gradient-2 { background: linear-gradient(180deg, rgba(220, 225, 255, 0.1) 0%, rgba(220, 225, 255, 0) 100%); }
+        .podium-gradient-3 { background: linear-gradient(180deg, rgba(255, 154, 138, 0.1) 0%, rgba(255, 154, 138, 0) 100%); }
+        
+        .pulse-border {
+            box-shadow: 0 0 0 0 rgba(146, 7, 3, 0.4);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(146, 7, 3, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(146, 7, 3, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(146, 7, 3, 0); }
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0b1229; }
+        ::-webkit-scrollbar-thumb { background: #2d344c; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4d4732; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "inverse-primary": "#705d00",
+                      "primary": "#fff6df",
+                      "on-error": "#690005",
+                      "on-secondary-fixed-variant": "#920703",
+                      "error": "#ffb4ab",
+                      "surface-bright": "#323851",
+                      "surface-container": "#181e36",
+                      "tertiary-container": "#84efaf",
+                      "surface-dim": "#0b1229",
+                      "tertiary-fixed-dim": "#70db9d",
+                      "outline-variant": "#4d4732",
+                      "surface-tint": "#e9c400",
+                      "primary-container": "#ffd700",
+                      "surface-container-low": "#141a32",
+                      "on-primary": "#3a3000",
+                      "tertiary-fixed": "#8df8b7",
+                      "surface": "#0b1229",
+                      "on-primary-container": "#705e00",
+                      "on-secondary-fixed": "#410000",
+                      "surface-container-high": "#222941",
+                      "on-error-container": "#ffdad6",
+                      "inverse-surface": "#dce1ff",
+                      "on-primary-fixed-variant": "#544600",
+                      "on-secondary": "#690000",
+                      "surface-container-lowest": "#060d24",
+                      "on-surface": "#dce1ff",
+                      "on-tertiary-fixed": "#002110",
+                      "on-tertiary-fixed-variant": "#00522f",
+                      "on-surface-variant": "#d0c6ab",
+                      "primary-fixed-dim": "#e9c400",
+                      "outline": "#999077",
+                      "error-container": "#93000a",
+                      "surface-variant": "#2d344c",
+                      "surface-container-highest": "#2d344c",
+                      "primary-fixed": "#ffe16d",
+                      "secondary-fixed": "#ffdad4",
+                      "tertiary": "#dbffe3",
+                      "on-tertiary": "#00391f",
+                      "background": "#0b1229",
+                      "on-primary-fixed": "#221b00",
+                      "secondary-fixed-dim": "#ffb4a8",
+                      "secondary": "#ffb4a8",
+                      "on-tertiary-container": "#006d41",
+                      "on-background": "#dce1ff",
+                      "on-secondary-container": "#ff9a8a",
+                      "secondary-container": "#920703",
+                      "inverse-on-surface": "#292f48"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "xs": "4px",
+                      "margin-mobile": "16px",
+                      "lg": "48px",
+                      "sm": "12px",
+                      "gutter": "16px",
+                      "base": "8px",
+                      "md": "24px",
+                      "xl": "80px",
+                      "margin-desktop": "32px"
+              },
+              "fontFamily": {
+                      "label-caps": ["JetBrains Mono"],
+                      "headline-md": ["Anybody"],
+                      "score-display": ["Anybody"],
+                      "title-sm": ["Hanken Grotesk"],
+                      "display-lg": ["Anybody"],
+                      "display-lg-mobile": ["Anybody"],
+                      "body-md": ["Hanken Grotesk"]
+              },
+              "fontSize": {
+                      "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                      "headline-md": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                      "score-display": ["36px", {"lineHeight": "1", "fontWeight": "900"}],
+                      "title-sm": ["18px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                      "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                      "display-lg-mobile": ["32px", {"lineHeight": "1.1", "fontWeight": "800"}],
+                      "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}]
+              }
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- Top Navigation Bar -->
+<nav class="fixed top-0 w-full z-50 bg-surface-dim/80 backdrop-blur-xl border-b border-outline-variant/30 shadow-2xl flex justify-between items-center h-16 px-margin-mobile md:px-margin-desktop">
+<div class="font-headline-md text-headline-md font-black text-primary-container tracking-tighter cursor-pointer active:scale-95 duration-200">
+            WorldCup Predict
+        </div>
+<div class="hidden md:flex gap-md items-center">
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-colors cursor-pointer active:scale-95 duration-200" href="#">Matches</a>
+<a class="font-label-caps text-label-caps text-primary border-b-2 border-primary transition-colors cursor-pointer active:scale-95 duration-200" href="#">Rankings</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-colors cursor-pointer active:scale-95 duration-200" href="#">Rules</a>
+</div>
+<div class="flex items-center gap-sm">
+<div class="bg-surface-variant/50 px-sm py-xs rounded-full flex items-center gap-xs cursor-pointer active:scale-95 duration-200">
+<span class="material-symbols-outlined text-primary-container text-[18px]">account_balance_wallet</span>
+<span class="font-label-caps text-label-caps text-primary-container">2,450 pts</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer transition-colors active:scale-95 duration-200">notifications</span>
+</div>
+</nav>
+<!-- Side Navigation (Desktop) -->
+<aside class="fixed left-0 top-0 bottom-0 z-40 pt-20 pb-10 px-4 h-full w-64 hidden lg:flex flex-col bg-surface-container-low/95 backdrop-blur-lg border-r border-outline-variant/20">
+<div class="mb-lg px-2">
+<div class="text-primary font-headline-md text-headline-md mb-xs">World Cup 2024</div>
+<div class="text-on-surface-variant font-title-sm text-title-sm opacity-70">Group Stage Live</div>
+</div>
+<div class="space-y-sm flex-1">
+<div class="flex items-center gap-sm p-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 transition-all rounded-xl cursor-pointer">
+<span class="material-symbols-outlined">sports_soccer</span>
+<span class="font-title-sm text-title-sm">Matches</span>
+</div>
+<div class="flex items-center gap-sm p-3 bg-secondary-container text-on-secondary-container rounded-xl font-bold cursor-pointer transition-all">
+<span class="material-symbols-outlined">leaderboard</span>
+<span class="font-title-sm text-title-sm">Leaderboard</span>
+</div>
+<div class="flex items-center gap-sm p-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 transition-all rounded-xl cursor-pointer">
+<span class="material-symbols-outlined">gavel</span>
+<span class="font-title-sm text-title-sm">Rules</span>
+</div>
+<div class="flex items-center gap-sm p-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 transition-all rounded-xl cursor-pointer">
+<span class="material-symbols-outlined">history</span>
+<span class="font-title-sm text-title-sm">History</span>
+</div>
+</div>
+<div class="pt-6 border-t border-outline-variant/20 space-y-sm">
+<div class="flex items-center gap-sm p-3 text-on-surface-variant hover:bg-surface-variant/50 transition-all rounded-xl cursor-pointer">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-title-sm text-title-sm">Settings</span>
+</div>
+<div class="flex items-center gap-sm p-3 text-on-surface-variant hover:bg-surface-variant/50 transition-all rounded-xl cursor-pointer">
+<span class="material-symbols-outlined">help</span>
+<span class="font-title-sm text-title-sm">Support</span>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="lg:ml-64 pt-24 pb-32 px-margin-mobile md:px-margin-desktop max-w-7xl mx-auto">
+<!-- Header & Filters -->
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-md mb-lg">
+<div>
+<h1 class="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-primary mb-xs">Bảng Xếp Hạng</h1>
+<p class="text-on-surface-variant font-body-md">Đua top dự đoán, nhận quà cực khủng từ FIFA.</p>
+</div>
+<div class="bg-surface-container-high p-1 rounded-xl flex gap-xs">
+<button class="px-md py-xs rounded-lg font-label-caps text-label-caps bg-primary text-on-primary-fixed shadow-lg transition-all">Tuần này</button>
+<button class="px-md py-xs rounded-lg font-label-caps text-label-caps text-on-surface-variant hover:bg-surface-variant transition-all">Tháng này</button>
+<button class="px-md py-xs rounded-lg font-label-caps text-label-caps text-on-surface-variant hover:bg-surface-variant transition-all">Cả mùa</button>
+</div>
+</header>
+<!-- Podium Section -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-md items-end mb-xl">
+<!-- Rank 2 -->
+<div class="order-2 md:order-1 h-full flex flex-col justify-end">
+<div class="glass-card podium-gradient-2 rounded-2xl p-md border border-inverse-surface/10 text-center flex flex-col items-center group hover:border-inverse-surface/30 transition-all">
+<div class="relative mb-md">
+<img class="w-20 h-20 rounded-full border-4 border-inverse-surface object-cover shadow-xl" data-alt="A portrait of a male gamer with cool blue lighting, wearing professional esports apparel, looking confident. The style is ultra-modern and polished, fitting a high-stakes competitive sports platform with deep blue and white tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDCYjE2TPPcYNQlGsxqE5q_3Mwe2uNawuodWGpqLssXZm-jaLMYXPDvkGRwnvyHC5DGqyeh2jJFspWjHk4-0Z1X4WOpr1rTyVcR8IMKXEWAGEz6G2BpRJ4KKumm7ZayE5uhdEmwXEMRIxA3Lpm1RQOjqhO_kB-YXzp-yc13moq7-FlfBh_VKilTBJPKoCWzGL9mDLuKS6wXQQf6mXcDL-3kudB_BQtXASMCvBHekszrkOni1nn2mRzRSdiNac1hnZvTeKLSm2Hg1aI"/>
+<div class="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-inverse-surface text-on-background px-sm py-xs rounded-full font-label-caps text-[10px] font-bold">#2</div>
+</div>
+<div class="font-title-sm text-title-sm text-inverse-surface mb-xs">Nguyen Hoang</div>
+<div class="font-score-display text-headline-md text-primary mb-xs">1,840</div>
+<div class="font-label-caps text-[11px] text-on-surface-variant uppercase tracking-widest">Điểm Tổng</div>
+</div>
+</div>
+<!-- Rank 1 -->
+<div class="order-1 md:order-2 h-full flex flex-col justify-end">
+<div class="glass-card podium-gradient-1 rounded-t-3xl rounded-b-2xl p-lg border border-primary-container/20 text-center flex flex-col items-center relative overflow-hidden group hover:border-primary-container/50 transition-all scale-105 shadow-[0_20px_50px_rgba(255,215,0,0.15)]">
+<div class="absolute top-0 right-0 p-4">
+<span class="material-symbols-outlined text-primary-container animate-bounce" style="font-variation-settings: 'FILL' 1;">emoji_events</span>
+</div>
+<div class="relative mb-md">
+<div class="absolute -inset-2 bg-primary-container/20 rounded-full blur-xl group-hover:bg-primary-container/30 transition-all"></div>
+<img class="w-28 h-28 rounded-full border-4 border-primary-container object-cover shadow-2xl relative z-10" data-alt="A close-up portrait of a female soccer enthusiast with vibrant gold and warm lighting highlights. She has an energetic expression, wearing a stylish team jersey. The overall aesthetic is cinematic and high-end, perfectly blending with a luxury sports dashboard theme." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBKIUJCsUCAznLzLJwUs4OJ_1pGqGF6_fNc7G29yYXva-HvW5y3Gh_Lhug-LHGDbnVm0XH-7dPenJvrEzTcsJdzkBfD-4DXWApqIOB4PtF7sXMnaShz_-DjOdkdynpzEdKurG_taGIyjQQ70heSRe33WWicXJt7Xog3gzKklkMqu7qYf98JIxWuQQPXnceF0t4p3u__oW6IXnBQmfb3hfoudxBZBD8_2pqn1ck4Lx6kwy0SB5iRfLyIcOstSw4CXEbzoHaiP0g1sok"/>
+<div class="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-primary-container text-on-primary-container px-md py-xs rounded-full font-label-caps text-[12px] font-black shadow-lg z-20">QUÁN QUÂN</div>
+</div>
+<div class="font-headline-md text-headline-md text-primary mb-xs">Le Thu Thao</div>
+<div class="font-score-display text-score-display text-primary-container mb-xs">2,450</div>
+<div class="flex items-center gap-xs text-tertiary-fixed mb-sm">
+<span class="material-symbols-outlined text-[16px]">verified</span>
+<span class="font-label-caps text-label-caps">32 Tỉ số đúng</span>
+</div>
+<div class="font-label-caps text-[11px] text-on-surface-variant uppercase tracking-widest">Người dẫn đầu</div>
+</div>
+</div>
+<!-- Rank 3 -->
+<div class="order-3 md:order-3 h-full flex flex-col justify-end">
+<div class="glass-card podium-gradient-3 rounded-2xl p-md border border-on-secondary-container/10 text-center flex flex-col items-center group hover:border-on-secondary-container/30 transition-all">
+<div class="relative mb-md">
+<img class="w-20 h-20 rounded-full border-4 border-on-secondary-container/50 object-cover shadow-xl" data-alt="A focused young man in a modern urban setting with soft sunset lighting reflecting on his face. He is looking at his smartphone with a triumphant smile. The visual quality is sharp and premium, designed to represent a high-performing user on a global leader board." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDxEoOCQBROn856oItWe68nwY-L-kQvkFaQz_gJlT-wPsgVGHVxvXG3gkDLwUJX0EoIjx_fkc2mW81UsQsP7b5AUMCR9kXjTDFmYCJcu86rqxu3HpREVlpuPOvL1BqwhljCFBu_fKbBb_OytTKVpWw22iyq-TErL5PrZoYwLDYzLe4FzJVUKLz6djBpyFZ30YkHzs-N6ME0XjkO25HchehbXBtJB-e4NKWitN6PTyT9n6ID5Wr7JoZoBITZpou-cI78bxX9WD3huvs"/>
+<div class="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-on-secondary-container text-on-background px-sm py-xs rounded-full font-label-caps text-[10px] font-bold">#3</div>
+</div>
+<div class="font-title-sm text-title-sm text-on-secondary-container mb-xs">Minh Tuấn</div>
+<div class="font-score-display text-headline-md text-primary mb-xs">1,620</div>
+<div class="font-label-caps text-[11px] text-on-surface-variant uppercase tracking-widest">Điểm Tổng</div>
+</div>
+</div>
+</section>
+<!-- Table Section -->
+<section class="glass-card rounded-3xl overflow-hidden border border-outline-variant/10 shadow-inner">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-highest/50 border-b border-outline-variant/20">
+<th class="px-md py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-tighter">Hạng</th>
+<th class="px-md py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-tighter">Người chơi</th>
+<th class="px-md py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-tighter text-center">Tỉ số đúng</th>
+<th class="px-md py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-tighter text-center">Điểm</th>
+<th class="px-md py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-tighter text-right">Xu hướng</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<!-- User Row (Special Highlight) -->
+<tr class="bg-primary/5 hover:bg-primary/10 transition-colors">
+<td class="px-md py-md">
+<span class="font-score-display text-title-sm text-primary-container">124</span>
+</td>
+<td class="px-md py-md">
+<div class="flex items-center gap-sm">
+<div class="relative">
+<img class="w-10 h-10 rounded-full border border-primary/30 object-cover" data-alt="A high-resolution profile avatar of a young professional in a dark studio setting. Moody dramatic lighting with a slight amber glow, representing a personalized user profile on a high-end application. Style is minimal, sleek and elite." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxqN7ICLnXdB8nVlodbMcBSVh1VFXnI8SSpQewu1f0BXw0-oLn8M62e4mb-K0cALqA7TjrZO4uRqXP-T6c_Emrc5hUXZdb9xdBzXX6dyc8aNoD8cKb7XTE0VESLkp4hBYE91_lxjKvpUHJxHo7n4UjFoFWgSH72NTX58fK-GuaysU1cHfOAXeK26-Axt6o8kcwL2-ln8jnwH4CGpGsMhCU_is8-wc89KUP7MZzTdGE4SqTOKBL2xahJMCxhcqqpE_g_DKpe7wXqmo"/>
+<div class="absolute -top-1 -right-1 w-3 h-3 bg-tertiary-container rounded-full border-2 border-surface-dim"></div>
+</div>
+<div>
+<div class="font-title-sm text-title-sm text-primary">Bạn (You)</div>
+<div class="font-label-caps text-[10px] text-on-surface-variant">Hạng Vàng</div>
+</div>
+</div>
+</td>
+<td class="px-md py-md text-center">
+<span class="font-jetbrainsMono text-body-md text-on-surface">12</span>
+</td>
+<td class="px-md py-md text-center">
+<span class="font-jetbrainsMono font-bold text-body-md text-primary">850</span>
+</td>
+<td class="px-md py-md text-right">
+<div class="flex items-center justify-end gap-xs text-tertiary-container">
+<span class="material-symbols-outlined text-[18px]">trending_up</span>
+<span class="font-label-caps text-[10px] font-bold">+12</span>
+</div>
+</td>
+</tr>
+<!-- Leaderboard Rows -->
+<tr class="hover:bg-surface-variant/20 transition-colors">
+<td class="px-md py-md"><span class="font-score-display text-title-sm">4</span></td>
+<td class="px-md py-md">
+<div class="flex items-center gap-sm">
+<img class="w-10 h-10 rounded-full object-cover" data-alt="Close up face of a female football fan with creative neon stadium lighting effects. Sharp focus, professional photography style, aesthetic dark mode background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC4457CdzrZfSA5wPYItdwgulZp-rOszsWiQ0dpAaU3ISbbBLuHdqROL41RZVhaYP4rVBoGs-JDKvpmHXtTyT9jsLL8QwA2vy1bHuvTXzWzqINfBDYtNo2b7iqDDFmELxcqDoVuWyj4q3I6kAxEDVgRraCsN9JgSe5rRHFPMO4sgwr0FFGA24h1QxBwA6Ukdzaysufaz73Mzl4jhAI1MGe1c4xeUjdab7oqSnEaxrbMj2Uiisw1_o1G0i2OsAhpaZ2rAv8hX2kAK34"/>
+<span class="font-title-sm text-title-sm">Hương Ly</span>
+</div>
+</td>
+<td class="px-md py-md text-center">28</td>
+<td class="px-md py-md text-center font-bold">1,540</td>
+<td class="px-md py-md text-right">
+<div class="flex items-center justify-end gap-xs text-tertiary-container">
+<span class="material-symbols-outlined text-[18px]">trending_up</span>
+</div>
+</td>
+</tr>
+<tr class="hover:bg-surface-variant/20 transition-colors">
+<td class="px-md py-md"><span class="font-score-display text-title-sm">5</span></td>
+<td class="px-md py-md">
+<div class="flex items-center gap-sm">
+<img class="w-10 h-10 rounded-full object-cover" data-alt="Portrait of a male player with intense focus, studio lighting using shadows to create depth. Elite sports broadcast style with deep blues and metallic accents." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDaLKE0ZwsCYYO1xG6FATDnV_US5mL8gEAJW7s9Eof6Lue7JDTBeTd2veRtldj9AR8QYAO-biAlrlFnjTPaO573sbUAi2SUDod17Tp9-vkBCbA0aZtXL2ITydY0N3RozbNc_RLH0oRT77rT6nALCtKjiFd3O1JaGIZng4_EoYKvzXA6xPB6yeAT26wwt2DP3sZceQdNPCUX5W0VlC4Aq-_9sZEofQgZ_vv1UgmaqmcVJFVV79rLtH2Ra-lE3p0fjN3-Ybzu2-C_1Lg"/>
+<span class="font-title-sm text-title-sm">Quốc Anh</span>
+</div>
+</td>
+<td class="px-md py-md text-center">25</td>
+<td class="px-md py-md text-center font-bold">1,490</td>
+<td class="px-md py-md text-right">
+<div class="flex items-center justify-end gap-xs text-error">
+<span class="material-symbols-outlined text-[18px]">trending_down</span>
+</div>
+</td>
+</tr>
+<tr class="hover:bg-surface-variant/20 transition-colors">
+<td class="px-md py-md"><span class="font-score-display text-title-sm">6</span></td>
+<td class="px-md py-md">
+<div class="flex items-center gap-sm">
+<img class="w-10 h-10 rounded-full object-cover" data-alt="Profile image of a young athlete with professional lighting, blurred background showing stadium lights. Corporate modern aesthetic for a sports competition app." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDbPFMu-3XodBQVRipobq7SEo24S4XPcY7MkGA2s0fpNNsuOS4kYfSQp2RIUQTOQWtKIZbzf83Q7dUsJg2y_ybWY7X0GfDcjwjDA6LiRtl3R_guqohSosOL6hZokxULUAq6wh0rRj87kSrI0190krc4aG1UKqpSR37IkXhN-mTY5-_DeN_XBBwnPToOotTEalNnIbOrHk8mOyJTEPFS46oRyEz6nYwUb7Olxon6ulapLTMYEU1Signlx_rr4WplR603lsryLZGVoQ0"/>
+<span class="font-title-sm text-title-sm">Bảo Ngọc</span>
+</div>
+</td>
+<td class="px-md py-md text-center">22</td>
+<td class="px-md py-md text-center font-bold">1,380</td>
+<td class="px-md py-md text-right">
+<div class="flex items-center justify-end gap-xs text-on-surface-variant opacity-50">
+<span class="material-symbols-outlined text-[18px]">horizontal_rule</span>
+</div>
+</td>
+</tr>
+<!-- More Rows... -->
+<tr class="hover:bg-surface-variant/20 transition-colors">
+<td class="px-md py-md"><span class="font-score-display text-title-sm">7</span></td>
+<td class="px-md py-md">
+<div class="flex items-center gap-sm">
+<div class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center font-bold text-primary">TH</div>
+<span class="font-title-sm text-title-sm">Trần Hùng</span>
+</div>
+</td>
+<td class="px-md py-md text-center">21</td>
+<td class="px-md py-md text-center font-bold">1,350</td>
+<td class="px-md py-md text-right">
+<div class="flex items-center justify-end gap-xs text-tertiary-container">
+<span class="material-symbols-outlined text-[18px]">trending_up</span>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination-like Load More -->
+<div class="p-md bg-surface-container-highest/30 flex justify-center border-t border-outline-variant/10">
+<button class="flex items-center gap-sm text-primary font-label-caps text-label-caps hover:gap-md transition-all cursor-pointer active:scale-95 duration-200">
+                    Xem thêm đối thủ
+                    <span class="material-symbols-outlined">expand_more</span>
+</button>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation (Mobile) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 pb-safe lg:hidden bg-surface-container-highest/90 backdrop-blur-md border-t border-primary/20 shadow-[0_-4px_20px_rgba(0,0,0,0.5)] rounded-t-xl">
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-transform duration-200 active:scale-95">
+<span class="material-symbols-outlined">sports_soccer</span>
+<span class="font-label-caps text-label-caps">Matches</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full w-12 h-12 mb-1 shadow-lg scale-110 transition-transform duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">emoji_events</span>
+<span class="font-label-caps text-[8px] font-black uppercase">Rank</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-transform duration-200 active:scale-95">
+<span class="material-symbols-outlined">menu_book</span>
+<span class="font-label-caps text-label-caps">Rules</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-transform duration-200 active:scale-95">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-caps text-label-caps">Profile</span>
+</div>
+</nav>
+<!-- Footer -->
+<footer class="w-full py-xl mt-xl border-t border-outline-variant/10 bg-surface-container-lowest">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md px-margin-mobile md:px-margin-desktop max-w-7xl mx-auto items-center">
+<div>
+<div class="font-label-caps text-label-caps text-primary mb-sm uppercase tracking-widest">WorldCup Predictor</div>
+<p class="text-on-surface-variant font-body-md opacity-60">© 2024 FIFA World Cup Predictor. High-stakes competition.</p>
+</div>
+<div class="flex flex-wrap gap-md md:justify-end">
+<a class="text-on-surface-variant font-body-md hover:text-primary-fixed transition-colors underline-offset-4 cursor-pointer" href="#">Tournament Schedule</a>
+<a class="text-on-surface-variant font-body-md hover:text-primary-fixed transition-colors underline-offset-4 cursor-pointer" href="#">Official Rules</a>
+<a class="text-on-surface-variant font-body-md hover:text-primary-fixed transition-colors underline-offset-4 cursor-pointer" href="#">Privacy Policy</a>
+</div>
+</div>
+</footer>
+<!-- Atmosphere Micro-interaction -->
+<script>
+        // Subtle parallax/tilt for cards on desktop
+        if (window.innerWidth > 1024) {
+            document.querySelectorAll('.glass-card').forEach(card => {
+                card.addEventListener('mousemove', (e) => {
+                    const rect = card.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const rotateX = (y - centerY) / 20;
+                    const rotateY = (centerX - x) / 20;
+                    
+                    card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-5px)`;
+                });
+                
+                card.addEventListener('mouseleave', () => {
+                    card.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(0)`;
+                });
+            });
+        }
+    </script>
+</body></html>

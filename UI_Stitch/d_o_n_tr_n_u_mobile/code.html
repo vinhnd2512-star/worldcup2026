@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;700&amp;family=Hanken+Grotesk:wght@400;500;700&amp;family=Jetbrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@100..900&amp;family=Hanken+Grotesk:wght@100..900&amp;family=JetBrains+Mono:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .live-pulse {
+            animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { border-color: rgba(146, 7, 3, 0.3); box-shadow: 0 0 0 0 rgba(146, 7, 3, 0.4); }
+            50% { border-color: rgba(146, 7, 3, 1); box-shadow: 0 0 10px 2px rgba(146, 7, 3, 0.6); }
+        }
+        .diagonal-split {
+            clip-path: polygon(0 0, 100% 0, 85% 100%, 0% 100%);
+        }
+        .diagonal-split-reverse {
+            clip-path: polygon(15% 0, 100% 0, 100% 100%, 0% 100%);
+        }
+    </style>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"surface-bright": "#323851", "secondary-container": "#920703", "surface-container-high": "#222941", error: "#ffb4ab", "primary-fixed": "#ffe16d", "on-primary": "#3a3000", "error-container": "#93000a", "tertiary-fixed-dim": "#70db9d", "on-background": "#dce1ff", "inverse-on-surface": "#292f48", "on-surface": "#dce1ff", "on-secondary-fixed": "#410000", "secondary-fixed": "#ffdad4", "on-primary-fixed-variant": "#544600", "on-primary-container": "#705e00", "surface-container-low": "#141a32", primary: "#fff6df", "on-error": "#690005", "inverse-surface": "#dce1ff", "on-surface-variant": "#d0c6ab", "tertiary-container": "#84efaf", "secondary-fixed-dim": "#ffb4a8", "on-primary-fixed": "#221b00", "on-tertiary": "#00391f", "on-secondary": "#690000", "inverse-primary": "#705d00", "primary-container": "#ffd700", "on-secondary-fixed-variant": "#920703", surface: "#0b1229", "on-tertiary-fixed-variant": "#00522f", "on-tertiary-fixed": "#002110", "surface-variant": "#2d344c", "surface-tint": "#e9c400", secondary: "#ffb4a8", "surface-dim": "#0b1229", "surface-container-highest": "#2d344c", background: "#0b1229", "on-error-container": "#ffdad6", outline: "#999077", "tertiary-fixed": "#8df8b7", "surface-container": "#181e36", tertiary: "#dbffe3", "on-secondary-container": "#ff9a8a", "surface-container-lowest": "#060d24", "on-tertiary-container": "#006d41", "primary-fixed-dim": "#e9c400", "outline-variant": "#4d4732"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {sm: "12px", md: "24px", lg: "48px", xl: "80px", xs: "4px", "margin-desktop": "32px", gutter: "16px", base: "8px", "margin-mobile": "16px"}, fontFamily: {"title-sm": ["Hanken Grotesk"], "label-caps": ["JetBrains Mono"], "score-display": ["Anybody"], "display-lg-mobile": ["Anybody"], "body-md": ["Hanken Grotesk"], "headline-md": ["Anybody"], "display-lg": ["Anybody"], headline: ["Anybody"], display: ["Anybody"], body: ["Hanken Grotesk"], label: ["Jetbrains Mono"]}, fontSize: {"title-sm": ["18px", {lineHeight: "1.4", fontWeight: "600"}], "label-caps": ["12px", {lineHeight: "1", letterSpacing: "0.05em", fontWeight: "500"}], "score-display": ["36px", {lineHeight: "1", fontWeight: "900"}], "display-lg-mobile": ["32px", {lineHeight: "1.1", fontWeight: "800"}], "body-md": ["16px", {lineHeight: "1.5", fontWeight: "400"}], "headline-md": ["24px", {lineHeight: "1.2", fontWeight: "700"}], "display-lg": ["48px", {lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "800"}]}}}};</script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md overflow-x-hidden min-h-screen">
+<!-- Top App Bar -->
+<header class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md border-b border-white/10 shadow-sm">
+<div class="flex justify-between items-center px-margin-mobile h-16 w-full max-w-7xl mx-auto">
+<button class="active:scale-95 transition-transform duration-200">
+<span class="material-symbols-outlined text-primary-container">arrow_back</span>
+</button>
+<h1 class="font-score-display text-headline-md-mobile text-primary-container tracking-tight">MATCHDAY</h1>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-primary-container/30">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="A high-quality profile portrait of a modern soccer fan in a darkened stadium environment. The lighting is dramatic and cinematic, with cool blue and deep gold highlights reflecting off their face. The background is a blurred stadium with thousands of lights creating a bokeh effect, maintaining a premium and elite sports aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQieFyy4HXkIzQ_fB5R1z0G9E9VRbWNJZdS5oo8q18UOd1WQ4dq8BZDDX4QUQyF0yjFLQ2ViunGFsnQnwfgdAPkTyOllrGi-LLCuyEactk1EqFuYjO8fIyof-vIvy_-3oFfuWTmp4b7qJwO2e4ucK2TenhCpLhV9oFJjMQnKxR2T3VSZS8w4CiUnwG-VtHvvw_lPsPmtzI7WmhkGZ4DgvmKlgta2zXL1puFGJXpZieTPt-YUnlbVhG3ZnvmWIErrJzXJwtYAz6GDc"/>
+</div>
+</div>
+</header>
+<main class="pt-20 pb-32 px-margin-mobile max-w-lg mx-auto space-y-md">
+<!-- Match Header Card -->
+<section class="glass-card rounded-xl p-md relative overflow-hidden live-pulse border-secondary-container">
+<div class="absolute top-0 right-0 p-sm">
+<span class="inline-flex items-center gap-1 bg-secondary-container text-on-surface px-2 py-1 rounded-full text-[10px] font-label-caps uppercase tracking-wider">
+<span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span> TRỰC TIẾP 62'
+                </span>
+</div>
+<div class="flex justify-between items-center mt-sm">
+<!-- Team 1 -->
+<div class="flex flex-col items-center gap-2 flex-1">
+<div class="w-16 h-16 rounded-full border-2 border-white/20 p-1 bg-surface-container shadow-lg">
+<img alt="Argentina" class="w-full h-full object-contain" data-alt="A high-resolution, circular emblem representing the Argentina national football team flag, featuring clear sun of may symbol and sky blue stripes. The style is polished and 3D with a subtle glass reflection over the surface, set against a dark midnight navy background that emphasizes competitive prestige." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAlsvFKbYN1cmPTWpfDydEiIlqoapqnkRb6i_fAPGF6XQGibkWHcBVRaCG2z2hZf1fVCRAY-m32MhLPWWXDeWYkDLkOUVGOiH4mgkmn6Mqkej2YNn0VTrCf__zWPO35FWULnwbef6VevFr_hK9Ay25rMCf38tZzZsWN_EO3yNbRQlQYmr_yHIwboxGgkY3iYea7vqmzJkc_8onCzpzKlqzfKArqL-TL6-AzSVvLINa93ktM0tHyydQuP8UMzu1s8oIxtGCcTz1b074"/>
+</div>
+<span class="font-headline-md text-sm text-center">ARGENTINA</span>
+</div>
+<!-- Score -->
+<div class="flex flex-col items-center flex-1">
+<div class="font-score-display text-score-display text-primary-container">2 - 1</div>
+<span class="font-label-caps text-[10px] text-on-surface-variant">TỨ KẾT</span>
+</div>
+<!-- Team 2 -->
+<div class="flex flex-col items-center gap-2 flex-1">
+<div class="w-16 h-16 rounded-full border-2 border-white/20 p-1 bg-surface-container shadow-lg">
+<img alt="Netherlands" class="w-full h-full object-contain" data-alt="A professional circular icon of the Netherlands national football flag, showing the vibrant orange, white, and blue stripes. The visual style is modern glassmorphism with a subtle inner glow and premium finish. It is presented in a high-stakes, elite sports context with dark atmospheric lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBaybBixaF5YKhYzyYCaPwxtsuL1eAUjG1CkAcKPvRBmDg1hXaRJ0yD_uUgMobHu3M8o_v0Bc0esQC38ZGEYvL5KgDBaBcFKr9fbloohGKRlgjfmMmPdfsDjH0id2fKn59eeGWmwhN-J1mFvv1kwYKPavWgYajAJai0-TprxrsHygh8Q6QhaO15WLN0rDNR1w9a3bNzr9bMXstU0J7J8Pyjp3wJPrHv2Mf-sTlbrQkk1W-slG5lTPJwodGO76o8tOMkBMwiaDTcsU8"/>
+</div>
+<span class="font-headline-md text-sm text-center">HÀ LAN</span>
+</div>
+</div>
+</section>
+<!-- Prediction Card -->
+<section class="glass-card rounded-xl p-md space-y-md">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">ads_click</span>
+<h2 class="font-headline-md text-title-sm text-primary">DỰ ĐOÁN TỈ SỐ</h2>
+</div>
+<div class="flex justify-around items-center bg-surface-container-low rounded-lg p-sm border border-white/5">
+<!-- Arg Input -->
+<div class="flex flex-col items-center gap-2">
+<button class="w-10 h-10 bg-surface-bright rounded-full flex items-center justify-center active:scale-90 transition-all" onclick="updateScore('arg', -1)">
+<span class="material-symbols-outlined text-on-surface">remove</span>
+</button>
+<div class="font-score-display text-score-display" id="score-arg">2</div>
+<button class="w-10 h-10 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center active:scale-90 transition-all" onclick="updateScore('arg', 1)">
+<span class="material-symbols-outlined">add</span>
+</button>
+</div>
+<div class="text-on-surface-variant font-score-display text-xl">:</div>
+<!-- Ned Input -->
+<div class="flex flex-col items-center gap-2">
+<button class="w-10 h-10 bg-surface-bright rounded-full flex items-center justify-center active:scale-90 transition-all" onclick="updateScore('ned', -1)">
+<span class="material-symbols-outlined text-on-surface">remove</span>
+</button>
+<div class="font-score-display text-score-display" id="score-ned">2</div>
+<button class="w-10 h-10 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center active:scale-90 transition-all" onclick="updateScore('ned', 1)">
+<span class="material-symbols-outlined">add</span>
+</button>
+</div>
+</div>
+<!-- Points at Stake -->
+<div class="grid grid-cols-2 gap-sm">
+<div class="bg-surface-container-high rounded-lg p-sm border-l-2 border-primary-container">
+<div class="font-label-caps text-[10px] text-on-surface-variant uppercase">Tỷ lệ cược</div>
+<div class="font-headline-md text-primary-container">x2.45</div>
+</div>
+<div class="bg-surface-container-high rounded-lg p-sm border-l-2 border-on-surface-variant">
+<div class="font-label-caps text-[10px] text-on-surface-variant uppercase">Cược tối thiểu</div>
+<div class="font-headline-md">100 Pts</div>
+</div>
+</div>
+<div class="bg-tertiary-container/10 border border-tertiary-container/30 rounded-lg p-sm flex justify-between items-center">
+<span class="font-body-md text-tertiary-fixed">Lợi nhuận dự kiến:</span>
+<span class="font-headline-md text-tertiary-fixed">+245 Pts</span>
+</div>
+<button class="w-full bg-primary-container text-on-primary-container py-4 rounded-xl font-headline-md text-sm active:scale-95 transition-all shadow-lg shadow-primary-container/20 uppercase tracking-widest">
+                XÁC NHẬN DỰ ĐOÁN
+            </button>
+</section>
+<!-- Stats Tabs -->
+<section class="space-y-sm">
+<div class="flex border-b border-white/10">
+<button class="flex-1 pb-2 border-b-2 border-primary-container text-primary font-label-caps text-[11px]" id="tab-community" onclick="switchTab('community')">CỘNG ĐỒNG</button>
+<button class="flex-1 pb-2 border-b-2 border-transparent text-on-surface-variant font-label-caps text-[11px]" id="tab-h2h" onclick="switchTab('h2h')">LỊCH SỬ ĐỐI ĐẦU</button>
+</div>
+<div class="glass-card rounded-xl p-sm space-y-sm" id="content-community">
+<div class="flex justify-between items-end mb-2">
+<span class="font-label-caps text-[10px] text-on-surface-variant">DỰ ĐOÁN CHIẾN THẮNG</span>
+</div>
+<div class="h-8 w-full flex rounded-full overflow-hidden relative">
+<div class="h-full bg-primary-container diagonal-split flex items-center px-4" style="width: 65%;">
+<span class="text-[10px] font-score-display text-on-primary-container">65% ARG</span>
+</div>
+<div class="h-full bg-surface-bright diagonal-split-reverse flex items-center justify-end px-4 absolute right-0" style="width: 40%;">
+<span class="text-[10px] font-score-display text-on-surface">35% NED</span>
+</div>
+</div>
+<p class="text-[11px] text-on-surface-variant italic text-center">Dựa trên 12,405 người tham gia bình chọn</p>
+</div>
+<div class="hidden glass-card rounded-xl p-sm space-y-sm" id="content-h2h">
+<table class="w-full text-left">
+<thead>
+<tr class="text-on-surface-variant font-label-caps text-[10px]">
+<th class="pb-2">NGÀY</th>
+<th class="pb-2 text-center">TỈ SỐ</th>
+<th class="pb-2 text-right">GIẢI ĐẤU</th>
+</tr>
+</thead>
+<tbody class="text-[12px] space-y-1">
+<tr class="bg-white/5 rounded">
+<td class="py-2 px-1">09/12/22</td>
+<td class="py-2 text-center font-score-display">2 - 2</td>
+<td class="py-2 text-right text-on-surface-variant">World Cup</td>
+</tr>
+<tr>
+<td class="py-2 px-1">10/07/14</td>
+<td class="py-2 text-center font-score-display">0 - 0</td>
+<td class="py-2 text-right text-on-surface-variant">World Cup</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 bg-surface-container dark:bg-surface-container-highest/90 backdrop-blur-xl flex justify-around items-center pt-2 pb-6 px-4 rounded-t-xl border-t border-white/5 shadow-lg">
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">sports_soccer</span>
+<span class="font-label-caps text-[10px] mt-0.5">Matches</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined">ads_click</span>
+<span class="font-label-caps text-[10px] mt-0.5">Predict</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined">leaderboard</span>
+<span class="font-label-caps text-[10px] mt-0.5">Rankings</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-caps text-[10px] mt-0.5">Profile</span>
+</a>
+</nav>
+<script>
+        function updateScore(team, delta) {
+            const el = document.getElementById(`score-${team}`);
+            let val = parseInt(el.innerText);
+            val = Math.max(0, val + delta);
+            el.innerText = val;
+        }
+
+        function switchTab(tab) {
+            const communityBtn = document.getElementById('tab-community');
+            const h2hBtn = document.getElementById('tab-h2h');
+            const communityContent = document.getElementById('content-community');
+            const h2hContent = document.getElementById('content-h2h');
+
+            if (tab === 'community') {
+                communityBtn.classList.add('border-primary-container', 'text-primary');
+                communityBtn.classList.remove('border-transparent', 'text-on-surface-variant');
+                h2hBtn.classList.remove('border-primary-container', 'text-primary');
+                h2hBtn.classList.add('border-transparent', 'text-on-surface-variant');
+                communityContent.classList.remove('hidden');
+                h2hContent.classList.add('hidden');
+            } else {
+                h2hBtn.classList.add('border-primary-container', 'text-primary');
+                h2hBtn.classList.remove('border-transparent', 'text-on-surface-variant');
+                communityBtn.classList.remove('border-primary-container', 'text-primary');
+                communityBtn.classList.add('border-transparent', 'text-on-surface-variant');
+                h2hContent.classList.remove('hidden');
+                communityContent.classList.add('hidden');
+            }
+        }
+    </script>
+</body></html>

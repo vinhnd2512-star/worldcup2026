@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Matchday - Hồ Sơ Cá Nhân</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;700&amp;family=Hanken+Grotesk:wght@400;500;700&amp;family=Jetbrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"surface-bright": "#323851", "secondary-container": "#920703", "surface-container-high": "#222941", error: "#ffb4ab", "primary-fixed": "#ffe16d", "on-primary": "#3a3000", "error-container": "#93000a", "tertiary-fixed-dim": "#70db9d", "on-background": "#dce1ff", "inverse-on-surface": "#292f48", "on-surface": "#dce1ff", "on-secondary-fixed": "#410000", "secondary-fixed": "#ffdad4", "on-primary-fixed-variant": "#544600", "on-primary-container": "#705e00", "surface-container-low": "#141a32", primary: "#fff6df", "on-error": "#690005", "inverse-surface": "#dce1ff", "on-surface-variant": "#d0c6ab", "tertiary-container": "#84efaf", "secondary-fixed-dim": "#ffb4a8", "on-primary-fixed": "#221b00", "on-tertiary": "#00391f", "on-secondary": "#690000", "inverse-primary": "#705d00", "primary-container": "#ffd700", "on-secondary-fixed-variant": "#920703", surface: "#0b1229", "on-tertiary-fixed-variant": "#00522f", "on-tertiary-fixed": "#002110", "surface-variant": "#2d344c", "surface-tint": "#e9c400", secondary: "#ffb4a8", "surface-dim": "#0b1229", "surface-container-highest": "#2d344c", background: "#0b1229", "on-error-container": "#ffdad6", outline: "#999077", "tertiary-fixed": "#8df8b7", "surface-container": "#181e36", tertiary: "#dbffe3", "on-secondary-container": "#ff9a8a", "surface-container-lowest": "#060d24", "on-tertiary-container": "#006d41", "primary-fixed-dim": "#e9c400", "outline-variant": "#4d4732"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {sm: "12px", md: "24px", lg: "48px", xl: "80px", xs: "4px", "margin-desktop": "32px", gutter: "16px", base: "8px", "margin-mobile": "16px"}, fontFamily: {"title-sm": ["Hanken Grotesk"], "label-caps": ["JetBrains Mono"], "score-display": ["Anybody"], "display-lg-mobile": ["Anybody"], "body-md": ["Hanken Grotesk"], "headline-md": ["Anybody"], "display-lg": ["Anybody"], headline: ["Anybody"], display: ["Anybody"], body: ["Hanken Grotesk"], label: ["Jetbrains Mono"]}, fontSize: {"title-sm": ["18px", {lineHeight: "1.4", fontWeight: "600"}], "label-caps": ["12px", {lineHeight: "1", letterSpacing: "0.05em", fontWeight: "500"}], "score-display": ["36px", {lineHeight: "1", fontWeight: "900"}], "display-lg-mobile": ["32px", {lineHeight: "1.1", fontWeight: "800"}], "body-md": ["16px", {lineHeight: "1.5", fontWeight: "400"}], "headline-md": ["24px", {lineHeight: "1.2", fontWeight: "700"}], "display-lg": ["48px", {lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "800"}]}}}};</script>
+<style>body {
+    background-color: #0b1229;
+    color: #dce1ff;
+    -webkit-font-smoothing: antialiased
+    }
+.glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1)
+    }
+.live-pulse {
+    animation: pulse-red 2s infinite
+    }
+@keyframes pulse-red {
+    0% {
+        border-color: rgba(146, 7, 3, 0.4);
+        box-shadow: 0 0 0 0 rgba(146, 7, 3, 0.4);
+        } 70% {
+        border-color: rgba(146, 7, 3, 1);
+        box-shadow: 0 0 0 10px rgba(146, 7, 3, 0);
+        } 100% {
+        border-color: rgba(146, 7, 3, 0.4);
+        box-shadow: 0 0 0 0 rgba(146, 7, 3, 0);
+        }
+    }
+.stadium-bg {
+    background-image: linear-gradient(rgba(11, 18, 41, 0.8), rgba(11, 18, 41, 1)), url(https://lh3.googleusercontent.com/aida-public/AB6AXuCOgoS1YVQdFpKvEW2-VY_CGFuW6aNaNhK_iNg6sNkPhV8MC2ZqvqE_8aOvFDylcetRXD8PjrIE8sMaE9tZOt3HBq8AyVlLnofQ1KlPet4-UTGPt0nBKA-48uQaoEJWYtbgxR6jtJGRL51CRILoF3YQeVQRvDMxDwUYnjN_cF4ZtnTgCrO92v-22lw6Gfx1LBygjvQEogWejp3rzxBNVF0XBlDKRxKk9bKdcciaTR8cQzXL8MRv2VC12MMD2iRNcmuOkqXe0QDAj4s);
+    background-size: cover;
+    background-position: center
+    }</style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-body-md overflow-x-hidden">
+<!-- Top App Bar -->
+<header class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md border-b border-white/10 shadow-sm">
+<div class="flex justify-between items-center px-margin-mobile h-16 w-full max-w-7xl mx-auto">
+<h1 class="font-score-display text-headline-md-mobile text-primary-container tracking-tight">MATCHDAY</h1>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-on-surface-variant hover:bg-white/5 active:scale-95 transition-transform duration-200" data-icon="notifications">notifications</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-primary-container/30">
+<img alt="User Profile" data-alt="A close-up portrait of a modern young man in high-quality 3D render style, suitable for a professional gaming or sports application avatar. The lighting is dramatic with blue and gold neon accents reflecting on his face, matching a dark midnight navy stadium atmosphere. The aesthetic is clean, sharp, and premium corporate modern." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAFCY47aa6_6pAFU3h6rRCUJpFfH9JqLW27VNqbLEePNiU5-jbLZPbBvX19lXxwYcTQOn-Peh-59L9Ogs92c5cyvD2pBhRCA9PL5NSDPWWi35GRBRGrIpc5-3fasD8Z2ue1ttzxP4rsSsxJuqHNYNKfQ1wpmBIwTc0QjKcZOo3rqBZQxylxvWGsZvguiQuZG8BLGbGR7LkxlLDP_ZanscSQV3d3HmDnZZCLDYepCpKl2oFYkjfSjjtxYt7H3oiB8lAvGfdLH4JImgY"/>
+</div>
+</div>
+</div>
+</header>
+<main class="pt-16 pb-32 px-margin-mobile stadium-bg min-h-screen">
+<!-- Profile Header Section -->
+<section class="mt-8 flex flex-col items-center">
+<div class="relative group">
+<div class="w-24 h-24 rounded-full overflow-hidden border-4 border-primary-container shadow-2xl">
+<img alt="User Large Avatar" data-alt="A detailed digital portrait of a male user in a sleek, cinematic style. He has a determined expression, lit by high-contrast gold and deep navy lighting that suggests an elite sports broadcast environment. The background is a soft-focus bokeh of stadium lights, maintaining a consistent dark-mode glassmorphism aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBnTk8iisrQ5HPeO_Dlag2Un8GAOoH3g5f1jXK-FG7y_oVcQVKGd3Q42ijg2YA_VM-T_x5_rHE2rCn2LfWszg9adkoV1F3vcEyyA9J08zLa5Jk5rfuIdIAOBKBA4kxWQzn9CX5iI4DgSfGKkyTN67KZLFMIFyGoRtAPX-Xn23SVBBLitXf0wTzDe0wU7tmZCtVJKa7gmFZVpBMW1Lj7JL17P66z5Eql4RyVPxAtjQYvUSQQsY_ExAx0F0EfaGjw32DL29bFdPhj9DU"/>
+</div>
+<div class="absolute bottom-0 right-0 bg-tertiary-container p-1.5 rounded-full border-2 border-surface">
+<span class="material-symbols-outlined text-on-tertiary-container text-sm" data-icon="edit">edit</span>
+</div>
+</div>
+<div class="text-center mt-4">
+<h2 class="font-headline-md text-headline-md-mobile text-primary">Người chơi #123</h2>
+<div class="flex items-center justify-center gap-2 mt-1">
+<span class="material-symbols-outlined text-primary-fixed text-sm" data-icon="workspace_premium" style="font-variation-settings: 'FILL' 1;">workspace_premium</span>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Hạng Vàng</p>
+</div>
+</div>
+</section>
+<!-- Stats Grid -->
+<section class="grid grid-cols-2 gap-sm mt-8">
+<div class="glass-card p-md rounded-xl flex flex-col items-center">
+<p class="font-label-caps text-label-caps text-on-surface-variant mb-2">TỔNG ĐIỂM</p>
+<p class="font-score-display text-score-display text-primary-container">1,450</p>
+</div>
+<div class="glass-card p-md rounded-xl flex flex-col items-center">
+<p class="font-label-caps text-label-caps text-on-surface-variant mb-2">XẾP HẠNG</p>
+<p class="font-score-display text-score-display text-tertiary-fixed">#84</p>
+</div>
+</section>
+<!-- Prediction History Header -->
+<section class="mt-md">
+<div class="flex justify-between items-end mb-4">
+<h3 class="font-headline-md text-headline-md-mobile text-on-surface">Lịch sử Dự đoán</h3>
+<p class="font-label-caps text-label-caps text-primary-fixed cursor-pointer">Xem tất cả</p>
+</div>
+<!-- List of Prediction Cards -->
+<div class="flex flex-col gap-sm">
+<!-- Live Prediction Card -->
+<div class="glass-card p-sm rounded-xl live-pulse relative overflow-hidden">
+<div class="flex justify-between items-start mb-4">
+<div class="bg-secondary-container text-on-secondary px-2 py-0.5 rounded text-[10px] font-label-caps flex items-center gap-1">
+<span class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
+                            TRỰC TIẾP
+                        </div>
+<p class="font-label-caps text-label-caps text-on-surface-variant">Phút 64'</p>
+</div>
+<div class="flex items-center justify-between gap-2">
+<div class="flex flex-col items-center flex-1">
+<img alt="VN" class="w-10 h-10 mb-2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDA_wvtoUWBgh_MlOqKmAAUD739pe8aE0_Pta4XmC54U13ngsa4s8GjdtVha1q2FF338tCnWFMGb8lQnkXYr1OX8WLt0h22Z8CbMARC3BdCUGAm9ANVV5pctQfun7E7fsTrFSaSqqgpY5zsy2ImOMx80SsmGdLtNmtrlpUk4bgl9NlxMZu4EQi5xyWpwKcj5lEGSkZboByGpZfSQpuCA_XiG7fUrp2gqgW6gEMvVCDNwcAol0OHEkmp0YCzWw_YCK4nNFBd0vUZ_5s"/>
+<span class="font-title-sm text-title-sm">VN</span>
+</div>
+<div class="flex flex-col items-center">
+<div class="font-score-display text-score-display flex items-baseline gap-2">
+<span>2</span>
+<span class="text-on-surface-variant text-xl">-</span>
+<span>1</span>
+</div>
+<div class="mt-2 px-3 py-1 bg-surface-container rounded-full border border-white/10">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Của bạn: <span class="text-primary-container">3-1</span></span>
+</div>
+</div>
+<div class="flex flex-col items-center flex-1">
+<img alt="TH" class="w-10 h-10 mb-2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-SBPemh8Q9VPNUvItIrEnK6VDbB4ATCZpFKH8XoG526VDei5Y0CDkngU_i31wjGl_jdsOubXtDTR11cTyTscarKJL8_OiARE86c2WSGbU1Fx-isfA6PYUsuSBOJpR-0pPyM6pTbFkXVMCpQwTpm0a98KL72EkzBcJHSNZdAvgZm1HTfgepFjAJ_LXfkTEWrn9SkGVfXcZx-GYZDuj8VRF19lqj3ZrebYHbuXJ0EZXl1JbDXFBSgaxyQeJaFaz9YWh9vbeMeKu7i0"/>
+<span class="font-title-sm text-title-sm">TH</span>
+</div>
+</div>
+</div>
+<!-- Finished Prediction Card - Won -->
+<div class="glass-card p-sm rounded-xl">
+<div class="flex justify-between items-start mb-4">
+<p class="font-label-caps text-label-caps text-on-surface-variant">Hôm qua</p>
+<div class="text-tertiary-fixed font-title-sm text-title-sm flex items-center gap-1">
+                            +50 <span class="text-xs">PTS</span>
+</div>
+</div>
+<div class="flex items-center justify-between gap-2">
+<div class="flex flex-col items-center flex-1">
+<img alt="JP" class="w-10 h-10 mb-2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuASgqv4kn3J5dx0j5UVmKooBfzuuQumtQnT4KNekrK4fpMlzBGIq8Pd_j6lBalQOxBhJa7YVXJwKFFHzIt1xILyK6RuCZe2CQzp0QifISdZWM4p5Mg6g6XW-krTTYpfWuQCWC1BdaoPcpL5D2oaq-hWZJf-SKY_5OjUNOVCwHEOmSAWMF3i0jKZ5-8EmSQpAlqXBDYaVZsZaVIAE1priyECQAU5lvk5bE9jKebSdrfok-lHMDDbEgl-g37IBHlH5IY8bfD853I4J3Q"/>
+<span class="font-title-sm text-title-sm">JP</span>
+</div>
+<div class="flex flex-col items-center">
+<div class="font-score-display text-score-display flex items-baseline gap-2">
+<span class="text-on-surface-variant/40">1</span>
+<span class="text-on-surface-variant/20 text-xl">-</span>
+<span class="text-on-surface-variant/40">2</span>
+</div>
+<div class="mt-2 px-3 py-1 bg-tertiary-container/10 rounded-full border border-tertiary-container/30">
+<span class="font-label-caps text-label-caps text-tertiary-fixed">Chính xác: 1-2</span>
+</div>
+</div>
+<div class="flex flex-col items-center flex-1">
+<img alt="KR" class="w-10 h-10 mb-2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCP4WuQbwxmpN_RtYCRnawQpCTwuQsMJBr3KEa3nlnOSjurIwHZF6X6Swxic30zHA1jAjPo7eSSHNGy3Nel8Rb-vyrwPuJTwgdc-DpTSCfbStu2sbgc1_r_-06NbCfVH1RPxw1vO_aToRgVYuuJ-rQXGCnXRbMBHM7SARNwix3g21-VV37qYqoWzNl-_BYwXFSjEh4wOWeiykZ1s8K2LGekwchCjRtFwEfGxMl6ZkIKlQlPrPbZp099_QEdp-E51sfBgNgOl1hHGbY"/>
+<span class="font-title-sm text-title-sm">KR</span>
+</div>
+</div>
+</div>
+<!-- Finished Prediction Card - Lost -->
+<div class="glass-card p-sm rounded-xl">
+<div class="flex justify-between items-start mb-4">
+<p class="font-label-caps text-label-caps text-on-surface-variant">2 ngày trước</p>
+<div class="text-on-surface-variant font-title-sm text-title-sm">
+                            0 <span class="text-xs">PTS</span>
+</div>
+</div>
+<div class="flex items-center justify-between gap-2 opacity-70">
+<div class="flex flex-col items-center flex-1">
+<img alt="SA" class="w-10 h-10 mb-2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3Bon-BH4-ZM-Em8ZhpWI1vEfSsTXGo3uo4BS5DS7ob_vkc4z8UtaE5gxcykyHWV6myltC6NYzeHvkISxjnvygKx8tfQwIf0krG0UaokaEwGV-V7ixsxD9k0ysWaEChVf8bkdpZ8Xwd_LIreTp4QkUXVP7ZEGmbbehei0P-BGLc4Q8ANZj9rLY5lj0qm3rGzVGMI2grSlgxU2YmghfdtAEZ0wjv2LnGhd10YeTWY9XJ8qDkJu7ixO5YtlCzCRFXRHke5Szi3cqCRU"/>
+<span class="font-title-sm text-title-sm">SA</span>
+</div>
+<div class="flex flex-col items-center">
+<div class="font-score-display text-score-display flex items-baseline gap-2">
+<span>0</span>
+<span class="text-on-surface-variant/40 text-xl">-</span>
+<span>0</span>
+</div>
+<div class="mt-2 px-3 py-1 bg-white/5 rounded-full border border-white/5">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Dự đoán: 2-1</span>
+</div>
+</div>
+<div class="flex flex-col items-center flex-1">
+<img alt="AU" class="w-10 h-10 mb-2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDHRCdhSLGZfiIPL42IBi5AAleJBHh6mFPdMzwcqeemN8CNmTuVQhGlo9684ZL1KHR80X0YMigj_mb8LdNad0LazcaCmyCu_scRJsaTpCdC2aMCa7YeqvuZha_wZvF65rikYfc_Yd3CRZTJv2rUT3-zS5wDtfc0-4UG1Adn8QCXUcE18IlZQpRYigsQnCMivOJtKqD-gFrlk51ePPOKHr8bzhDJ5uLtEAStAD67Q2pQ7hBmNHM7x_6z4B7qcxgYKYFqA4GB7O2Nna8"/>
+<span class="font-title-sm text-title-sm">AU</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 bg-surface-container/90 backdrop-blur-xl border-t border-white/5 rounded-t-xl flex justify-around items-center pt-2 pb-6 px-4">
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="sports_soccer">sports_soccer</span>
+<span class="font-label-caps text-[10px] uppercase">Matches</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="Ads_Click">ads_click</span>
+<span class="font-label-caps text-[10px] uppercase">Predict</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="leaderboard">leaderboard</span>
+<span class="font-label-caps text-[10px] uppercase">Rankings</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="person" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-caps text-[10px] uppercase">Profile</span>
+</a>
+</nav>
+<script>
+        // Micro-interaction for clicking on prediction history cards
+        document.querySelectorAll('.glass-card').forEach(card => {
+            card.addEventListener('click', () => {
+                card.style.transform = 'scale(0.98)';
+                setTimeout(() => {
+                    card.style.transform = 'scale(1)';
+                }, 100);
+            });
+        });
+
+        // Add small hover effect logic for mobile simulation
+        document.querySelectorAll('a, button').forEach(el => {
+            el.addEventListener('touchstart', () => {
+                el.classList.add('opacity-70');
+            });
+            el.addEventListener('touchend', () => {
+                el.classList.remove('opacity-70');
+            });
+        });
+    </script>
+</body></html>

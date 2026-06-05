@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;700;800;900&amp;family=Hanken+Grotesk:wght@400;600&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            background-color: #0b1229;
+            color: #dce1ff;
+            font-family: 'Hanken Grotesk', sans-serif;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 246, 223, 0.1);
+        }
+        .match-card-hover:hover {
+            border-color: rgba(255, 215, 0, 0.4);
+            transform: translateY(-2px);
+            transition: all 0.3s ease;
+        }
+        .pulse-live {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(146, 7, 3, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(146, 7, 3, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(146, 7, 3, 0); }
+        }
+        .diagonal-cut {
+            clip-path: polygon(0 0, 100% 0, 85% 100%, 0% 100%);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-primary": "#705d00",
+                        "primary": "#fff6df",
+                        "on-error": "#690005",
+                        "on-secondary-fixed-variant": "#920703",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#323851",
+                        "surface-container": "#181e36",
+                        "tertiary-container": "#84efaf",
+                        "surface-dim": "#0b1229",
+                        "tertiary-fixed-dim": "#70db9d",
+                        "outline-variant": "#4d4732",
+                        "surface-tint": "#e9c400",
+                        "primary-container": "#ffd700",
+                        "surface-container-low": "#141a32",
+                        "on-primary": "#3a3000",
+                        "tertiary-fixed": "#8df8b7",
+                        "surface": "#0b1229",
+                        "on-primary-container": "#705e00",
+                        "on-secondary-fixed": "#410000",
+                        "surface-container-high": "#222941",
+                        "on-error-container": "#ffdad6",
+                        "inverse-surface": "#dce1ff",
+                        "on-primary-fixed-variant": "#544600",
+                        "on-secondary": "#690000",
+                        "surface-container-lowest": "#060d24",
+                        "on-surface": "#dce1ff",
+                        "on-tertiary-fixed": "#002110",
+                        "on-tertiary-fixed-variant": "#00522f",
+                        "on-surface-variant": "#d0c6ab",
+                        "primary-fixed-dim": "#e9c400",
+                        "outline": "#999077",
+                        "error-container": "#93000a",
+                        "surface-variant": "#2d344c",
+                        "surface-container-highest": "#2d344c",
+                        "primary-fixed": "#ffe16d",
+                        "secondary-fixed": "#ffdad4",
+                        "tertiary": "#dbffe3",
+                        "on-tertiary": "#00391f",
+                        "background": "#0b1229",
+                        "on-primary-fixed": "#221b00",
+                        "secondary-fixed-dim": "#ffb4a8",
+                        "secondary": "#ffb4a8",
+                        "on-tertiary-container": "#006d41",
+                        "on-background": "#dce1ff",
+                        "on-secondary-container": "#ff9a8a",
+                        "secondary-container": "#920703",
+                        "inverse-on-surface": "#292f48"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "margin-mobile": "16px",
+                        "lg": "48px",
+                        "sm": "12px",
+                        "gutter": "16px",
+                        "base": "8px",
+                        "md": "24px",
+                        "xl": "80px",
+                        "margin-desktop": "32px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["JetBrains Mono"],
+                        "headline-md": ["Anybody"],
+                        "score-display": ["Anybody"],
+                        "title-sm": ["Hanken Grotesk"],
+                        "display-lg": ["Anybody"],
+                        "display-lg-mobile": ["Anybody"],
+                        "body-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "headline-md": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                        "score-display": ["36px", {"lineHeight": "1", "fontWeight": "900"}],
+                        "title-sm": ["18px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "display-lg-mobile": ["32px", {"lineHeight": "1.1", "fontWeight": "800"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface overflow-x-hidden">
+<!-- Top Navigation Shell -->
+<header class="fixed top-0 w-full z-50 bg-surface-dim/80 backdrop-blur-xl border-b border-outline-variant/30 shadow-2xl flex justify-between items-center h-16 px-margin-mobile md:px-margin-desktop w-full">
+<div class="flex items-center gap-4">
+<span class="font-headline-md text-headline-md font-black text-primary-container tracking-tighter">WorldCup Predict</span>
+</div>
+<div class="hidden md:flex items-center gap-8">
+<a class="text-primary border-b-2 border-primary font-title-sm text-title-sm py-1" href="#">Matches</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors font-title-sm text-title-sm" href="#">Leaderboard</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors font-title-sm text-title-sm" href="#">Rules</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors font-title-sm text-title-sm" href="#">History</a>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden sm:flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Số dư</span>
+<span class="font-title-sm text-title-sm text-primary-container">2,450 pts</span>
+</div>
+<button class="p-2 cursor-pointer active:scale-95 duration-200 text-on-surface-variant">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+</button>
+<button class="p-2 cursor-pointer active:scale-95 duration-200 text-on-surface-variant relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-1 right-1 w-2 h-2 bg-secondary rounded-full"></span>
+</button>
+<div class="w-10 h-10 rounded-full border-2 border-primary-container overflow-hidden">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="A professional high-resolution avatar of a young modern football fan with a stylish haircut and a confident expression. The portrait is set against a clean, deep midnight navy background with subtle golden lighting accents that match the elite sports aesthetic of the application." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBpKXKABEGqe5edBA01yI9L1f9x928t1MuWXz7gqoCmW6KwZrsfJ28-TGuXLK3pTGyiZpBP4X9XfZY0sskSGeRB1sj7CnSB42btW7eMMDoHU6GGd1-D2BCpDCNY-PplLPNy67rlk2EoqqDz2dYELSW-fOxRpz2JphncCy6tmYOnUi4nqQMBNIgSac_1OT2ee1ACqsWRIbYmVsAMurQGtYZi68lRFj0YHvOqrX3URYqc3CjrlsxwwRM1g5XLL2XK4Zuz2RDQzQ3tnlw"/>
+</div>
+</div>
+</header>
+<!-- Side Navigation (Desktop Only) -->
+<nav class="fixed left-0 top-0 bottom-0 z-40 pt-20 pb-10 px-4 h-full w-64 hidden lg:flex flex-col bg-surface-container-low/95 backdrop-blur-lg border-r border-outline-variant/20">
+<div class="mb-10 px-2">
+<div class="flex items-center gap-3 mb-2">
+<div class="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container" style="font-variation-settings: 'FILL' 1;">emoji_events</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-primary">World Cup 2024</h2>
+</div>
+<p class="font-title-sm text-title-sm text-on-surface-variant opacity-70">Group Stage Live</p>
+</div>
+<div class="space-y-2 flex-grow">
+<a class="flex items-center gap-4 px-4 py-3 bg-secondary-container text-on-secondary-container rounded-xl font-bold transition-transform duration-300" href="#">
+<span class="material-symbols-outlined">sports_soccer</span>
+<span class="font-title-sm text-title-sm">Matches</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 rounded-xl transition-all duration-300" href="#">
+<span class="material-symbols-outlined">leaderboard</span>
+<span class="font-title-sm text-title-sm">Leaderboard</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 rounded-xl transition-all duration-300" href="#">
+<span class="material-symbols-outlined">gavel</span>
+<span class="font-title-sm text-title-sm">Rules</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 rounded-xl transition-all duration-300" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-title-sm text-title-sm">History</span>
+</a>
+</div>
+<button class="mt-auto mb-8 w-full py-4 bg-primary-container text-on-primary-container rounded-xl font-bold font-title-sm text-title-sm shadow-xl active:opacity-80 transition-all">
+            Place Prediction
+        </button>
+<div class="space-y-2 pt-6 border-t border-outline-variant/20">
+<a class="flex items-center gap-4 px-4 py-2 text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-title-sm text-title-sm">Settings</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-2 text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">help</span>
+<span class="font-title-sm text-title-sm">Support</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="lg:ml-64 pt-24 pb-20 px-margin-mobile md:px-margin-desktop min-h-screen">
+<!-- Featured Match Hero Section -->
+<section class="relative mb-xl overflow-hidden rounded-xl h-[400px] md:h-[450px]">
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-gradient-to-r from-surface-dim via-surface-dim/60 to-transparent z-10"></div>
+<img alt="Stadium Background" class="w-full h-full object-cover grayscale opacity-40" data-alt="A grand cinematic view of a world-class football stadium at night under brilliant floodlights. The atmosphere is thick with a light mist and the energy of a packed crowd, using a deep midnight navy and gold color palette. The perspective is from the touchline looking across the pristine grass pitch, capturing the elite and high-stakes mood of an international tournament." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCAJmsViWO36QhNBTLdVPFwYr3ZWf5VOPXmjw_rsPtFA9HWGVitg5PzopingwsfboTx8CKYFZ_o9FVy9EB8lUifv08BtR_UUIGYm0LBE7GYPuorCwvi2sIzcz6Y_XwSMmseZvlkey1dnnHMbov2dt18Zbhb14Ufys9z9BgBIyMgNdPeg3QRYXUy6MZjuPuR-y14jO2xvXFrxvTlDt545FGgbMx4KKeykvBuhIXLyS5WjDR607UUSySr9OTtrUkRkm95JCq8yQY_ps8"/>
+</div>
+<div class="relative z-20 h-full flex flex-col justify-center px-8 md:px-16">
+<div class="flex items-center gap-2 mb-4">
+<span class="w-2 h-2 rounded-full bg-secondary pulse-live"></span>
+<span class="font-label-caps text-label-caps text-secondary uppercase tracking-widest">Trận đấu tâm điểm</span>
+</div>
+<div class="flex flex-col md:flex-row items-center gap-8 md:gap-16 mb-8">
+<div class="flex items-center gap-6">
+<div class="text-right">
+<h3 class="font-headline-md text-headline-md text-white">Brazil</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant">Bảng G</p>
+</div>
+<img alt="Brazil Flag" class="w-16 h-16 rounded-full border-4 border-white/20 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0EWy7N9pIU6GkzADRnWYzt1zyJh4pYNrk8U0BnIJs9DzwwdTCQI84LxRJhhLWzUwInDP8sRXrU5R4mKBdWBcIX5KE5QKcqdd254mxdUdzWSYhdDCFx5G8GYio8YHswEsZcA1zq84rEDzV49BcL13V4Z1vckTptJC105ueLKS45fhU43PCzHvO5uZx8LW6SnoXD4NReI5lhfeiYrN1hxq2N3kSIny-w4dTjN334Y8hSHyuXPn4hrNmre_4tvhk2EZlXX2Zc8cns5M"/>
+</div>
+<div class="flex flex-col items-center">
+<span class="font-display-lg text-display-lg text-primary-container italic">VS</span>
+<div class="mt-4 px-4 py-2 glass-panel rounded-full flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-container text-sm">schedule</span>
+<span class="font-label-caps text-label-caps" id="countdown">02:14:55</span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<img alt="France Flag" class="w-16 h-16 rounded-full border-4 border-white/20 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXBWoz56hgHR5d_yaRfNyOStov2CZukwnUhUPoqKc2KHt0l6wijH7Chm6Jof09jwyYezRJTCpuVUceBFJy92xBtEV7cL8663Wax7qa9uxJfiUjrRMk2YyQlk_p9RozpgHdZwQn4fKymvIQT3rRJmQMYswpTKJU5C_fP11L_dTeEOE4BOPcvEm5C0mJNj0sz-WuOZwNXUGuhiCedjX4OvZKJaGFqv-5HcaicZDwaRKuJE5L3QnAoV0DvUd7KYdGD-Hrno2gdC3up_M"/>
+<div class="text-left">
+<h3 class="font-headline-md text-headline-md text-white">Pháp</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant">Bảng G</p>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap gap-4 items-center">
+<button class="px-8 py-4 bg-primary-container text-on-primary-container rounded-xl font-bold font-title-sm text-title-sm hover:scale-105 transition-transform active:scale-95">
+                        Dự đoán ngay
+                    </button>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Hệ số điểm</span>
+<span class="font-headline-md text-headline-md text-primary">2.4x Multiplier</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Dashboard Layout: Matches & Sidebar -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
+<!-- Upcoming Matches Grid (Bento Style) -->
+<div class="xl:col-span-8 space-y-md">
+<div class="flex items-center justify-between">
+<h2 class="font-headline-md text-headline-md text-primary">Trận đấu sắp tới</h2>
+<button class="text-on-surface-variant font-label-caps text-label-caps flex items-center gap-1 hover:text-primary transition-colors">
+                        Xem tất cả <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<!-- Match Card 1 -->
+<div class="glass-panel p-md rounded-xl match-card-hover group">
+<div class="flex justify-between items-start mb-6">
+<span class="font-label-caps text-label-caps text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">Hôm nay, 21:00</span>
+<div class="flex items-center gap-1 text-tertiary">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+<span class="font-label-caps text-label-caps">1.5x</span>
+</div>
+</div>
+<div class="flex justify-between items-center gap-4 mb-8">
+<div class="flex flex-col items-center gap-2 flex-1">
+<img alt="Argentina Flag" class="w-12 h-12 rounded-full border-2 border-white/10 shadow-lg" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDbjGAc4BDztCgT_4dhLL1kdjyXvdj0ivEKEc6GMAoVuaRI2ICAMplnZL_jHH0tMDxAiKPRThYSyC9K98RgKIQ4XgtkLBnsd01j-BmZcF5kUHi1HD1pK9Re-ZlBbaQ2cI6Ezq3M-JGE2xHC9P_A-s9HiT_EG20b_NXn79-a1U731RDaYeMlhmBVF_AaYChna8VrkcFC39AVpl18JVaJ9rDU7L8_I-r2u5JntKATHe8A4BEDfK3scvWM9fzCPK3KuSV1yAJj-E9HoVI"/>
+<span class="font-title-sm text-title-sm text-center">Argentina</span>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant opacity-40">VS</span>
+<div class="flex flex-col items-center gap-2 flex-1">
+<img alt="Mexico Flag" class="w-12 h-12 rounded-full border-2 border-white/10 shadow-lg" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAbDZN6Z5Lm8ULejBD1XTFucTMVZbJzqUwuAJS33JTo12gU1or1N5EdnV15Sxc5WFWnD_yzdhJJIooTFsko7d93Q5hyvxgAhRbN3_IICp9n87glkiuP0t8PfosJBwGExkTFRPsJisRaJUerdTiLa-mylBt4P1mLM70Kw5rjQlcadwhUMJJT_UvJYS82a-JeVRjb17ue0rF77E1scBab6iLxh-PajhuPlLfPfrB8VxF9xqKegsNTKVx2aRyIvkqb-J2g8b23PpK3m0Y"/>
+<span class="font-title-sm text-title-sm text-center">Mexico</span>
+</div>
+</div>
+<div class="w-full h-1.5 bg-surface-variant/30 rounded-full overflow-hidden flex mb-6">
+<div class="h-full bg-tertiary-container diagonal-cut" style="width: 65%"></div>
+<div class="h-full bg-surface-variant" style="width: 35%"></div>
+</div>
+<div class="flex justify-between font-label-caps text-[10px] text-on-surface-variant mb-6">
+<span>65% Dự đoán Argentina</span>
+<span>35% Mexico</span>
+</div>
+<button class="w-full py-3 border border-primary/20 text-primary hover:bg-primary-container hover:text-on-primary-container rounded-lg font-bold transition-all duration-300 group-hover:border-primary-container">
+                            Dự đoán ngay
+                        </button>
+</div>
+<!-- Match Card 2 -->
+<div class="glass-panel p-md rounded-xl match-card-hover group">
+<div class="flex justify-between items-start mb-6">
+<span class="font-label-caps text-label-caps text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">Hôm nay, 23:45</span>
+<div class="flex items-center gap-1 text-tertiary">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+<span class="font-label-caps text-label-caps">1.8x</span>
+</div>
+</div>
+<div class="flex justify-between items-center gap-4 mb-8">
+<div class="flex flex-col items-center gap-2 flex-1">
+<img alt="Germany Flag" class="w-12 h-12 rounded-full border-2 border-white/10 shadow-lg" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD3SJ_NEccrrEq-npJurpXB43NIiO6dz9kqKeQMjYBRnOiYqyPxGGH0TZhe9IJAZPzSuhri6vV84_EktY7bMN1Y7QnWVin8bIHtyT7j61xiiDsiWRr-Fcg-ElT0H3dkgl0Xxwfm04rYISTfuf7q1S_LVRr3Y9qwHEElWydXeyR-xDs1IlAKXfwAFNF0Lqzj_gUS0oLHahn2VoU2kqOqykRF2NC7LRfqkkiS9EQ-_KnY5m7YNbjKZqQ2YyVTVlJ0A0sfbvNbvBJPLOU"/>
+<span class="font-title-sm text-title-sm text-center">Đức</span>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant opacity-40">VS</span>
+<div class="flex flex-col items-center gap-2 flex-1">
+<img alt="Spain Flag" class="w-12 h-12 rounded-full border-2 border-white/10 shadow-lg" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDRxjMRHUE9aOzVGkj370zTYm1GdrTKyjX9DYu04BVNpIUmj6IaVts3pgB_G_u8sIzLJz-97SVGglzH23i8qG6jq5eoEXJQ7KZkgMYfUQHvUV5FwAaDAyWX9lPDVFKGJh4Z7IAAWzMRrllNPMrRncVTbJxt09lA47cKJzOmlh-1XbvHqWXCFQ2NJypJAKyjFaTPIp7fK5r7wXOS0BGcGhySCjd2SpfpATyNWyMfqPPXSKa7bxEAOr5XBGzwQCrlw_tkPcZSEE2-WWg"/>
+<span class="font-title-sm text-title-sm text-center">Tây Ban Nha</span>
+</div>
+</div>
+<div class="w-full h-1.5 bg-surface-variant/30 rounded-full overflow-hidden flex mb-6">
+<div class="h-full bg-tertiary-container diagonal-cut" style="width: 48%"></div>
+<div class="h-full bg-surface-variant" style="width: 52%"></div>
+</div>
+<div class="flex justify-between font-label-caps text-[10px] text-on-surface-variant mb-6">
+<span>48% Dự đoán Đức</span>
+<span>52% Tây Ban Nha</span>
+</div>
+<button class="w-full py-3 border border-primary/20 text-primary hover:bg-primary-container hover:text-on-primary-container rounded-lg font-bold transition-all duration-300 group-hover:border-primary-container">
+                            Dự đoán ngay
+                        </button>
+</div>
+<!-- Match Card 3 (Wide) -->
+<div class="md:col-span-2 glass-panel p-md rounded-xl match-card-hover group flex flex-col md:flex-row gap-6 items-center">
+<div class="md:border-r border-outline-variant/20 md:pr-8 flex flex-col justify-center items-center md:items-start">
+<span class="font-label-caps text-label-caps text-secondary mb-2">HOT PICK</span>
+<h4 class="font-headline-md text-headline-md text-white mb-2">Bồ Đào Nha</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">vs Uruguay</p>
+</div>
+<div class="flex-grow flex items-center justify-around w-full">
+<div class="flex -space-x-4">
+<img alt="Portugal" class="w-16 h-16 rounded-full border-4 border-surface-container-high z-10" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRPZgLrhg2wMntJY7ukcOVg9fSsKOg7buB_dZe-Mn2bgVy6srP0lHF3B-IBWnQv2_ToLQdUklNhLdlGl1bIQpxVBBnGr-dMF7Psig9kekx4S-73-8KkhnWbga93EjdDNU3dLG6ghRzKr531gUgq9gBskQ-AL20I6lE4q23mPMXyAsK_liDLbkRO6xLXp4bO7WPC-l8gUis6-GrgYp9ek6-IJ19P1rNsu6mHqYjMzZYh-ebCssP5x1gp546aRPSiQha3F4wRwcziiU"/>
+<img alt="Uruguay" class="w-16 h-16 rounded-full border-4 border-surface-container-high" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBubrMwkc21TjIqyO85I_AYzY6NS5RTEx2DvmVLVO7g7n6l0eJAQkK6K6eYYfPaq-ZIEbkSaOI6x9QSOOrsrYiXdCLdka5r1XCGhZCxi4lsvZhE11LhMjQS-RZ0zdb40YcTwMqqqpeT43BlMLI05ktShbUkoBU4Vkyt16L7SMtO1CjN5lwlAXSP_lkms0IiEGGxyrXcE6yF0Z03Dft_3wL4gmRUvNOjpcC4UN9r9gwX1SvYT308VBjagU40K7nDnKUpPsTVpc15rD0"/>
+</div>
+<div class="text-center">
+<p class="font-label-caps text-label-caps text-on-surface-variant mb-1">DỰ KIẾN</p>
+<p class="font-score-display text-score-display text-primary-container">2 - 1</p>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-tertiary mb-1">X2.1 Points</span>
+<button class="px-6 py-2 bg-primary-container text-on-primary-container rounded-lg font-bold">Predict</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Mini Leaderboard Sidebar -->
+<div class="xl:col-span-4 space-y-md">
+<div class="glass-panel rounded-xl overflow-hidden">
+<div class="bg-surface-container-high p-4 flex justify-between items-center border-b border-outline-variant/20">
+<h3 class="font-title-sm text-title-sm text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">emoji_events</span>
+                            Bảng Xếp Hạng
+                        </h3>
+<span class="font-label-caps text-label-caps text-on-surface-variant">Tháng 6</span>
+</div>
+<div class="p-2 space-y-1">
+<!-- Top 1 -->
+<div class="flex items-center gap-4 p-3 rounded-lg hover:bg-surface-variant/30 transition-colors">
+<span class="w-6 font-label-caps text-label-caps text-primary-container text-center">1</span>
+<div class="w-10 h-10 rounded-full border-2 border-primary-container p-0.5">
+<img alt="Top User" class="w-full h-full rounded-full" data-alt="A detailed portrait of a top-ranking esports player with a focused gaze and professional gear. The background consists of a sophisticated, blurred digital control center with glowing amber and cyan accents, matching the elite high-stakes competition theme of the World Cup Predictor app." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBxRreuhSryhQX_Ul238zm0BDYWwpf9WwQkb44kU94r1BNm595Kcs17qhUoDbVpWIuHiDgL8lWe9ACDXmiqG0eg_F7RI6RQiEXgJGZ7XfasoMAZDEvxOqANXjsRMLlU1shMiN1oknxR-B_KKsOBm0VciGiwngATKrMNsVybJHn2XFDGcE7XYSUZFBTAVgbU16wfb9gDdxx7LspZr_vIKRuT60OboMuVCs1TRY8kbFGI_pltRTC0XmrcHpwa7D2Pbsq71TEucmxzAtA"/>
+</div>
+<div class="flex-grow">
+<p class="font-title-sm text-title-sm text-on-surface">Minh Triết</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">88.5% Accuracy</p>
+</div>
+<div class="text-right">
+<p class="font-title-sm text-title-sm text-primary">15,420</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">PTS</p>
+</div>
+</div>
+<!-- Top 2 -->
+<div class="flex items-center gap-4 p-3 rounded-lg hover:bg-surface-variant/30 transition-colors">
+<span class="w-6 font-label-caps text-label-caps text-on-surface-variant text-center">2</span>
+<div class="w-10 h-10 rounded-full border-2 border-outline/30 p-0.5">
+<img alt="User" class="w-full h-full rounded-full" data-alt="A high-quality 3D portrait of a female sports analyst with a warm but professional smile. Her background is an elegant glassmorphic studio with soft golden lighting, maintaining the premium brand identity of the predictor platform." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBrzNmy1OvVI1xNrnSGqDDcpvZZ3m6oH2xIqssFglrMf0p2k-ZQQMPoVm46HeA0QbwZIXF1ibyOXHBfHRd3UY_nntSb9qaobxjtdTxulTxjfxuXhu-WP1Yip2SKgw6lirKYjbU-fP8JfzMZsGrK1lq3bErL54dFAhvVpdc9Gw-hz97v9x2iFzSO5XLyivXUZPZdSmM-4DzqGw-VJ5rO6pCESWaDEMh0aHUdbAusB78Azvqeiz9-6iqS5IIiGu3UK0N8N0GFVHTv2RE"/>
+</div>
+<div class="flex-grow">
+<p class="font-title-sm text-title-sm text-on-surface">Thanh Hằng</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">82.1% Accuracy</p>
+</div>
+<div class="text-right">
+<p class="font-title-sm text-title-sm text-on-surface">12,110</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">PTS</p>
+</div>
+</div>
+<!-- Top 3 -->
+<div class="flex items-center gap-4 p-3 rounded-lg hover:bg-surface-variant/30 transition-colors">
+<span class="w-6 font-label-caps text-label-caps text-on-surface-variant text-center">3</span>
+<div class="w-10 h-10 rounded-full border-2 border-outline/30 p-0.5">
+<img alt="User" class="w-full h-full rounded-full" data-alt="A portrait of a senior football enthusiast with a wise and friendly expression. The visual style uses sharp focus and a high-energy, dark-themed background with light-trails representing speed and performance tracking." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAE5LhrozFic3LFhHpbu9v38kCK_KdgzM8Q_hZkskS0CpeTm4AwMgeQ_4ri0qYEHjU_etgL_f1uULqkm_-er42jWJgJmE_mQ-DEqJ7MjNbS10H_I-GDQvgYAnjxQb4HaIUEGg74d_2oQZPJSM4hdCTXx0ei7TzeNdMS-cc2cdwkh-_cBybig32vHY3zwVnf6o6IEJ-XeM70cEvXo6ev0ovBVA9nd2LGeGqwEC3J8K4uKdeYMMqngM8GUSjRqjAjCTc9mGHV0sHiT8k"/>
+</div>
+<div class="flex-grow">
+<p class="font-title-sm text-title-sm text-on-surface">Quốc Bảo</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">79.8% Accuracy</p>
+</div>
+<div class="text-right">
+<p class="font-title-sm text-title-sm text-on-surface">11,850</p>
+<p class="font-label-caps text-[10px] text-on-surface-variant">PTS</p>
+</div>
+</div>
+</div>
+<a class="block p-4 text-center bg-surface-container hover:bg-surface-container-high transition-colors text-primary font-label-caps text-label-caps border-t border-outline-variant/20" href="#">
+                        XEM TOÀN BỘ BẢNG XẾP HẠNG
+                    </a>
+</div>
+<!-- Personal Progress Card -->
+<div class="glass-panel p-md rounded-xl">
+<h3 class="font-title-sm text-title-sm text-primary mb-4">Lịch sử của bạn</h3>
+<div class="space-y-4">
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Xếp hạng hiện tại</span>
+<span class="font-title-sm text-title-sm text-primary-container">#1,452</span>
+</div>
+<div class="h-2 bg-surface-variant/30 rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary-container to-tertiary-container w-3/4 rounded-full"></div>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm">Bạn cần thêm 540 pts để lọt vào Top 1000.</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation (Mobile Only) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 pb-safe lg:hidden bg-surface-container-highest/90 backdrop-blur-md border-t border-primary/20 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full w-12 h-12 mb-1 scale-110 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined">sports_soccer</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary" href="#">
+<span class="material-symbols-outlined">emoji_events</span>
+<span class="font-label-caps text-[10px] uppercase">Rankings</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary" href="#">
+<span class="material-symbols-outlined">menu_book</span>
+<span class="font-label-caps text-[10px] uppercase">Rules</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-caps text-[10px] uppercase">Profile</span>
+</a>
+</nav>
+<!-- Footer -->
+<footer class="lg:ml-64 bg-surface-container-lowest border-t border-outline-variant/10 w-full py-xl mt-xl">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md px-margin-mobile md:px-margin-desktop max-w-7xl mx-auto">
+<div class="flex flex-col gap-4">
+<span class="font-label-caps text-label-caps text-primary uppercase tracking-widest">WorldCup Predict</span>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-md">
+                    Nền tảng dự đoán kết quả World Cup hàng đầu thế giới. Tham gia cộng đồng, chứng tỏ khả năng phân tích và nhận phần thưởng xứng đáng.
+                </p>
+<p class="font-body-md text-body-md text-on-surface-variant opacity-50">
+                    © 2024 FIFA World Cup Predictor. High-stakes competition.
+                </p>
+</div>
+<div class="grid grid-cols-2 gap-8">
+<div class="flex flex-col gap-3">
+<h4 class="font-title-sm text-title-sm text-white">Liên kết</h4>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors font-body-md text-body-md" href="#">Tournament Schedule</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors font-body-md text-body-md" href="#">Official Rules</a>
+</div>
+<div class="flex flex-col gap-3">
+<h4 class="font-title-sm text-title-sm text-white">Hỗ trợ</h4>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors font-body-md text-body-md" href="#">Privacy Policy</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors font-body-md text-body-md" href="#">Contact Support</a>
+</div>
+</div>
+</div>
+</footer>
+<script>
+        // Simple countdown logic for the featured match
+        function updateCountdown() {
+            const display = document.getElementById('countdown');
+            if (!display) return;
+            
+            let time = display.innerText.split(':');
+            let h = parseInt(time[0]);
+            let m = parseInt(time[1]);
+            let s = parseInt(time[2]);
+
+            s--;
+            if (s < 0) { s = 59; m--; }
+            if (m < 0) { m = 59; h--; }
+            if (h < 0) { h = 23; }
+
+            display.innerText = 
+                (h < 10 ? '0' + h : h) + ':' + 
+                (m < 10 ? '0' + m : m) + ':' + 
+                (s < 10 ? '0' + s : s);
+        }
+        setInterval(updateCountdown, 1000);
+    </script>
+</body></html>

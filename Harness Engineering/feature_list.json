@@ -1,0 +1,27 @@
+{
+  "_comment": "Source of truth cho backlog. Cập nhật khi hoàn thành feature.",
+  "_statuses": ["todo", "in_progress", "done", "blocked", "deferred"],
+  "features": [
+    {
+      "id": "F001",
+      "name": "[Tên feature đầu tiên]",
+      "description": "[Mô tả ngắn]",
+      "status": "todo",
+      "priority": "high",
+      "acceptance_criteria": [
+        "[criterion testable #1]",
+        "[criterion testable #2]"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "F002",
+      "name": "[Feature tiếp theo]",
+      "description": "",
+      "status": "todo",
+      "priority": "medium",
+      "acceptance_criteria": [],
+      "notes": ""
+    }
+  ]
+}

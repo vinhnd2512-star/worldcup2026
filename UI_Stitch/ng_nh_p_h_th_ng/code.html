@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Login | World Cup Predictor</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;700;800;900&amp;family=Hanken+Grotesk:wght@400;600&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>body {
+    background-color: #0b1229;
+    margin: 0;
+    overflow-x: hidden
+    }
+.glass-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08)
+    }
+.stadium-overlay {
+    background-image: linear-gradient(to bottom, rgba(11, 18, 41, 0.85), rgba(11, 18, 41, 0.98)), url(https://lh3.googleusercontent.com/aida-public/AB6AXuBZXR-Plg4x3e3z4kfkDc5NeW8JAxi6i2GV5pUQ5aDLYw5OAU5rJpqjuNxuLXQuoygKSygBw9B4zdgRK5fPpqI4vOSbnNFEymhgxThBVvF_zBB-2B0uBhniqVfOpKn70zUbUkwtBnSeC_Rtn2dWhCUG2HaaOmTMvWgApB_SJUQwgMeSX3emeqNKQfv1gycb0-AeyJ2xwXkR4enYjOcKH_1KPMfJ5PYL3WZAzcqXBx0gjBVl3HZlv1UPrcgVrkg-VGQ2p-jxvNaIZmI);
+    background-size: cover;
+    background-position: center
+    }
+.material-symbols-outlined {
+    font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24
+    }
+input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(233, 196, 0, 0.2)
+    }</style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface": "#0b1229",
+                      "surface-variant": "#2d344c",
+                      "surface-container-lowest": "#060d24",
+                      "primary-fixed-dim": "#e9c400",
+                      "primary-fixed": "#ffe16d",
+                      "on-tertiary-fixed": "#002110",
+                      "secondary-container": "#920703",
+                      "secondary": "#ffb4a8",
+                      "tertiary-container": "#84efaf",
+                      "outline": "#999077",
+                      "surface-dim": "#0b1229",
+                      "inverse-primary": "#705d00",
+                      "error": "#ffb4ab",
+                      "outline-variant": "#4d4732",
+                      "on-tertiary-container": "#006d41",
+                      "secondary-fixed-dim": "#ffb4a8",
+                      "on-primary-fixed-variant": "#544600",
+                      "on-error-container": "#ffdad6",
+                      "on-surface-variant": "#d0c6ab",
+                      "on-primary": "#3a3000",
+                      "surface-container-low": "#141a32",
+                      "tertiary": "#dbffe3",
+                      "tertiary-fixed": "#8df8b7",
+                      "surface-container-highest": "#2d344c",
+                      "surface-bright": "#323851",
+                      "error-container": "#93000a",
+                      "on-secondary": "#690000",
+                      "primary": "#fff6df",
+                      "on-tertiary-fixed-variant": "#00522f",
+                      "on-surface": "#dce1ff",
+                      "on-background": "#dce1ff",
+                      "surface-container-high": "#222941",
+                      "primary-container": "#ffd700",
+                      "on-secondary-fixed": "#410000",
+                      "tertiary-fixed-dim": "#70db9d",
+                      "on-secondary-container": "#ff9a8a",
+                      "on-primary-fixed": "#221b00",
+                      "surface-container": "#181e36",
+                      "on-tertiary": "#00391f",
+                      "on-secondary-fixed-variant": "#920703",
+                      "inverse-surface": "#dce1ff",
+                      "on-error": "#690005",
+                      "inverse-on-surface": "#292f48",
+                      "surface-tint": "#e9c400",
+                      "on-primary-container": "#705e00",
+                      "secondary-fixed": "#ffdad4",
+                      "background": "#0b1229"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "lg": "48px",
+                      "xl": "80px",
+                      "xs": "4px",
+                      "md": "24px",
+                      "margin-desktop": "32px",
+                      "gutter": "16px",
+                      "base": "8px",
+                      "sm": "12px",
+                      "margin-mobile": "16px"
+              },
+              "fontFamily": {
+                      "title-sm": ["Hanken Grotesk"],
+                      "label-caps": ["JetBrains Mono"],
+                      "score-display": ["Anybody"],
+                      "body-md": ["Hanken Grotesk"],
+                      "headline-md": ["Anybody"],
+                      "display-lg-mobile": ["Anybody"],
+                      "display-lg": ["Anybody"]
+              },
+              "fontSize": {
+                      "title-sm": ["18px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                      "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                      "score-display": ["36px", {"lineHeight": "1", "fontWeight": "900"}],
+                      "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "headline-md": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                      "display-lg-mobile": ["32px", {"lineHeight": "1.1", "fontWeight": "800"}],
+                      "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}]
+              }
+            },
+          },
+        }
+    </script>
+</head>
+<body class="flex flex-col min-h-screen text-on-surface font-body-md overflow-hidden">
+<!-- Background Layer -->
+<div class="fixed inset-0 z-0 stadium-overlay" data-alt="A cinematic, wide-angle shot of a massive football stadium at night under a deep midnight sky. The architecture is sleek and modern, illuminated by soft golden floodlights that create a high-stakes, prestigious atmosphere. The turf is a rich, dark emerald green with crisp white lines, and the overall color palette uses deep navy blues and vibrant gold accents to convey elite sports competition."></div>
+<!-- Main Content -->
+<main class="relative z-10 flex-grow flex items-center justify-center p-margin-mobile md:p-margin-desktop">
+<div class="w-full max-w-[440px] flex flex-col items-center">
+<!-- Branding -->
+<div class="mb-xl text-center">
+<h1 class="font-headline-md text-display-lg-mobile md:text-display-lg text-primary-container tracking-tighter mb-xs">
+                    World Cup Predictor
+                </h1>
+<p class="font-label-caps text-label-caps text-primary-fixed-dim uppercase tracking-widest">
+                    Pitch Perfect Prediction Platform
+                </p>
+</div>
+<!-- Login Card -->
+<div class="glass-card w-full p-lg md:p-xl rounded-xl shadow-2xl">
+<div class="mb-lg">
+<h2 class="font-headline-md text-headline-md text-primary mb-base">Welcome Back</h2>
+<p class="text-on-surface-variant font-body-md">Enter your credentials to access the leaderboard.</p>
+</div>
+<form class="space-y-md">
+<!-- Email Field -->
+<div class="space-y-xs">
+<label class="font-label-caps text-label-caps text-outline uppercase ml-xs">Email or Username</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-[20px]">person</span>
+<input class="w-full bg-surface-container-low border border-outline-variant/30 text-on-surface rounded-lg py-sm pl-12 pr-sm transition-all focus:border-primary-fixed-dim focus:bg-surface-container" placeholder="name@elite.com" type="text"/>
+</div>
+</div>
+<!-- Password Field -->
+<div class="space-y-xs">
+<div class="flex justify-between items-center ml-xs">
+<label class="font-label-caps text-label-caps text-outline uppercase">Password</label>
+<a class="font-label-caps text-[10px] text-primary-fixed-dim hover:text-primary-fixed transition-colors" href="#">Forgot?</a>
+</div>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-[20px]">lock</span>
+<input class="w-full bg-surface-container-low border border-outline-variant/30 text-on-surface rounded-lg py-sm pl-12 pr-sm transition-all focus:border-primary-fixed-dim focus:bg-surface-container" placeholder="••••••••" type="password"/>
+</div>
+</div>
+<!-- Login Button -->
+<button class="w-full bg-primary-container text-on-primary-container font-headline-md text-title-sm py-sm rounded-lg cursor-pointer active:scale-[0.98] transition-all hover:brightness-110 shadow-lg shadow-primary-container/10 mt-md" type="submit">
+                        Login to Arena
+                    </button>
+</form>
+<!-- Divider -->
+<div class="flex items-center my-lg gap-sm">
+<div class="h-[1px] flex-grow bg-outline-variant/30"></div>
+<span class="font-label-caps text-label-caps text-outline text-[10px] uppercase">Or Continue With</span>
+<div class="h-[1px] flex-grow bg-outline-variant/30"></div>
+</div>
+<!-- Social Logins -->
+<div class="grid grid-cols-2 gap-gutter">
+<button class="flex items-center justify-center gap-xs bg-surface-variant/40 border border-outline-variant/20 py-sm rounded-lg hover:bg-surface-variant/60 transition-all active:scale-95 group">
+<svg class="w-5 h-5 group-hover:scale-110 transition-transform" viewbox="0 0 24 24">
+<path d="M12.48 10.92v3.28h7.84c-.24 1.84-.9 3.22-1.9 4.22-1.2 1.2-3.08 2.48-5.94 2.48-4.74 0-8.5-3.84-8.5-8.5s3.76-8.5 8.5-8.5c2.56 0 4.54 1 6.12 2.5l2.3-2.3C18.46 1.54 15.82.5 12.48.5 6.1.5 1 5.6 1 12s5.1 11.5 11.48 11.5c3.48 0 6.12-1.14 8.12-3.22 2.08-2.08 2.74-4.98 2.74-7.34 0-.54-.04-1.04-.12-1.52h-9.74z" fill="#EA4335"></path>
+</svg>
+<span class="font-title-sm text-[14px]">Google</span>
+</button>
+<button class="flex items-center justify-center gap-xs bg-surface-variant/40 border border-outline-variant/20 py-sm rounded-lg hover:bg-surface-variant/60 transition-all active:scale-95 group">
+<svg class="w-5 h-5 group-hover:scale-110 transition-transform" viewbox="0 0 24 24">
+<path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="#1877F2"></path>
+</svg>
+<span class="font-title-sm text-[14px]">Facebook</span>
+</button>
+</div>
+<!-- Footer CTA -->
+<div class="mt-xl text-center">
+<p class="text-on-surface-variant font-body-md">
+                        New to the series? 
+                        <a class="text-primary-fixed-dim font-bold hover:text-primary-fixed transition-colors underline underline-offset-4 ml-xs" href="#">Create Account</a>
+</p>
+</div>
+</div>
+<!-- Legal Footer -->
+<footer class="mt-lg text-center">
+<p class="text-outline font-label-caps text-[10px] uppercase opacity-60">
+                    © 2024 FIFA World Cup Predictor. Elite Sport Series.
+                </p>
+</footer>
+</div>
+</main>
+<!-- Interactive Glow Follower (Micro-interaction) -->
+<div class="fixed pointer-events-none z-0 w-96 h-96 rounded-full blur-[120px] bg-primary-container/10 -translate-x-1/2 -translate-y-1/2 hidden md:block" id="mouse-glow"></div>
+<script>
+        // Micro-interaction for mouse following glow
+        const glow = document.getElementById('mouse-glow');
+        window.addEventListener('mousemove', (e) => {
+            glow.style.left = e.clientX + 'px';
+            glow.style.top = e.clientY + 'px';
+        });
+
+        // Simple button press feedback
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                btn.style.transform = 'scale(0.95)';
+                setTimeout(() => btn.style.transform = '', 100);
+            });
+        });
+    </script>
+</body></html>

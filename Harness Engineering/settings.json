@@ -1,0 +1,56 @@
+{
+  "_comment": "Thay [PLACEHOLDER] theo project. Uncommment dòng phù hợp tech stack.",
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest*)",
+      "Bash(npm test*)",
+      "Bash(npm run check*)",
+      "Bash(npm run dev*)",
+      "Bash(ruff check*)",
+      "Bash(ruff format*)",
+      "Bash(mypy*)",
+      "Bash(git diff*)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(bash scripts/init.sh)",
+      "Write(src/**)",
+      "Write(tests/**)",
+      "Write(memory/**)",
+      "Write(specs/**)",
+      "Write(claude-progress.md)",
+      "Write(feature_list.json)"
+    ],
+    "deny": [
+      "Bash(git push*)",
+      "Bash(git commit*)",
+      "Bash(rm -rf*)",
+      "Bash(sudo *)",
+      "Write(.env)",
+      "Write(.env.*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [{
+          "type": "command",
+          "command": "python scripts/check_secrets.py \"${input.path}\" \"${input.content}\"",
+          "timeout": 5000
+        }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write(src/**)",
+        "hooks": [{
+          "type": "command",
+          "command": "echo '[hook] Written: ${input.path}'",
+          "timeout": 3000
+        }]
+      }
+    ]
+  }
+}

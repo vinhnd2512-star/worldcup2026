@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@100..900&amp;family=Hanken+Grotesk:wght@100..900&amp;family=JetBrains+Mono:wght@100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-primary": "#705d00",
+                        "primary": "#fff6df",
+                        "on-error": "#690005",
+                        "on-secondary-fixed-variant": "#920703",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#323851",
+                        "surface-container": "#181e36",
+                        "tertiary-container": "#84efaf",
+                        "surface-dim": "#0b1229",
+                        "tertiary-fixed-dim": "#70db9d",
+                        "outline-variant": "#4d4732",
+                        "surface-tint": "#e9c400",
+                        "primary-container": "#ffd700",
+                        "surface-container-low": "#141a32",
+                        "on-primary": "#3a3000",
+                        "tertiary-fixed": "#8df8b7",
+                        "surface": "#0b1229",
+                        "on-primary-container": "#705e00",
+                        "on-secondary-fixed": "#410000",
+                        "surface-container-high": "#222941",
+                        "on-error-container": "#ffdad6",
+                        "inverse-surface": "#dce1ff",
+                        "on-primary-fixed-variant": "#544600",
+                        "on-secondary": "#690000",
+                        "surface-container-lowest": "#060d24",
+                        "on-surface": "#dce1ff",
+                        "on-tertiary-fixed": "#002110",
+                        "on-tertiary-fixed-variant": "#00522f",
+                        "on-surface-variant": "#d0c6ab",
+                        "primary-fixed-dim": "#e9c400",
+                        "outline": "#999077",
+                        "error-container": "#93000a",
+                        "surface-variant": "#2d344c",
+                        "surface-container-highest": "#2d344c",
+                        "primary-fixed": "#ffe16d",
+                        "secondary-fixed": "#ffdad4",
+                        "tertiary": "#dbffe3",
+                        "on-tertiary": "#00391f",
+                        "background": "#0b1229",
+                        "on-primary-fixed": "#221b00",
+                        "secondary-fixed-dim": "#ffb4a8",
+                        "secondary": "#ffb4a8",
+                        "on-tertiary-container": "#006d41",
+                        "on-background": "#dce1ff",
+                        "on-secondary-container": "#ff9a8a",
+                        "secondary-container": "#920703",
+                        "inverse-on-surface": "#292f48"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "margin-mobile": "16px",
+                        "lg": "48px",
+                        "sm": "12px",
+                        "gutter": "16px",
+                        "base": "8px",
+                        "md": "24px",
+                        "xl": "80px",
+                        "margin-desktop": "32px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["JetBrains Mono"],
+                        "headline-md": ["Anybody"],
+                        "score-display": ["Anybody"],
+                        "title-sm": ["Hanken Grotesk"],
+                        "display-lg": ["Anybody"],
+                        "display-lg-mobile": ["Anybody"],
+                        "body-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "headline-md": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                        "score-display": ["36px", {"lineHeight": "1", "fontWeight": "900"}],
+                        "title-sm": ["18px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "display-lg-mobile": ["32px", {"lineHeight": "1.1", "fontWeight": "800"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 215, 0, 0.1);
+        }
+        .etched-button {
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+        }
+        .pulse-border-red {
+            animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { border-color: rgba(146, 7, 3, 0.3); }
+            50% { border-color: rgba(146, 7, 3, 1); }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen font-body-md overflow-x-hidden">
+<!-- TopAppBar Shell -->
+<header class="bg-surface-dim/80 backdrop-blur-xl border-b border-outline-variant/30 fixed top-0 w-full z-50 flex justify-between items-center h-16 px-margin-mobile md:px-margin-desktop w-full shadow-2xl">
+<div class="font-headline-md text-headline-md font-black text-primary-container tracking-tighter">WorldCup Predict</div>
+<div class="flex items-center gap-md">
+<div class="hidden md:flex items-center gap-base px-sm py-xs bg-surface-container rounded-full border border-outline-variant/30">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+<span class="font-label-caps text-label-caps text-primary">2,450 pts</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors">notifications</span>
+<img alt="User profile" class="w-8 h-8 rounded-full border border-primary/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfFMoapvApRJVcpS-_66X5aTP6lCq-ZbQ4nWGUFH6cjVb1V4ls7jiJ5sAoVaWNyQsxIZW_-_m_Cl34CYafKR3UPRMvjqmbf0Nwboas8ekA8OhVsT_kNK8lse1c-Et2afhdN0lJJSc45OFb8-RYjUH0E8rmWT-A2F1thqzWNisQVj1yb37QpMoXLepMg2u2tkAGgK_sNy3MP3jSMcw7e2qt1-1RrBkm4afhadJiRXvNFtTQFbhJ6-j8h-rwf0kfSPU1TsPcaeO1U7g"/>
+</div>
+</header>
+<!-- Main Layout Container -->
+<div class="flex pt-16 min-h-screen">
+<!-- SideNavBar Shell -->
+<aside class="bg-surface-container-low/95 backdrop-blur-lg border-r border-outline-variant/20 h-full w-64 hidden lg:flex flex-col fixed left-0 top-0 bottom-0 z-40 pt-20 pb-10 px-4">
+<div class="flex items-center gap-sm mb-lg px-2">
+<div class="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container">sports_soccer</span>
+</div>
+<div>
+<h2 class="font-title-sm text-title-sm text-primary">World Cup 2024</h2>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant">Group Stage Live</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-sm p-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 transition-transform duration-300 rounded-xl group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">sports_soccer</span>
+<span class="font-title-sm text-title-sm">Matches</span>
+</a>
+<a class="flex items-center gap-sm p-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 transition-transform duration-300 rounded-xl group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">leaderboard</span>
+<span class="font-title-sm text-title-sm">Leaderboard</span>
+</a>
+<a class="flex items-center gap-sm p-3 text-on-surface-variant hover:bg-surface-variant/50 hover:translate-x-1 transition-transform duration-300 rounded-xl group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">gavel</span>
+<span class="font-title-sm text-title-sm">Rules</span>
+</a>
+<a class="flex items-center gap-sm p-3 bg-secondary-container text-on-secondary-container rounded-xl font-bold translate-x-1" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-title-sm text-title-sm">History</span>
+</a>
+</nav>
+<div class="pt-6 border-t border-outline-variant/10 space-y-1">
+<a class="flex items-center gap-sm p-3 text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-title-sm text-title-sm">Settings</span>
+</a>
+<a class="flex items-center gap-sm p-3 text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">help</span>
+<span class="font-title-sm text-title-sm">Support</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 lg:ml-64 pb-24 lg:pb-10">
+<div class="max-w-5xl mx-auto px-margin-mobile md:px-margin-desktop py-md">
+<!-- Profile Hero Section (Bento Style) -->
+<section class="grid grid-cols-1 md:grid-cols-12 gap-gutter mb-xl">
+<!-- Profile Header Card -->
+<div class="md:col-span-8 glass-card rounded-xl p-md flex flex-col md:flex-row items-center md:items-end gap-md relative overflow-hidden">
+<div class="absolute inset-0 z-0 opacity-10">
+<img class="w-full h-full object-cover" data-alt="A cinematic, low-angle shot of a grand football stadium at dusk, with bright floodlights casting a hazy golden glow over the emerald green pitch. The atmosphere is thick with anticipation and prestige, utilizing a deep midnight navy and rich gold color palette to evoke an elite sporting environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDGHomdc2Xo0M-a1OECwHaewE8FIUA0Yzk8Jwa1gCk_soUla5rh_MV3RaCZ_E8oxLs87uBEiuQRrLSjIaK356cGeKnCOM1dkCL1gTwE4-mO_0ElEroucyY-JUjD02nIax-emgvOohhtSCmQx10vfqDCAKn6CnlIoeHZk3lKVrDOW2zwUkKX6LvOzJWyk9OqSkBCsIlszwaGb6yF5vgxCp9zmdbOhxNkPk66yMkHNU6yVRxjJI8Zz765tQm8obEn6OOYSa-Dq3NFc_o"/>
+</div>
+<div class="relative z-10 w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-primary-container/20 p-1 bg-surface-container">
+<img alt="Người chơi #123" class="w-full h-full rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAechCR44wigDBMWJ4B9vwLdr_7a0nDoF9pWdfa1iySuwLzyHULNZmgXhR8cdEFlQURpeaI2esXLM0nhpxtvXPYRVkn95v6c8JTc_dIG-oGKiCkCJKvQ1mhTjacd1SI2ziwfDRlM2phPohVdN5O2fWvRq-XvmdnUKZIdnGrUimXBKaD0PcNnrgCzbryMQic8EnyuhDti3T_N7PYa6cIc5t8L6BZX3Uobe18MBlXOZABeO66XvbdallK_R6AOp0iu_7ZrBMNtXvaDRQ"/>
+</div>
+<div class="relative z-10 text-center md:text-left flex-1">
+<div class="inline-flex items-center gap-xs px-base py-1 bg-tertiary-container/20 text-tertiary rounded-full mb-xs">
+<span class="material-symbols-outlined text-[14px]">verified</span>
+<span class="font-label-caps text-[10px]">PREMIUM PREDICTOR</span>
+</div>
+<h1 class="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-primary mb-xs">Người chơi #123</h1>
+<p class="font-body-md text-on-surface-variant">Thành viên từ Tháng 11, 2022</p>
+</div>
+</div>
+<!-- Stats Bento Cell -->
+<div class="md:col-span-4 grid grid-rows-2 gap-gutter">
+<div class="glass-card rounded-xl p-md flex flex-col justify-between border-l-4 border-primary-container">
+<span class="font-label-caps text-on-surface-variant uppercase">Tổng điểm</span>
+<div class="flex items-baseline gap-xs">
+<span class="font-score-display text-score-display text-primary-container">2,450</span>
+<span class="font-label-caps text-primary/60">PTS</span>
+</div>
+</div>
+<div class="glass-card rounded-xl p-md flex flex-col justify-between border-l-4 border-tertiary-fixed-dim">
+<span class="font-label-caps text-on-surface-variant uppercase">Xếp hạng toàn cầu</span>
+<div class="flex items-baseline gap-xs">
+<span class="font-score-display text-score-display text-tertiary-fixed-dim">#1,284</span>
+<span class="font-label-caps text-tertiary/60">TOP 5%</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Prediction History Section -->
+<section>
+<div class="flex items-center justify-between mb-md">
+<h2 class="font-headline-md text-headline-md text-primary">Lịch sử dự đoán</h2>
+<div class="flex gap-xs">
+<button class="px-sm py-1.5 glass-card rounded-full font-label-caps text-primary text-[11px] border-primary/40">TẤT CẢ</button>
+<button class="px-sm py-1.5 glass-card rounded-full font-label-caps text-on-surface-variant text-[11px] hover:text-primary transition-colors">ĐANG DIỄN RA</button>
+</div>
+</div>
+<!-- History List -->
+<div class="space-y-gutter">
+<!-- Entry 1: Success -->
+<div class="glass-card rounded-xl p-md border-l-4 border-tertiary-container group hover:bg-surface-variant/20 transition-all duration-300">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-md items-center">
+<div class="col-span-1 md:col-span-2">
+<div class="flex items-center gap-md">
+<div class="flex -space-x-3">
+<div class="w-10 h-10 rounded-full bg-surface-container border-2 border-background flex items-center justify-center overflow-hidden">
+<img alt="Brazil" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsU31RHGEkjOzfrbpLwLwVrFMocFg2ttiSVi9efXzY6rYGUHhmQAVsn9znRJbrO7OEM7jwvp9gPxZGXCQJsbAImo756mUTxsCWVPUpqPO9I4tUPjy1LoZPghLAG_WNj7jRmPt5rmIkwLU0s3HDcO0kfni5IbRpTxTgD-eIflqZk2BuWZRpt-Pa_5vxVI5i24on4Jm8ASEtziA2TIdty8-pkfDhqp0vtO1SN_DrppVyyv7PlZoUSljgpIbJpJOqN4tJGtnNbZlzF3k"/>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container border-2 border-background flex items-center justify-center overflow-hidden">
+<img alt="Serbia" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvOVAN5GvvKF2Xv3FzNTcYOay8c1Q4tfzwNXTE4Z4pKFekV9QWUvNpR6nJopnsLDGF6Uzx4cMWdR1SyBMyWWkoOAapRkE8W0BN7vei9kFNlkfxwx279fxVZbFbR82RRcaLYT360GlNcQa15rPecvLaY60zVoMP8B5LLcmpIyruWx3oChFhKAlWWydTCXwG4rcDpOUogxrMm9wEx6BX9YF9-dXPEpR45l4b0I2Wn81oPiCes_o3HgF6Rg15OfwzSGZMdOPZ4qNS4p0"/>
+</div>
+</div>
+<div>
+<h3 class="font-title-sm text-title-sm text-on-surface">Brazil vs Serbia</h3>
+<p class="font-label-caps text-[11px] text-on-surface-variant uppercase">Bảng G • Kết thúc</p>
+</div>
+</div>
+</div>
+<div class="col-span-1 flex flex-row md:flex-col justify-between md:justify-center items-center md:items-start border-y md:border-y-0 md:border-x border-outline-variant/20 py-sm md:py-0 md:px-md">
+<div class="flex flex-col">
+<span class="font-label-caps text-[10px] text-on-surface-variant uppercase mb-xs">Dự đoán</span>
+<span class="font-headline-md text-headline-md text-primary">2 - 0</span>
+</div>
+<div class="flex flex-col md:mt-sm items-end md:items-start">
+<span class="font-label-caps text-[10px] text-on-surface-variant uppercase mb-xs">Kết quả</span>
+<span class="font-headline-md text-headline-md text-on-surface">2 - 1</span>
+</div>
+</div>
+<div class="col-span-1 flex flex-col items-end">
+<span class="font-label-caps text-[10px] text-tertiary-container uppercase mb-xs">Thành công</span>
+<div class="text-tertiary-container font-headline-md text-headline-md">+50 pts</div>
+<div class="font-label-caps text-[10px] text-on-surface-variant mt-xs">Hòa tỷ số, thắng cách biệt</div>
+</div>
+</div>
+</div>
+<!-- Entry 2: Incorrect -->
+<div class="glass-card rounded-xl p-md border-l-4 border-error group hover:bg-surface-variant/20 transition-all duration-300">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-md items-center">
+<div class="col-span-1 md:col-span-2">
+<div class="flex items-center gap-md">
+<div class="flex -space-x-3">
+<div class="w-10 h-10 rounded-full bg-surface-container border-2 border-background flex items-center justify-center overflow-hidden">
+<img alt="Argentina" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCpV-JzxHtwKJgdGKosLTyMWU0AWfpQrhmrycI0gU-90_GJR6sNu-126uZAm_4Edp2QrkfbRAi66OvzgSz30GqpgrwA2Mbm5FYHlOv4EXpuZy7rVyzTyvWM3OEgricYZzFi5tRhB00yzNgZkpHy8-8A9uVh05tFSlgW52Tphh37z0CwslyxXG2TNTaCTqPkj8hKhu0JdxztRuAq9JHHvDbv_U2kZKhueuN7RM-8Lmh8WtJ6jAUM3jP1SxReybrV3l7_Q51OkOiBn1w"/>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container border-2 border-background flex items-center justify-center overflow-hidden">
+<img alt="Saudi Arabia" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDC7ScxGwidcXljzem5dLWEVEAwYoFo0N3A1esNRZ8Vo4QWxexjkWfwsBuF-qeCaMFPXReRzhUGD_Ek-vF5aRWsiIqPNmucdxvCIcVMGcLqxOxxVzaxcBmby8UHsP9UBf3cTnaZepR8T_YO8RcZJhZ2AsSJYTSp2PRY_9s5VRWgTaVlsAgvakklZqGqpNN4oklUmyeqlTITVajgtuDtA_JESuHiKIBsCxaUGUDiYCeHEUSpiex-uJROzijzEMfC4D_FwGYQo7GOAjI"/>
+</div>
+</div>
+<div>
+<h3 class="font-title-sm text-title-sm text-on-surface">Argentina vs Saudi Arabia</h3>
+<p class="font-label-caps text-[11px] text-on-surface-variant uppercase">Bảng C • Kết thúc</p>
+</div>
+</div>
+</div>
+<div class="col-span-1 flex flex-row md:flex-col justify-between md:justify-center items-center md:items-start border-y md:border-y-0 md:border-x border-outline-variant/20 py-sm md:py-0 md:px-md">
+<div class="flex flex-col">
+<span class="font-label-caps text-[10px] text-on-surface-variant uppercase mb-xs">Dự đoán</span>
+<span class="font-headline-md text-headline-md text-primary">3 - 0</span>
+</div>
+<div class="flex flex-col md:mt-sm items-end md:items-start">
+<span class="font-label-caps text-[10px] text-on-surface-variant uppercase mb-xs">Kết quả</span>
+<span class="font-headline-md text-headline-md text-on-surface">1 - 2</span>
+</div>
+</div>
+<div class="col-span-1 flex flex-col items-end">
+<span class="font-label-caps text-[10px] text-error uppercase mb-xs">Không chính xác</span>
+<div class="text-error font-headline-md text-headline-md">0 pts</div>
+<div class="font-label-caps text-[10px] text-on-surface-variant mt-xs">Lệch toàn bộ kết quả</div>
+</div>
+</div>
+</div>
+<!-- Entry 3: Upcoming -->
+<div class="glass-card rounded-xl p-md border-l-4 border-primary-container pulse-border-red group hover:bg-surface-variant/20 transition-all duration-300">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-md items-center">
+<div class="col-span-1 md:col-span-2">
+<div class="flex items-center gap-md">
+<div class="flex -space-x-3">
+<div class="w-10 h-10 rounded-full bg-surface-container border-2 border-background flex items-center justify-center overflow-hidden">
+<img alt="France" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD5nBkPAdW0TXT_h4uFiVE7Pzo2le2EZDmklQgUadI29M3S__IotpbTBDLaWIcnAvlsemECGC7waJAkYZNQQTE7TyftQvg3szW0t39GKICjVkY06rtEouQK7mxVUormqFp9uKFWkF_VSkOydRgD1jcTVi5Jual7wPrBLKMHLTsqDuRMBGq8JkiJolofoZDUotV33TZKX2cXpLx8O2nixWT2wUD2JOgTm8GduOCT01FPRIJbNyGBcEKgpF5mPk29cwrOjr2YEnYL_4s"/>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container border-2 border-background flex items-center justify-center overflow-hidden">
+<img alt="Denmark" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5mIx-rbbvZxe6Hf1Kx7VrlL_cZbMS2rc4THLUlzYDqgnxnY75NPo_705MRFT0FGcVRcJyMo6vDsB0B0N94Q7ErTMLPcuaUlkxRN2LSXfodKLicU58comU52MdRh5MQei6y9nrP9I980BaeN4wEq-chnQX_5l-9fseO9cWKOgI-1O_JP5F3cTqv1f6mlzqJMaIv1YzTHcV9YCTOp1ihfORHMelw4zbAduzDup1R8TPLmAGWrYQ68iJQcvoJaq8xwjRNh_tehOtlIo"/>
+</div>
+</div>
+<div>
+<h3 class="font-title-sm text-title-sm text-on-surface">Pháp vs Đan Mạch</h3>
+<p class="font-label-caps text-[11px] text-primary-container uppercase tracking-widest">Đang diễn ra • 15'</p>
+</div>
+</div>
+</div>
+<div class="col-span-1 flex flex-row md:flex-col justify-between md:justify-center items-center md:items-start border-y md:border-y-0 md:border-x border-outline-variant/20 py-sm md:py-0 md:px-md">
+<div class="flex flex-col">
+<span class="font-label-caps text-[10px] text-on-surface-variant uppercase mb-xs">Dự đoán</span>
+<span class="font-headline-md text-headline-md text-primary">1 - 1</span>
+</div>
+<div class="flex flex-col md:mt-sm items-end md:items-start">
+<span class="font-label-caps text-[10px] text-on-surface-variant uppercase mb-xs">Tỉ số hiện tại</span>
+<span class="font-headline-md text-headline-md text-primary-container animate-pulse">0 - 0</span>
+</div>
+</div>
+<div class="col-span-1 flex flex-col items-end">
+<span class="font-label-caps text-[10px] text-primary-fixed uppercase mb-xs">Đang xử lý</span>
+<button class="px-md py-2 bg-primary-container text-on-primary-container rounded-lg font-title-sm text-[14px] etched-button hover:scale-105 active:scale-95 transition-transform duration-200">XEM TRỰC TIẾP</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- BottomNavBar Shell (Mobile) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 pb-safe lg:hidden bg-surface-container-highest/90 backdrop-blur-md border-t border-primary/20 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+<a class="flex flex-col items-center justify-center text-on-surface-variant group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">sports_soccer</span>
+<span class="font-label-caps text-label-caps mt-1">Trận đấu</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">emoji_events</span>
+<span class="font-label-caps text-label-caps mt-1">Hạng</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">menu_book</span>
+<span class="font-label-caps text-label-caps mt-1">Luật</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full w-12 h-12 mb-1 scale-110 shadow-lg" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">person</span>
+</a>
+</nav>
+<!-- Footer Shell -->
+<footer class="bg-surface-container-lowest border-t border-outline-variant/10 w-full py-xl mt-xl">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md px-margin-mobile md:px-margin-desktop max-w-7xl mx-auto">
+<div>
+<span class="font-label-caps text-label-caps text-primary">WORLD CUP PREDICT</span>
+<p class="text-on-surface-variant mt-sm">© 2024 FIFA World Cup Predictor. High-stakes competition.</p>
+</div>
+<div class="grid grid-cols-2 gap-sm">
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors underline-offset-4 font-body-md text-body-md" href="#">Tournament Schedule</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors underline-offset-4 font-body-md text-body-md" href="#">Official Rules</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors underline-offset-4 font-body-md text-body-md" href="#">Privacy Policy</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors underline-offset-4 font-body-md text-body-md" href="#">Contact Support</a>
+</div>
+</div>
+</footer>
+<script>
+        // Atmospheric Micro-interactions
+        document.querySelectorAll('.glass-card').forEach(card => {
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+                
+                // Dynamic border glow effect
+                card.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(255, 215, 0, 0.08), transparent 40%), rgba(255, 255, 255, 0.05)`;
+            });
+            
+            card.addEventListener('mouseleave', () => {
+                card.style.background = `rgba(255, 255, 255, 0.05)`;
+            });
+        });
+    </script>
+</body></html>

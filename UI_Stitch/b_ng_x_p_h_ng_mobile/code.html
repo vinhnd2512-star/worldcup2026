@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Bảng Xếp Hạng - Matchday</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;700&amp;family=Hanken+Grotesk:wght@400;500;700&amp;family=Jetbrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"surface-bright": "#323851", "secondary-container": "#920703", "surface-container-high": "#222941", error: "#ffb4ab", "primary-fixed": "#ffe16d", "on-primary": "#3a3000", "error-container": "#93000a", "tertiary-fixed-dim": "#70db9d", "on-background": "#dce1ff", "inverse-on-surface": "#292f48", "on-surface": "#dce1ff", "on-secondary-fixed": "#410000", "secondary-fixed": "#ffdad4", "on-primary-fixed-variant": "#544600", "on-primary-container": "#705e00", "surface-container-low": "#141a32", primary: "#fff6df", "on-error": "#690005", "inverse-surface": "#dce1ff", "on-surface-variant": "#d0c6ab", "tertiary-container": "#84efaf", "secondary-fixed-dim": "#ffb4a8", "on-primary-fixed": "#221b00", "on-tertiary": "#00391f", "on-secondary": "#690000", "inverse-primary": "#705d00", "primary-container": "#ffd700", "on-secondary-fixed-variant": "#920703", surface: "#0b1229", "on-tertiary-fixed-variant": "#00522f", "on-tertiary-fixed": "#002110", "surface-variant": "#2d344c", "surface-tint": "#e9c400", secondary: "#ffb4a8", "surface-dim": "#0b1229", "surface-container-highest": "#2d344c", background: "#0b1229", "on-error-container": "#ffdad6", outline: "#999077", "tertiary-fixed": "#8df8b7", "surface-container": "#181e36", tertiary: "#dbffe3", "on-secondary-container": "#ff9a8a", "surface-container-lowest": "#060d24", "on-tertiary-container": "#006d41", "primary-fixed-dim": "#e9c400", "outline-variant": "#4d4732"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {sm: "12px", md: "24px", lg: "48px", xl: "80px", xs: "4px", "margin-desktop": "32px", gutter: "16px", base: "8px", "margin-mobile": "16px"}, fontFamily: {"title-sm": ["Hanken Grotesk"], "label-caps": ["JetBrains Mono"], "score-display": ["Anybody"], "display-lg-mobile": ["Anybody"], "body-md": ["Hanken Grotesk"], "headline-md": ["Anybody"], "display-lg": ["Anybody"], headline: ["Anybody"], display: ["Anybody"], body: ["Hanken Grotesk"], label: ["Jetbrains Mono"]}, fontSize: {"title-sm": ["18px", {lineHeight: "1.4", fontWeight: "600"}], "label-caps": ["12px", {lineHeight: "1", letterSpacing: "0.05em", fontWeight: "500"}], "score-display": ["36px", {lineHeight: "1", fontWeight: "900"}], "display-lg-mobile": ["32px", {lineHeight: "1.1", fontWeight: "800"}], "body-md": ["16px", {lineHeight: "1.5", fontWeight: "400"}], "headline-md": ["24px", {lineHeight: "1.2", fontWeight: "700"}], "display-lg": ["48px", {lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "800"}]}}}};</script>
+<style>.glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1)
+    }
+.podium-gradient-1 {
+    background: linear-gradient(180deg, #FFD700 0%, #B8860B 100%)
+    }
+.podium-gradient-2 {
+    background: linear-gradient(180deg, #C0C0C0 0%, #808080 100%)
+    }
+.podium-gradient-3 {
+    background: linear-gradient(180deg, #CD7F32 0%, #8B4513 100%)
+    }
+.stadium-bg {
+    background-image: linear-gradient(to bottom, rgba(11, 18, 41, 0.8), rgba(11, 18, 41, 1)), url(https://lh3.googleusercontent.com/aida-public/AB6AXuCORMRiBMymhMzmzms6BCVAeDes-0f6XloVnHgiQNZ35VOqiafIMhmGnzhwrMQ7FZwzGEQQOHjli2OwYEyTyGTF6brIEnGK3DS6S5C3qxcfxApKC-SWck9T9Lxj2AbDJCtVZC2uiPdNHMEFdPsWW2Cv-CDq0mqJFjGbSKUA5j9Owg0dTo4fGfarXMonSiWoeJJgtrzT2zi6Av-tYHRqiPLGK-kemvaoQiD_gXDVRs87qQl_6oASIxTIcDE-LRSgq6Ri0PvVBy8pvTU);
+    background-size: cover;
+    background-position: center
+    }</style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background font-body-md selection:bg-primary-container selection:text-on-primary-container">
+<!-- Top App Bar -->
+<header class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md border-b border-white/10 shadow-sm">
+<div class="flex justify-between items-center px-margin-mobile h-16 w-full max-w-7xl mx-auto">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full overflow-hidden border border-primary-container">
+<img alt="Avatar" class="w-full h-full object-cover" data-alt="A high-resolution, professional portrait of a football fan in a dark midnight navy hoodie. The lighting is cinematic with golden rim lights, matching the premium sports UI theme. The background is a blurred stadium interior with soft bokeh effects and a futuristic, digital sport aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2a8YXtUdKvqN3rkxBVSk3YXl8VEs5R0gilRowUKfNIc8lP-MW0pFf3h8_sZlGCEzLPbx5wEvuMv52LkZHGWux_e7BWwHIkZ71XejPKvT8AHNtkjIj5Z6k6Zsqei_w4-shisod9979TqtWr25GLIu9GLZSTKItgNW9BQ-cDf2EXDZNYeKnGtzKPZBVy7vK5MbAAtfiPw4zf7eWidowrc5u7tZ0Qy-1y8X1VYeU3BbfAwHyptAbjP5cdKwU77Xm_2_Hi4AMAYRFE-U"/>
+</div>
+<h1 class="font-score-display text-headline-md-mobile text-primary-container tracking-tight">MATCHDAY</h1>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:bg-white/5 p-2 rounded-full transition-transform active:scale-95" data-icon="notifications">notifications</button>
+</div>
+</header>
+<main class="pt-20 pb-28 px-margin-mobile min-h-screen stadium-bg">
+<!-- Header Section -->
+<div class="text-center mb-8">
+<h2 class="font-display-lg-mobile text-display-lg-mobile text-primary mb-2">Bảng Xếp Hạng</h2>
+<p class="text-on-surface-variant text-body-md">Ai sẽ là vua dự đoán tuần này?</p>
+</div>
+<!-- Time Filters -->
+<div class="flex p-1 bg-surface-container-high rounded-xl mb-10 w-full max-w-sm mx-auto shadow-inner">
+<button class="flex-1 py-2 rounded-lg font-label-caps text-label-caps bg-primary-container text-on-primary-container shadow-sm transition-all">TUẦN NÀY</button>
+<button class="flex-1 py-2 rounded-lg font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface transition-all">THÁNG NÀY</button>
+<button class="flex-1 py-2 rounded-lg font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface transition-all">TẤT CẢ</button>
+</div>
+<!-- Podium Section -->
+<div class="flex items-end justify-center gap-2 mb-12 h-64">
+<!-- 2nd Place -->
+<div class="flex flex-col items-center w-24">
+<div class="relative mb-3">
+<div class="w-16 h-16 rounded-full border-4 border-silver-400 overflow-hidden ring-2 ring-white/10">
+<img alt="2nd" class="w-full h-full object-cover" data-alt="A stylized portrait of a competitive sports player, featured in a sleek circular profile frame. The lighting is cold silver and white, emphasizing a professional and determined expression. The visual style is polished digital art with subtle lens flares and a deep navy background, fitting for a leaderboard winner." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0PRdpfzfPTHLkdmau_swpHCIv8GRQMhie60E3PCzT8Cc5QKXSBGajjvQ9azeW1Y2jWNfJjvBrzD1xXGcZXi6xSGBXj0pugtgIq-uG7K47aQZg9aTt5fJm5SxmeuQT_Xq-KBK2AYINJAWOjR0GQN3pq_pDpeseJeYv4KQ0LeLcwSnl7qbHMqADmsP6quQL_lupP9bRK-hiiEaOlfwYTgD7EiLZlCACIB_gXoBJRUFZMmi_9aq32X_d4C9JACMagIjxex2TgiyF8qY"/>
+</div>
+<div class="absolute -bottom-1 -right-1 podium-gradient-2 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white border border-white/20">2</div>
+</div>
+<div class="glass-card w-full pt-4 pb-2 rounded-t-lg flex flex-col items-center h-20">
+<span class="text-label-caps font-label-caps text-on-surface truncate w-20 text-center">Hoàng Nam</span>
+<span class="text-primary-container font-score-display text-[14px]">2,840</span>
+</div>
+</div>
+<!-- 1st Place -->
+<div class="flex flex-col items-center w-28">
+<div class="relative mb-4 scale-110">
+<div class="w-20 h-20 rounded-full border-4 border-primary-container overflow-hidden ring-4 ring-primary-container/20">
+<img alt="1st" class="w-full h-full object-cover" data-alt="A heroic and triumphant portrait of a leaderboard champion. The lighting is warm gold with dramatic highlights on the face and shoulders. The character exudes confidence and prestige, set against a background of glowing digital particles and a premium dark midnight navy environment. High-end sports broadcast aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB55YCfVIfLaLgzhflj_V9ZbsfxQsM-Aj-RDLkHikiaqwaxvKa56Q4EiCHyafpFnZMzgWJcrlUkLyfGMzcFD20YB_NFtAV7kSWxgHS8BcGyBKOFkcIMP5sBaOq93ofHjEYF6kSG91umSB9VeVDdg6S-giy2N7kFssb6glzaBwJRGW7KRkZv44nEIrlOljBb4Kqxlqwe38QD1zJsolfIpzK_m55BleLlfrTUGBURzvKUimsCxxuMi5RtX-O5sgX1mffSUH3-IbGnj_I"/>
+</div>
+<div class="absolute -top-6 left-1/2 -translate-x-1/2">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1; font-size: 32px;">workspace_premium</span>
+</div>
+<div class="absolute -bottom-1 -right-1 podium-gradient-1 w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white border-2 border-primary-container/40">1</div>
+</div>
+<div class="bg-primary-container w-full pt-6 pb-2 rounded-t-xl flex flex-col items-center h-28 shadow-[0_-10px_20px_rgba(255,215,0,0.1)]">
+<span class="text-label-caps font-label-caps text-on-primary-container truncate w-24 text-center">Thắng Pro</span>
+<span class="text-on-primary-container font-score-display text-[18px]">3,120</span>
+</div>
+</div>
+<!-- 3rd Place -->
+<div class="flex flex-col items-center w-24">
+<div class="relative mb-3">
+<div class="w-16 h-16 rounded-full border-4 border-orange-700 overflow-hidden ring-2 ring-white/10">
+<img alt="3rd" class="w-full h-full object-cover" data-alt="A high-quality profile image of a sports enthusiast with a bronze color theme. The lighting is warm and bronze-toned, creating a focused and competitive atmosphere. The background consists of dark, textured surfaces with subtle light leaks and a premium corporate modern feel." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBtkxlV2er1b3Xda64z5IXx6PLZwTllNFQfbiI5ks-lqoxEl0BkCrWBC33neLJ2ZcdsAFIP09zpweFsmrz_2lRMkX7eJPid4lqNMR5cSJ6h-Ne8kHhdzpvV5Tm6q-rMqQUi97VMhOxBHosjAZ712mRymhh_cOyX8QevI5RGcBQuKpoIfo2yrmnD3_kyPTPi007xuFpA3UDX9Woxmd9pzGLVZuDFylDJdGapMf_HDkBVRikT_RqdwhpUm6qRQ3oaikfZUZD92A3mc3E"/>
+</div>
+<div class="absolute -bottom-1 -right-1 podium-gradient-3 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white border border-white/20">3</div>
+</div>
+<div class="glass-card w-full pt-4 pb-2 rounded-t-lg flex flex-col items-center h-16">
+<span class="text-label-caps font-label-caps text-on-surface truncate w-20 text-center">Minh Tú</span>
+<span class="text-primary-container font-score-display text-[14px]">2,650</span>
+</div>
+</div>
+</div>
+<!-- Ranking List -->
+<div class="space-y-2">
+<!-- Header Labels -->
+<div class="grid grid-cols-12 px-4 py-2 text-on-surface-variant font-label-caps text-label-caps uppercase opacity-60">
+<div class="col-span-2">HẠNG</div>
+<div class="col-span-5">NGƯỜI CHƠI</div>
+<div class="col-span-2 text-center">ĐÚNG</div>
+<div class="col-span-3 text-right">ĐIỂM</div>
+</div>
+<!-- User Row (Highlighted) -->
+<div class="grid grid-cols-12 items-center px-4 py-4 rounded-xl bg-tertiary-fixed-dim/20 border border-tertiary-fixed-dim/30 ring-1 ring-tertiary-fixed-dim/20 shadow-lg">
+<div class="col-span-2 font-score-display text-title-sm text-tertiary-fixed">124</div>
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-10 h-10 rounded-full border border-tertiary-fixed overflow-hidden">
+<img alt="You" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCwSg3_JXUrtzK66v-T6ZjYTl4AfZLMLmoD4SCnzUf5MboCLWO8-gQWEctV7eAaEzo_P1n9o5a2fYCGJmOeTP4hmJpJiaLhCnxkbG0-8QMaD5HUmcFZ66tn3CaCLyWITOBfrzdI-bx1cJWy3Ns-lN8POFccmry1d3SMBy1wKCCHQhqm1auQEWs9r1kQ9mJyJUga4P9C5b-QS0VkNTRhP1A770FLPmQs4c4kH6xRVMzXtEt3-wiRcj-1ywG4dWp6EbT9TWyzlKEQiu4"/>
+</div>
+<div>
+<span class="font-title-sm text-on-surface block leading-none">Bạn</span>
+<span class="text-[10px] text-tertiary-fixed-dim uppercase font-bold tracking-widest">RANK UP</span>
+</div>
+</div>
+<div class="col-span-2 text-center font-label-caps text-label-caps text-on-surface">42</div>
+<div class="col-span-3 text-right font-score-display text-title-sm text-primary-container">1,420</div>
+</div>
+<!-- List Items -->
+<div class="grid grid-cols-12 items-center px-4 py-4 rounded-xl glass-card transition-all active:scale-[0.98]">
+<div class="col-span-2 font-score-display text-title-sm text-on-surface-variant">4</div>
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-10 h-10 rounded-full border border-white/10 overflow-hidden">
+<img alt="P4" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBw5h_mue6tvFsuIaIMHlCsxpnZ4f7K2LaOvbEE-4cy8TS44kdsz4uHStEtci_WbWmprNv2It_OYQpM_jX6Xqm-RAOGqQ_Jtnx-naSP5hYGOkzsZ7NJsfbuHIHBMHFegPwUqhZ2DWEebElcC5utRMjDoEY4R5seQlJNCdW8wQ1_bOPNJzzrFa-JKAztdiz50pXjy9Bj4oZEvnLIgfRaFHPYVPbovHSXlEGQdRRvRnA0-7q_KDtOdNOBy6I2BRyVZP1IofeCMrDRQEw"/>
+</div>
+<span class="font-title-sm text-on-surface">Lê Quân</span>
+</div>
+<div class="col-span-2 text-center font-label-caps text-label-caps text-on-surface">65</div>
+<div class="col-span-3 text-right font-score-display text-title-sm text-primary-container">2,410</div>
+</div>
+<div class="grid grid-cols-12 items-center px-4 py-4 rounded-xl glass-card">
+<div class="col-span-2 font-score-display text-title-sm text-on-surface-variant">5</div>
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-10 h-10 rounded-full border border-white/10 overflow-hidden">
+<img alt="P5" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCybEOht3Tfok9WGllVQOJDOHdggMqsDDBXWNKSN_b5zXyROj7DE8UGiMQWtdcpVdXSrlc48EKSV5KxEdluFPGBa9azya5tMIkFMlMV8nH_lcwnaec3nko5SGD7xgJmDH5JfDPBYRqsWQpuZAI66jRy5PvKa-MEsnp3YSqdFnMGnQoSLEAFhIdlXolZziu6DeRGLWhiN37eM4KzsiZJXMLqzjJKQ_y-m8YDlyA1cgE7JaixCu0o8oL3Sd6niLhmGtSu0gT3mgM7hbs"/>
+</div>
+<span class="font-title-sm text-on-surface">Bích Phương</span>
+</div>
+<div class="col-span-2 text-center font-label-caps text-label-caps text-on-surface">61</div>
+<div class="col-span-3 text-right font-score-display text-title-sm text-primary-container">2,380</div>
+</div>
+<div class="grid grid-cols-12 items-center px-4 py-4 rounded-xl glass-card">
+<div class="col-span-2 font-score-display text-title-sm text-on-surface-variant">6</div>
+<div class="col-span-5 flex items-center gap-3">
+<div class="w-10 h-10 rounded-full border border-white/10 overflow-hidden">
+<img alt="P6" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiEilMsCXB0Lna2DBVL5Hv5rMcrRxS8E9DcKW2JO_1YFrSfwwhXpZ-ZhDfAxqQqP2i2dVFzPFqewQE8SuBD6PQhVgZBhMe_9axhtuv-HQDPqISj6HGjjVUYGZCnRdHLuvlSS4SMdFKMpDPZIlwHNvpoeY0xclOgxc4QEvGUxHsLdvmDYBpR-TBrARxkRoN_TtMravyZOjlS-n-UWkmGEApP77ARxnsheY7oofTvtC75Hyk758d_x1z-vKOwy4T7COUvwTdfDQMN2Y"/>
+</div>
+<span class="font-title-sm text-on-surface">Trung Kiên</span>
+</div>
+<div class="col-span-2 text-center font-label-caps text-label-caps text-on-surface">58</div>
+<div class="col-span-3 text-right font-score-display text-title-sm text-primary-container">2,150</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center pt-2 pb-6 px-4 bg-surface-container dark:bg-surface-container-highest/90 backdrop-blur-xl border-t border-white/5 rounded-t-xl shadow-lg">
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="sports_soccer">sports_soccer</span>
+<span class="font-label-caps text-label-caps">Matches</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="Ads_Click">ads_click</span>
+<span class="font-label-caps text-label-caps">Predict</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 transition-all active:scale-90" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="leaderboard">leaderboard</span>
+<span class="font-label-caps text-label-caps">Rankings</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="person">person</span>
+<span class="font-label-caps text-label-caps">Profile</span>
+</a>
+</nav>
+<script>
+        // Micro-interaction for filter buttons
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (this.parentElement.classList.contains('bg-surface-container-high')) {
+                    this.parentElement.querySelectorAll('button').forEach(b => {
+                        b.classList.remove('bg-primary-container', 'text-on-primary-container', 'shadow-sm');
+                        b.classList.add('text-on-surface-variant');
+                    });
+                    this.classList.add('bg-primary-container', 'text-on-primary-container', 'shadow-sm');
+                    this.classList.remove('text-on-surface-variant');
+                }
+            });
+        });
+
+        // Add a subtle parallax effect to stadium background on scroll
+        window.addEventListener('scroll', () => {
+            const scrolled = window.pageYOffset;
+            const background = document.querySelector('.stadium-bg');
+            background.style.backgroundPositionY = (scrolled * 0.5) + 'px';
+        });
+    </script>
+</body></html>

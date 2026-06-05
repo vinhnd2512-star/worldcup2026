@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Player Portal | World Cup Predictor</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;700;800;900&amp;family=Hanken+Grotesk:wght@400;600&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .active-pulse {
+            animation: pulse-border 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(146, 7, 3, 0.3); }
+            50% { border-color: rgba(146, 7, 3, 1); }
+        }
+        .gold-gradient-text {
+            background: linear-gradient(to bottom right, #ffe16d, #e9c400);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        body {
+            background-color: #0b1229;
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(233, 196, 0, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(146, 7, 3, 0.05) 0%, transparent 40%);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface": "#0b1229",
+                      "surface-variant": "#2d344c",
+                      "surface-container-lowest": "#060d24",
+                      "primary-fixed-dim": "#e9c400",
+                      "primary-fixed": "#ffe16d",
+                      "on-tertiary-fixed": "#002110",
+                      "secondary-container": "#920703",
+                      "secondary": "#ffb4a8",
+                      "tertiary-container": "#84efaf",
+                      "outline": "#999077",
+                      "surface-dim": "#0b1229",
+                      "inverse-primary": "#705d00",
+                      "error": "#ffb4ab",
+                      "outline-variant": "#4d4732",
+                      "on-tertiary-container": "#006d41",
+                      "secondary-fixed-dim": "#ffb4a8",
+                      "on-primary-fixed-variant": "#544600",
+                      "on-error-container": "#ffdad6",
+                      "on-surface-variant": "#d0c6ab",
+                      "on-primary": "#3a3000",
+                      "surface-container-low": "#141a32",
+                      "tertiary": "#dbffe3",
+                      "tertiary-fixed": "#8df8b7",
+                      "surface-container-highest": "#2d344c",
+                      "surface-bright": "#323851",
+                      "error-container": "#93000a",
+                      "on-secondary": "#690000",
+                      "primary": "#fff6df",
+                      "on-tertiary-fixed-variant": "#00522f",
+                      "on-surface": "#dce1ff",
+                      "on-background": "#dce1ff",
+                      "surface-container-high": "#222941",
+                      "primary-container": "#ffd700",
+                      "on-secondary-fixed": "#410000",
+                      "tertiary-fixed-dim": "#70db9d",
+                      "on-secondary-container": "#ff9a8a",
+                      "on-primary-fixed": "#221b00",
+                      "surface-container": "#181e36",
+                      "on-tertiary": "#00391f",
+                      "on-secondary-fixed-variant": "#920703",
+                      "inverse-surface": "#dce1ff",
+                      "on-error": "#690005",
+                      "inverse-on-surface": "#292f48",
+                      "surface-tint": "#e9c400",
+                      "on-primary-container": "#705e00",
+                      "secondary-fixed": "#ffdad4",
+                      "background": "#0b1229"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "lg": "48px",
+                      "xl": "80px",
+                      "xs": "4px",
+                      "md": "24px",
+                      "margin-desktop": "32px",
+                      "gutter": "16px",
+                      "base": "8px",
+                      "sm": "12px",
+                      "margin-mobile": "16px"
+              },
+              "fontFamily": {
+                      "title-sm": ["Hanken Grotesk"],
+                      "label-caps": ["JetBrains Mono"],
+                      "score-display": ["Anybody"],
+                      "body-md": ["Hanken Grotesk"],
+                      "headline-md": ["Anybody"],
+                      "display-lg-mobile": ["Anybody"],
+                      "display-lg": ["Anybody"]
+              },
+              "fontSize": {
+                      "title-sm": ["18px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                      "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                      "score-display": ["36px", {"lineHeight": "1", "fontWeight": "900"}],
+                      "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "headline-md": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                      "display-lg-mobile": ["32px", {"lineHeight": "1.1", "fontWeight": "800"}],
+                      "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "800"}]
+              }
+            },
+          },
+        }
+      </script>
+</head>
+<body class="text-on-background font-body-md">
+<!-- TopNavBar -->
+<nav class="sticky top-0 z-50 flex justify-between items-center px-margin-desktop w-full max-w-[1280px] mx-auto bg-surface/80 backdrop-blur-md border-b border-outline-variant/30 py-sm">
+<div class="font-score-display text-headline-md text-primary-container tracking-tighter">World Cup Predictor</div>
+<div class="hidden md:flex items-center gap-gutter">
+<a class="text-primary-fixed font-bold border-b-2 border-primary-fixed pb-1 font-title-sm text-title-sm" href="#">Fixtures</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors duration-200 font-title-sm text-title-sm" href="#">Leaderboards</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors duration-200 font-title-sm text-title-sm" href="#">Rules</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors duration-200 font-title-sm text-title-sm" href="#">Prizes</a>
+</div>
+<div class="flex items-center gap-sm">
+<div class="flex flex-col items-end hidden sm:flex">
+<span class="font-label-caps text-label-caps text-primary-fixed-dim">@MinhQuan92</span>
+<span class="font-label-caps text-[10px] text-outline">Gold League</span>
+</div>
+<img alt="User avatar" class="w-10 h-10 rounded-full border border-primary-fixed/30 cursor-pointer active:scale-95 transition-transform" data-alt="A high-quality professional portrait of a young adult football fan with a joyful expression, set against a blurred background of a modern sports lounge with subtle glowing ambient lights. The lighting is dramatic and cinematic, using warm tones and deep navy shadows to match the elite sport aesthetic of the World Cup Predictor platform. The person is dressed in smart-casual athletic apparel." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQaqYWUN1tKU9iQVDEYOx05HQeP8lyTh7iE0MM2g3_LKSPwZNYWEkQIjbzkQfvvMcH3bmBH4TY2C4J6dqb8s4w6PYJ5M7lSQR-G892UNTAp5r9YwSMZd9V8g-5Uw305svdco5KCjzAkRLST4LYtAaVgSrPjQimoIQzvpT-g7y-OAV1gMy-mbumjHDFGHlkUyn_Sq_Wr9znpkaITMyaTao2tmxqL-dkyu-flVjCWFbZTCe1K74SFa9MnoCzQbMA5riHs0Z69VuyySg"/>
+</div>
+</nav>
+<main class="max-w-[1280px] mx-auto px-margin-desktop py-lg space-y-xl">
+<!-- Welcome Hero -->
+<header class="relative overflow-hidden rounded-xl bg-surface-container-low p-lg border border-outline-variant/20">
+<div class="relative z-10 space-y-sm">
+<h1 class="font-display-lg text-display-lg-mobile md:text-display-lg text-primary">Chào mừng trở lại, Minh Quân!</h1>
+<p class="text-on-surface-variant max-w-2xl font-title-sm text-title-sm">Bạn hiện đang đứng trong <span class="text-primary-fixed">Top 5%</span> người chơi dẫn đầu toàn cầu. Trận đấu tiếp theo sẽ bắt đầu sau <span class="font-label-caps text-secondary">04:12:45</span>.</p>
+</div>
+<!-- Background Accent -->
+<div class="absolute right-0 top-0 h-full w-1/3 opacity-20 pointer-events-none hidden lg:block">
+<span class="material-symbols-outlined text-[200px] text-primary-container/20 absolute -right-10 -top-10 rotate-12">sports_soccer</span>
+</div>
+</header>
+<!-- Bento Dashboard Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<!-- Quick Stats Section (Left 4 cols) -->
+<div class="lg:col-span-4 space-y-gutter">
+<div class="glass-card rounded-xl p-md flex flex-col justify-between h-full min-h-[200px]">
+<div class="flex justify-between items-start">
+<span class="font-label-caps text-label-caps text-outline uppercase">Global Rank</span>
+<span class="material-symbols-outlined text-primary-fixed">military_tech</span>
+</div>
+<div>
+<div class="font-score-display text-[64px] gold-gradient-text">#1,245</div>
+<p class="font-label-caps text-label-caps text-tertiary-fixed">↑ 12 positions since yesterday</p>
+</div>
+</div>
+<div class="glass-card rounded-xl p-md flex flex-col justify-between h-full min-h-[200px]">
+<div class="flex justify-between items-start">
+<span class="font-label-caps text-label-caps text-outline uppercase">Total Points</span>
+<span class="material-symbols-outlined text-primary-fixed">stars</span>
+</div>
+<div>
+<div class="font-score-display text-[64px] text-primary-container">8,420</div>
+<div class="w-full h-2 bg-surface-container-highest rounded-full mt-sm overflow-hidden">
+<div class="h-full bg-primary-fixed w-[75%]"></div>
+</div>
+<p class="font-label-caps text-[10px] text-outline mt-xs">1,580 PTS TO NEXT TIER</p>
+</div>
+</div>
+</div>
+<!-- Hot Matches Section (Right 8 cols) -->
+<div class="lg:col-span-8">
+<div class="flex justify-between items-center mb-md">
+<h2 class="font-headline-md text-headline-md text-primary">Hot Fixtures</h2>
+<a class="text-primary-fixed font-label-caps text-label-caps hover:underline" href="#">View All Matches</a>
+</div>
+<div class="space-y-gutter">
+<!-- Match Card 1: LIVE -->
+<div class="glass-card rounded-xl p-md border-l-4 border-secondary active-pulse flex flex-col md:flex-row items-center gap-md relative overflow-hidden">
+<div class="absolute top-2 right-2 bg-secondary text-on-secondary px-2 py-1 rounded text-[10px] font-bold font-label-caps animate-pulse">LIVE</div>
+<div class="flex-1 flex justify-between items-center w-full">
+<div class="flex flex-col items-center gap-xs flex-1">
+<img alt="France" class="w-14 h-14 rounded-full border-2 border-outline-variant/30" data-alt="Official flag of France rendered in high resolution with fabric texture details, slightly waving in a stadium breeze. The lighting is cinematic with a focus on vibrant blues, whites, and reds, maintaining the elite sport aesthetic of the tournament. The background is a blurred stadium crowd under night lights." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6tIhBfL3mKqueN5zddm4lSkL-Fdl3veH7NiwSR-UNDmBuIltY9p_l5AH-3K8JtVcxAOvfRW5-O1pStHTCuTXMC8goL1gOA7HO8fwX4QtFE7BXi4Gmeq-_N4W7XdGgHEiNhe7Us_EIIvDPJyIRKizSFnwQZ-utrcb_YawrozXifFBmyqFvU21SBjpZhoCEJmB-V_lLMmTrpxTTnJeU3pQ81eTFkFYSMFPSTGewVsg3z0pLFlCGS3qognCC4Lmd2Eq70EMUU1n7vhA"/>
+<span class="font-title-sm text-title-sm">France</span>
+</div>
+<div class="flex flex-col items-center flex-none px-md">
+<div class="font-score-display text-score-display text-white">2 - 1</div>
+<span class="font-label-caps text-label-caps text-outline">74'</span>
+</div>
+<div class="flex flex-col items-center gap-xs flex-1">
+<img alt="Germany" class="w-14 h-14 rounded-full border-2 border-outline-variant/30" data-alt="Official flag of Germany rendered with high-fidelity fabric weaves, captured in a dramatic sport photography style. The colors black, red, and gold are rich and saturated. The atmosphere is that of a grand international football event with soft bokeh lights from the arena in the background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDCNRVtU-b_dOQKUpqA62-nF-hUcJuOpeiai43b6EjJvuT4uoY_P_mn5bNLbUmcnOXLud1yDmjVtJhehv9GJc2eKGU_MyVLmMKfpk80WTIdxH_PKAa70fcpdgkdUnjrpeR_GGhouk_2ZuYbwxoWFXQcvDt3qtRg_osF5beanlbxyo6mTz_ZWH454CP8U-tNG_hiFV3V7EcojutiOJJ7XPp5fR31xp-1F5_3c4vu05jI1ZVVh3aowktbMuZ2gc5OCbSp0qPNBrPkmUI"/>
+<span class="font-title-sm text-title-sm">Germany</span>
+</div>
+</div>
+<div class="w-full md:w-px md:h-12 bg-outline-variant/30 hidden md:block"></div>
+<div class="w-full md:w-48 text-center space-y-sm">
+<p class="font-label-caps text-[10px] text-on-surface-variant uppercase">Your Prediction</p>
+<div class="bg-surface-container-highest rounded py-1 px-3 inline-block">
+<span class="font-score-display text-headline-md text-tertiary-fixed">2 - 2</span>
+</div>
+</div>
+</div>
+<!-- Match Card 2: UPCOMING -->
+<div class="glass-card rounded-xl p-md flex flex-col md:flex-row items-center gap-md group cursor-pointer hover:border-primary-fixed/50 transition-all duration-300">
+<div class="flex-1 flex justify-between items-center w-full">
+<div class="flex flex-col items-center gap-xs flex-1">
+<img alt="Brazil" class="w-14 h-14 rounded-full border-2 border-outline-variant/30 group-hover:scale-110 transition-transform" data-alt="A vibrant representation of the Brazilian flag with detailed fabric textures, presented as a circular emblem for a sports broadcast. The lighting highlights the green and gold colors with a glossy finish. The background features a deep navy blue atmospheric stadium blur to ensure visual consistency." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuwe9EjNKyv7JMnjtPbY2A2-pgpjwxXPKxGVFbTXV4tZ1hgxz8StXnUEyEEDhNlmYRGqy7wmE-3fzQ6ZrgO-kTOsP13WiXm0haLtFW5ej2sfjukChXnmuwXDyfSNuM6e0ZLubEWr99I10lJ9mqwgYOBR350-nlfKOoGijekF9-5UoPZ5cdFhk6ILau4lWjBIh0sRGjyqfpiDawaly2qtZqi888OvdgDscEsDx5ZKBbr5SY_RR17Pu2l3CulTjJ0IJiQFYemU6uQhE"/>
+<span class="font-title-sm text-title-sm">Brazil</span>
+</div>
+<div class="flex flex-col items-center flex-none px-md">
+<div class="font-score-display text-score-display text-outline-variant">VS</div>
+<span class="font-label-caps text-label-caps text-primary-fixed">Tonight 21:00</span>
+</div>
+<div class="flex flex-col items-center gap-xs flex-1">
+<img alt="Argentina" class="w-14 h-14 rounded-full border-2 border-outline-variant/30 group-hover:scale-110 transition-transform" data-alt="The Argentine flag with its distinctive sun emblem, rendered with high-quality textile detail. The light blue and white stripes are clean and vibrant, following the premium aesthetic of a global football tournament. The composition is circular, set against a dark, dramatic stadium atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAzmXrn5MgRKcc3NXBBnaSU0XKs4NF4MjCnIC3N6Rzxgm_Wvt59BqlBHSHLuHHrp8zeq-90kVWAdzkdXkwTNNBZVr212SgpAh5jYIotAGkCjudRZzFW764RldXbny77EHaeqY0h-J8LbCp95TCj-yGKYf6qDVhFY7PYBE2GI3jPp-F8rrbgQh8Awl7nXcS_wqKGr8BlvqDTk-F97mJ28FwjSB8Ww3lVxFw2lqUmBiUKBQMYFKjYN6BQsY88tpN-Zk91E_AUOtLAnoY"/>
+<span class="font-title-sm text-title-sm">Argentina</span>
+</div>
+</div>
+<div class="w-full md:w-px md:h-12 bg-outline-variant/30 hidden md:block"></div>
+<div class="w-full md:w-48 text-center">
+<button class="bg-primary-container text-on-primary-container px-6 py-2 rounded-lg font-title-sm text-title-sm font-bold w-full hover:shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-all active:scale-95">
+                                Predict Now
+                            </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- News and Rankings Feed -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+<!-- Tournament News -->
+<div class="lg:col-span-2 space-y-md">
+<h2 class="font-headline-md text-headline-md text-primary">Tournament Insights</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-gutter">
+<div class="glass-card rounded-xl overflow-hidden group cursor-pointer">
+<div class="h-40 overflow-hidden relative">
+<img alt="Match Analysis" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A wide cinematic shot of a modern, floodlit football stadium at night during a high-stakes match. The atmosphere is filled with a light mist and the glow of thousand lights, creating a high-energy elite sport environment. The perspective is from the sidelines, emphasizing the scale and drama of international competition." src="https://lh3.googleusercontent.com/aida-public/AB6AXuChjJiR39Q9Hhhq2F99Ber1tAtsPdX3Kr_g3CTpAmhC-5ZlDGxIyUpnwpNEisgwDqKvvIRpSdx1Ub_jeRvjel_2wJ5GVyS4wdaWos_eCvLh0wv7g_0uaWDnowGy0WqgkbU-VizSI4IHr8j6OPgfAxLD6HRrECBlS_qmxwpqdQ9Y3bZweci32SEwfodn4K3qkSe73CSMte1O56O12v5d9iGMSHBJSVgkppJQOSBCOqcCP1GlDYCcIUk_ynJN99kjbCqZZSkEpwm-v6g"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent"></div>
+</div>
+<div class="p-md space-y-xs">
+<span class="font-label-caps text-[10px] text-primary-fixed uppercase">Strategy Guide</span>
+<h3 class="font-title-sm text-title-sm text-on-surface">The 'Underdog' Advantage: Analyzing Group C</h3>
+<p class="text-on-surface-variant text-sm">Statistical breakdown of why smaller teams are overperforming this season...</p>
+</div>
+</div>
+<div class="glass-card rounded-xl overflow-hidden group cursor-pointer">
+<div class="h-40 overflow-hidden relative">
+<img alt="Platform Update" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A clean, minimalist close-up of a modern smartphone displaying a sophisticated sports analytics dashboard with glowing charts and golden icons. The setting is a dark, sleek glass surface reflecting soft blue and gold ambient light, symbolizing technological precision and elite sporting statistics." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDIRjPnjLs7mA_ZbZlOyJg_NKSa3zCXD6jx26oF56vSj1jjEoXRSdKDndVW_i9AgTiVtJSlmrX13fhCPNTOh_6X_eedYgzeb3X0wgVZbkOfV2EjwaUTXccDHTSwQQjlGwjhgiuRmvlndP3OXabiQ9hvHySZBBrQpiyBWjY2qPiif3ZeBBwpkP_dFshcfLBkejbnh8hshTrblQ9mK8dYR9IXsjmNGFZBexqDR67ZJdLphkzNK7NezXslpunYsg58yTmtSBEF-Z6ro_Y"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent"></div>
+</div>
+<div class="p-md space-y-xs">
+<span class="font-label-caps text-[10px] text-tertiary-fixed uppercase">Platform Update</span>
+<h3 class="font-title-sm text-title-sm text-on-surface">New Feature: Double Points Multiplier</h3>
+<p class="text-on-surface-variant text-sm">Starting next week, select one match per day for 2x points rewards...</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Side Ranking Snippet -->
+<div class="space-y-md">
+<h2 class="font-headline-md text-headline-md text-primary">Local Rivals</h2>
+<div class="glass-card rounded-xl overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-highest/50">
+<tr>
+<th class="font-label-caps text-label-caps p-sm text-outline">POS</th>
+<th class="font-label-caps text-label-caps p-sm text-outline">PLAYER</th>
+<th class="font-label-caps text-label-caps p-sm text-outline text-right">PTS</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr class="hover:bg-white/5 transition-colors">
+<td class="p-sm font-label-caps text-primary-fixed">01</td>
+<td class="p-sm flex items-center gap-xs">
+<span class="material-symbols-outlined text-sm text-primary-container" style="font-variation-settings: 'FILL' 1;">military_tech</span>
+<span class="font-title-sm text-sm">GiaBao_Pro</span>
+</td>
+<td class="p-sm text-right font-label-caps">9,120</td>
+</tr>
+<tr class="bg-primary-container/10">
+<td class="p-sm font-label-caps text-on-surface">1,245</td>
+<td class="p-sm flex items-center gap-xs">
+<div class="w-1 h-1 bg-primary-fixed rounded-full"></div>
+<span class="font-title-sm text-sm font-bold text-primary-fixed">MinhQuan92</span>
+</td>
+<td class="p-sm text-right font-label-caps font-bold">8,420</td>
+</tr>
+<tr class="hover:bg-white/5 transition-colors">
+<td class="p-sm font-label-caps text-outline">1,246</td>
+<td class="p-sm flex items-center gap-xs font-title-sm text-sm">HoangAn_X</td>
+<td class="p-sm text-right font-label-caps">8,415</td>
+</tr>
+<tr class="hover:bg-white/5 transition-colors">
+<td class="p-sm font-label-caps text-outline">1,247</td>
+<td class="p-sm flex items-center gap-xs font-title-sm text-sm">LeThi_L</td>
+<td class="p-sm text-right font-label-caps">8,390</td>
+</tr>
+</tbody>
+</table>
+<div class="p-sm text-center bg-surface-container-low border-t border-outline-variant/10">
+<button class="font-label-caps text-label-caps text-primary-fixed-dim hover:text-primary-fixed transition-colors">FULL LEADERBOARD</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full py-xl px-margin-desktop flex flex-col md:flex-row justify-between items-center gap-gutter bg-surface-container-lowest border-t border-outline-variant/10 mt-auto">
+<div class="flex flex-col items-center md:items-start gap-xs">
+<span class="font-label-caps text-label-caps text-on-surface">WORLD CUP PREDICTOR</span>
+<p class="font-body-md text-body-md text-outline">© 2024 FIFA World Cup Predictor. Elite Sport Series.</p>
+</div>
+<div class="flex flex-wrap justify-center gap-md">
+<a class="font-body-md text-body-md text-outline hover:text-tertiary-fixed transition-colors underline-offset-4 hover:underline" href="#">Privacy Policy</a>
+<a class="font-body-md text-body-md text-outline hover:text-tertiary-fixed transition-colors underline-offset-4 hover:underline" href="#">Terms of Service</a>
+<a class="font-body-md text-body-md text-outline hover:text-tertiary-fixed transition-colors underline-offset-4 hover:underline" href="#">Responsible Gaming</a>
+<a class="font-body-md text-body-md text-outline hover:text-tertiary-fixed transition-colors underline-offset-4 hover:underline" href="#">Contact Us</a>
+</div>
+</footer>
+<!-- Interactive Layer: FAB (Suppressed on Portal page as per instructions) -->
+<script>
+        // Micro-interaction: Update time remaining
+        function updateTimer() {
+            // Static simulation for UI
+            const timers = document.querySelectorAll('.timer-val');
+            // Logic would go here for real countdown
+        }
+        
+        // Add subtle parallax to glass cards
+        document.addEventListener('mousemove', (e) => {
+            const cards = document.querySelectorAll('.glass-card');
+            const mouseX = e.clientX / window.innerWidth;
+            const mouseY = e.clientY / window.innerHeight;
+            
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                const cardX = rect.left + rect.width / 2;
+                const cardY = rect.top + rect.height / 2;
+                
+                const angleX = (window.innerHeight / 2 - e.clientY) / 100;
+                const angleY = (e.clientX - window.innerWidth / 2) / 100;
+                
+                // Very subtle tilt on hover
+                if (e.target.closest('.glass-card') === card) {
+                    card.style.transform = `perspective(1000px) rotateX(${angleX}deg) rotateY(${angleY}deg) scale(1.02)`;
+                } else {
+                    card.style.transform = `perspective(1000px) rotateX(0) rotateY(0) scale(1)`;
+                }
+                card.style.transition = 'transform 0.2s ease-out';
+            });
+        });
+    </script>
+</body></html>
