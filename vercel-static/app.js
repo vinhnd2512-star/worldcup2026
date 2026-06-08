@@ -29,6 +29,7 @@ const state = {
   active: "matches",
   selectedMatchId: null,
   selectedTeamId: null,
+  selectedRoleGroup: "",
   predictionStatsTab: "upcoming",
   matchFilter: "upcoming",
   matchSearch: "",
@@ -929,7 +930,10 @@ function renderTeamProfile() {
           <p>${escapeHtml(team.country || team.name)} · ${escapeHtml(team.group_name ? formatGroupName(team.group_name) : "World Cup 2026")} · ${escapeHtml(team.confederation || "Confederation TBA")}</p>
         </div>
         <div class="team-profile-actions">
-          ${state.profile?.role === "admin" ? `<button class="primary-button" data-refresh-fifa-team="${escapeHtml(team.code)}">Cập nhật FIFA</button>` : ""}
+          ${state.profile?.role === "admin" ? `
+            <button class="ghost-button" data-refresh-all-fifa-teams>Cập nhật tất cả đội bóng</button>
+            <button class="primary-button" data-refresh-fifa-team="${escapeHtml(team.code)}">Cập nhật FIFA</button>
+          ` : ""}
           <span class="pill">${escapeHtml(ranking)}</span>
         </div>
       </section>
@@ -945,7 +949,7 @@ function renderTeamProfile() {
             <h2>Đội hình ra sân dự kiến</h2>
             <span>${escapeHtml(sourceLabel)} · ${escapeHtml(lineup.formation)}</span>
           </div>
-          ${lineup.players.length ? `<div class="lineup-board">${lineup.players.map(renderLineupPlayer).join("")}</div>` : `<p class="empty-copy">Chưa có cầu thủ để dựng đội hình dự kiến.</p>`}
+          ${renderInteractivePitch(lineup)}
         </article>
         <article class="glass-card panel">
           <div class="section-heading"><h2>Hồ sơ đội bóng</h2><span>${escapeHtml(team.profile_updated_at ? dateText(team.profile_updated_at) : "seed")}</span></div>
@@ -964,7 +968,7 @@ function renderTeamProfile() {
         </div>
         ${
           players.length
-            ? `<div class="roster-grid">${players.map(renderPlayerCard).join("")}</div>`
+            ? renderRoleSquadSections(players)
             : `<p class="empty-copy">Chưa có roster. Admin bấm Cập nhật FIFA hoặc Sync providers để lấy cầu thủ từ FIFA.</p>`
         }
       </section>
@@ -974,6 +978,92 @@ function renderTeamProfile() {
 
 function profileMetric(label, value) {
   return `<div class="glass-card metric team-profile-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value || "TBA"))}</strong></div>`;
+}
+
+function roleDefinitions() {
+  return [
+    { key: "GK", label: "Goalkeepers", short: "GK", zone: "goalkeeper" },
+    { key: "DEF", label: "Defenders", short: "DEF", zone: "defenders" },
+    { key: "MID", label: "Midfielders", short: "MID", zone: "midfielders" },
+    { key: "FWD", label: "Forwards", short: "FWD", zone: "forwards" }
+  ];
+}
+
+function roleLabel(key) {
+  return roleDefinitions().find((role) => role.key === key)?.label || "Other / Unknown";
+}
+
+function groupedPlayersByRole(players) {
+  const grouped = { GK: [], DEF: [], MID: [], FWD: [], OTHER: [] };
+  for (const player of players) {
+    grouped[playerPositionGroup(player)].push(player);
+  }
+  return grouped;
+}
+
+function renderInteractivePitch(lineup) {
+  const players = Array.isArray(lineup.players) ? lineup.players : [];
+  const grouped = groupedPlayersByRole(players);
+  const selected = state.selectedRoleGroup;
+  if (!players.length) {
+    return `<p class="empty-copy">Chưa có cầu thủ để dựng đội hình dự kiến.</p>`;
+  }
+  return `
+    <div class="pitch-shell">
+      <div class="role-filter-row">
+        <button class="filter-pill ${selected ? "" : "active"}" data-role-filter="">All roles</button>
+        ${roleDefinitions().map((role) => `
+          <button class="filter-pill ${selected === role.key ? "active" : ""}" data-role-filter="${role.key}">
+            ${role.short} · ${fmt.format(grouped[role.key].length)}
+          </button>
+        `).join("")}
+      </div>
+      <div class="football-pitch" aria-label="Interactive projected lineup pitch">
+        <div class="pitch-halfway"></div>
+        <div class="pitch-center-circle"></div>
+        <div class="pitch-box own"></div>
+        <div class="pitch-box away"></div>
+        ${roleDefinitions().map((role) => renderPitchRoleZone(role, grouped[role.key])).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderPitchRoleZone(role, players) {
+  const selected = state.selectedRoleGroup === role.key;
+  return `
+    <button class="pitch-role-zone ${role.zone} ${selected ? "active" : ""}" data-role-filter="${role.key}">
+      <span>${role.label}</span>
+      <strong>${fmt.format(players.length)}</strong>
+      <small>${players.slice(0, 4).map((player) => escapeHtml(player.name || "TBA")).join(" · ") || "No players"}</small>
+    </button>
+  `;
+}
+
+function renderRoleSquadSections(players) {
+  const grouped = groupedPlayersByRole(players);
+  const sections = [
+    ...roleDefinitions(),
+    ...(grouped.OTHER.length ? [{ key: "OTHER", label: "Other / Unknown", short: "OTHER" }] : [])
+  ];
+  const selected = state.selectedRoleGroup;
+  return `
+    <div class="role-squad-layout">
+      ${sections.map((role) => {
+        const rolePlayers = grouped[role.key] || [];
+        const hidden = selected && selected !== role.key;
+        return `
+          <section class="role-squad-section ${selected === role.key ? "active" : ""} ${hidden ? "dimmed" : ""}" id="role-section-${role.key}">
+            <div class="section-heading">
+              <h3>${escapeHtml(role.label)}</h3>
+              <span>${fmt.format(rolePlayers.length)} players</span>
+            </div>
+            ${rolePlayers.length ? `<div class="roster-grid">${rolePlayers.map(renderPlayerCard).join("")}</div>` : `<p class="empty-copy">No players in this role.</p>`}
+          </section>
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function renderLineupPlayer(player) {
@@ -1768,6 +1858,7 @@ function bindShellEvents() {
   document.querySelectorAll("[data-team-roster]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedTeamId = Number(button.dataset.teamRoster);
+      state.selectedRoleGroup = "";
       state.active = "teamProfile";
       renderApp();
     });
@@ -1785,6 +1876,16 @@ function bindShellEvents() {
 
   document.querySelectorAll("[data-refresh-fifa-team]").forEach((button) => {
     button.addEventListener("click", () => refreshFifaTeam(button.dataset.refreshFifaTeam));
+  });
+  document.querySelector("[data-refresh-all-fifa-teams]")?.addEventListener("click", refreshAllFifaTeams);
+  document.querySelectorAll("[data-role-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedRoleGroup = button.dataset.roleFilter || "";
+      renderApp();
+      if (state.selectedRoleGroup) {
+        document.getElementById(`role-section-${state.selectedRoleGroup}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
   });
 
   document.getElementById("match-search")?.addEventListener("input", (event) => {
@@ -2222,6 +2323,35 @@ async function refreshFifaTeam(teamCode) {
     state.message = "";
   } else {
     state.message = `FIFA refresh finished for ${teamCode}: profiles ${result.fifaProfileResult?.status || "unknown"}; squads ${result.squadResult?.players || 0} players.`;
+    state.error = "";
+  }
+  await loadData();
+}
+
+async function refreshAllFifaTeams() {
+  const response = await fetch("/api/sync-football-data", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${state.session.access_token}`
+    },
+    body: JSON.stringify({
+      includeFixtures: false,
+      includeOdds: false,
+      includeStats: false,
+      includeRankings: false,
+      includeFifaProfiles: true,
+      includeSquads: true
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    state.error = result.error || "FIFA all-team refresh failed";
+    state.message = "";
+  } else {
+    const teams = result.fifaProfileResult?.matched ?? result.squadResult?.teams ?? 0;
+    const players = result.squadResult?.players ?? 0;
+    state.message = `FIFA refresh finished for all teams: ${fmt.format(teams)} teams; ${fmt.format(players)} players.`;
     state.error = "";
   }
   await loadData();

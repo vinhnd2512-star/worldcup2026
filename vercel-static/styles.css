@@ -1462,6 +1462,177 @@ select {
   color: var(--muted);
 }
 
+.pitch-shell {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.role-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.football-pitch {
+  position: relative;
+  min-height: 460px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-radius: 8px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 126, 92, 0.95) 0,
+      rgba(0, 126, 92, 0.95) 72px,
+      rgba(0, 150, 104, 0.95) 72px,
+      rgba(0, 150, 104, 0.95) 144px
+    );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.football-pitch::before,
+.football-pitch::after,
+.pitch-halfway,
+.pitch-center-circle,
+.pitch-box {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.football-pitch::before {
+  inset: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  border-radius: 6px;
+}
+
+.football-pitch::after {
+  left: 50%;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.pitch-halfway {
+  display: none;
+}
+
+.pitch-center-circle {
+  left: 50%;
+  top: 50%;
+  width: 112px;
+  height: 112px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.pitch-box {
+  top: 50%;
+  width: 76px;
+  height: 210px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  transform: translateY(-50%);
+}
+
+.pitch-box.own {
+  left: 12px;
+  border-left: 0;
+}
+
+.pitch-box.away {
+  right: 12px;
+  border-right: 0;
+}
+
+.pitch-role-zone {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-width: 112px;
+  min-height: 96px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(6, 63, 49, 0.44);
+  box-shadow: 0 12px 24px rgba(8, 52, 39, 0.22);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pitch-role-zone:hover,
+.pitch-role-zone.active {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 16px 30px rgba(8, 52, 39, 0.28);
+}
+
+.pitch-role-zone span {
+  font-weight: 900;
+}
+
+.pitch-role-zone strong {
+  font-size: 24px;
+}
+
+.pitch-role-zone small {
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.35;
+}
+
+.pitch-role-zone.goalkeeper {
+  left: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.pitch-role-zone.defenders {
+  left: 24%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.pitch-role-zone.midfielders {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.pitch-role-zone.forwards {
+  right: 9%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.role-squad-layout {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.role-squad-section {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.45);
+  transition: opacity 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.role-squad-section.active {
+  border-color: var(--gold);
+  background: rgba(0, 168, 120, 0.1);
+}
+
+.role-squad-section.dimmed {
+  display: none;
+}
+
 .roster-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1793,6 +1964,69 @@ select {
     min-height: 300px;
     align-items: start;
     flex-direction: column;
+  }
+
+  .football-pitch {
+    min-height: 620px;
+  }
+
+  .football-pitch::after {
+    left: 12px;
+    right: 12px;
+    top: 50%;
+    bottom: auto;
+    width: auto;
+    height: 2px;
+  }
+
+  .pitch-box {
+    left: 50%;
+    width: 180px;
+    height: 64px;
+    transform: translateX(-50%);
+  }
+
+  .pitch-box.own {
+    top: 12px;
+    border-left: 2px solid rgba(255, 255, 255, 0.72);
+    border-top: 0;
+  }
+
+  .pitch-box.away {
+    top: auto;
+    right: auto;
+    bottom: 12px;
+    border-right: 2px solid rgba(255, 255, 255, 0.72);
+    border-bottom: 0;
+  }
+
+  .pitch-role-zone {
+    left: 50%;
+    right: auto;
+    width: min(88%, 320px);
+    min-height: 86px;
+    transform: translateX(-50%);
+  }
+
+  .pitch-role-zone.goalkeeper {
+    top: 24px;
+    transform: translateX(-50%);
+  }
+
+  .pitch-role-zone.defenders {
+    top: 170px;
+    transform: translateX(-50%);
+  }
+
+  .pitch-role-zone.midfielders {
+    top: 318px;
+    transform: translateX(-50%);
+  }
+
+  .pitch-role-zone.forwards {
+    top: auto;
+    bottom: 24px;
+    transform: translateX(-50%);
   }
 
   .standings-row {

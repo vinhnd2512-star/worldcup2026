@@ -83,6 +83,13 @@ const requiredAppTokens = [
   "teamProfile",
   "projectedLineup",
   "data-refresh-fifa-team",
+  "data-refresh-all-fifa-teams",
+  "refreshAllFifaTeams",
+  "selectedRoleGroup",
+  "data-role-filter",
+  "renderInteractivePitch",
+  "renderRoleSquadSections",
+  "football-pitch",
   "Champion",
   "admin-filter-form",
   "applyAdminFilters"
