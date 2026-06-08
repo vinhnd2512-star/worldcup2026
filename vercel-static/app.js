@@ -8,6 +8,7 @@ const state = {
   bracketMatches: [],
   teams: [],
   teamPlayers: [],
+  teamLineups: [],
   outrightMarkets: [],
   bets: [],
   leaderboard: [],
@@ -229,6 +230,12 @@ async function loadData() {
       .order("shirt_number", { ascending: true });
     state.teamPlayers = playersResult.error ? [] : playersResult.data || [];
 
+    const lineupsResult = await state.client
+      .from("team_lineups")
+      .select("*,match:matches(*)")
+      .order("updated_at", { ascending: false });
+    state.teamLineups = lineupsResult.error ? [] : lineupsResult.data || [];
+
     const matchResult = await state.client
       .from("matches")
       .select("*,home_team:teams!matches_home_team_id_fkey(*),away_team:teams!matches_away_team_id_fkey(*),match_markets(*)")
@@ -385,6 +392,7 @@ function renderApp() {
 }
 
 function renderActiveView() {
+  if (state.active === "teamProfile") return renderTeamProfile();
   if (state.active === "detail") return renderDetail();
   if (state.active === "groups") return renderGroups();
   if (state.active === "bracket") return renderBracket();
@@ -704,7 +712,6 @@ function matchTitle(match) {
 
 function renderGroups() {
   const groups = groupNames();
-  const selectedTeam = state.teams.find((team) => team.id === state.selectedTeamId);
   return `
     <div class="stack">
       <div class="section-heading">
@@ -714,7 +721,6 @@ function renderGroups() {
         </div>
         <span>${fmt.format(groups.length)} groups</span>
       </div>
-      ${selectedTeam ? renderRosterPanel(selectedTeam) : ""}
       <section class="groups-grid">
         ${groups.map(renderGroupCard).join("") || `<section class="glass-card panel"><h2>No groups</h2><p>Run supabase/seed.sql.</p></section>`}
       </section>
@@ -830,6 +836,159 @@ function isCompletedScore(match) {
     && match.away_score !== null;
 }
 
+function teamPlayersFor(teamId) {
+  return state.teamPlayers
+    .filter((player) => player.team_id === teamId)
+    .sort((left, right) => {
+      const leftNo = number(left.shirt_number) || 999;
+      const rightNo = number(right.shirt_number) || 999;
+      return positionSortValue(left.position) - positionSortValue(right.position)
+        || leftNo - rightNo
+        || String(left.name || "").localeCompare(String(right.name || ""));
+    });
+}
+
+function positionSortValue(position) {
+  const text = String(position || "").toLowerCase();
+  if (/goal|keeper|gk/.test(text)) return 0;
+  if (/def|back/.test(text)) return 1;
+  if (/mid/.test(text)) return 2;
+  if (/for|att|wing|striker|fw/.test(text)) return 3;
+  return 4;
+}
+
+function playerPositionGroup(player) {
+  const text = String(player.position || "").toLowerCase();
+  if (/goal|keeper|gk/.test(text)) return "GK";
+  if (/def|back/.test(text)) return "DEF";
+  if (/mid/.test(text)) return "MID";
+  if (/for|att|wing|striker|fw/.test(text)) return "FWD";
+  return "OTHER";
+}
+
+function selectedTeamLineup(team) {
+  return state.teamLineups
+    .filter((lineup) => lineup.team_id === team.id)
+    .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime())[0] || null;
+}
+
+function projectedLineup(team) {
+  const official = selectedTeamLineup(team);
+  if (Array.isArray(official?.lineup_json) && official.lineup_json.length) {
+    return {
+      source: official.source || "fifa-live",
+      formation: official.formation || "Official",
+      players: official.lineup_json
+    };
+  }
+  const players = teamPlayersFor(team.id);
+  const groups = {
+    GK: players.filter((player) => playerPositionGroup(player) === "GK"),
+    DEF: players.filter((player) => playerPositionGroup(player) === "DEF"),
+    MID: players.filter((player) => playerPositionGroup(player) === "MID"),
+    FWD: players.filter((player) => playerPositionGroup(player) === "FWD")
+  };
+  const picked = [
+    ...groups.GK.slice(0, 1),
+    ...groups.DEF.slice(0, 4),
+    ...groups.MID.slice(0, 3),
+    ...groups.FWD.slice(0, 3)
+  ];
+  const pickedIds = new Set(picked.map((player) => player.id));
+  for (const player of players) {
+    if (picked.length >= 11) break;
+    if (!pickedIds.has(player.id)) picked.push(player);
+  }
+  return {
+    source: "projected",
+    formation: "4-3-3",
+    players: picked.slice(0, 11)
+  };
+}
+
+function renderTeamProfile() {
+  const team = state.teams.find((item) => item.id === state.selectedTeamId) || state.teams[0];
+  if (!team) return `<section class="glass-card panel"><h2>No team selected</h2><p>Run supabase/seed.sql first.</p></section>`;
+  const players = teamPlayersFor(team.id);
+  const ranking = team.fifa_rank
+    ? `FIFA #${fmt.format(number(team.fifa_rank))}${team.fifa_points ? ` · ${fmtOne.format(number(team.fifa_points))} pts` : ""}`
+    : "FIFA ranking TBA";
+  const titleYears = Array.isArray(team.world_cup_title_years) ? team.world_cup_title_years : [];
+  const titleCopy = number(team.world_cup_titles)
+    ? `${fmt.format(number(team.world_cup_titles))} titles · ${titleYears.join(", ")}`
+    : "No World Cup titles yet";
+  const lineup = projectedLineup(team);
+  const sourceLabel = lineup.source === "fifa-live" ? "FIFA live" : "Dự kiến tự động";
+  return `
+    <div class="stack team-profile-page">
+      <section class="team-profile-hero stadium-surface">
+        <div>
+          <button class="ghost-button compact-button" data-back-groups>Back</button>
+          <span class="kicker">Team profile</span>
+          <h1>${teamFlagContent(team)} ${escapeHtml(team.name)}</h1>
+          <p>${escapeHtml(team.country || team.name)} · ${escapeHtml(team.group_name ? formatGroupName(team.group_name) : "World Cup 2026")} · ${escapeHtml(team.confederation || "Confederation TBA")}</p>
+        </div>
+        <div class="team-profile-actions">
+          ${state.profile?.role === "admin" ? `<button class="primary-button" data-refresh-fifa-team="${escapeHtml(team.code)}">Cập nhật FIFA</button>` : ""}
+          <span class="pill">${escapeHtml(ranking)}</span>
+        </div>
+      </section>
+      <section class="team-profile-grid">
+        ${profileMetric("Coach", team.coach_name || "TBA")}
+        ${profileMetric("World Cup history", titleCopy)}
+        ${profileMetric("Squad", `${fmt.format(players.length)} players`)}
+        ${profileMetric("FIFA team ID", team.fifa_team_id || "Not synced")}
+      </section>
+      <section class="team-sheet-grid">
+        <article class="glass-card panel">
+          <div class="section-heading">
+            <h2>Đội hình ra sân dự kiến</h2>
+            <span>${escapeHtml(sourceLabel)} · ${escapeHtml(lineup.formation)}</span>
+          </div>
+          ${lineup.players.length ? `<div class="lineup-board">${lineup.players.map(renderLineupPlayer).join("")}</div>` : `<p class="empty-copy">Chưa có cầu thủ để dựng đội hình dự kiến.</p>`}
+        </article>
+        <article class="glass-card panel">
+          <div class="section-heading"><h2>Hồ sơ đội bóng</h2><span>${escapeHtml(team.profile_updated_at ? dateText(team.profile_updated_at) : "seed")}</span></div>
+          <p>${escapeHtml(team.name)} đang ở ${escapeHtml(team.group_name ? formatGroupName(team.group_name) : "World Cup 2026")} với ${escapeHtml(ranking)}.</p>
+          <p><b>Huấn luyện viên:</b> ${escapeHtml(team.coach_name || "TBA")}</p>
+          <p><b>Lịch sử vô địch:</b> ${escapeHtml(titleCopy)}</p>
+        </article>
+      </section>
+      <section class="glass-card roster-panel">
+        <div class="section-heading">
+          <div>
+            <h2>Full squad</h2>
+            <p>${escapeHtml(players.length ? "Synced from FIFA squad API" : "Player list is not updated yet")}</p>
+          </div>
+          <span>${fmt.format(players.length)} players</span>
+        </div>
+        ${
+          players.length
+            ? `<div class="roster-grid">${players.map(renderPlayerCard).join("")}</div>`
+            : `<p class="empty-copy">Chưa có roster. Admin bấm Cập nhật FIFA hoặc Sync providers để lấy cầu thủ từ FIFA.</p>`
+        }
+      </section>
+    </div>
+  `;
+}
+
+function profileMetric(label, value) {
+  return `<div class="glass-card metric team-profile-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value || "TBA"))}</strong></div>`;
+}
+
+function renderLineupPlayer(player) {
+  const name = player.name || player.player_name || "TBA";
+  const position = player.position || player.role || "TBA";
+  const shirt = player.shirt_number || player.number || "";
+  return `
+    <div class="lineup-player">
+      <b>${shirt ? `#${escapeHtml(String(shirt))}` : "-"}</b>
+      <span>${escapeHtml(name)}</span>
+      <small>${escapeHtml(position)}</small>
+    </div>
+  `;
+}
+
 function renderRosterPanel(team) {
   const players = state.teamPlayers
     .filter((player) => player.team_id === team.id)
@@ -858,12 +1017,17 @@ function renderRosterPanel(team) {
 function renderPlayerCard(player) {
   const rating = player.overall_rating ? `OVR ${fmt.format(number(player.overall_rating))}` : (player.rating_source ? "Rating pending" : "OVR TBA");
   const club = player.club || player.source || "Club TBA";
+  const bio = [
+    player.shirt_number ? `#${fmt.format(player.shirt_number)}` : "No number",
+    player.height_cm ? `${fmt.format(number(player.height_cm))} cm` : null,
+    player.weight_kg ? `${fmt.format(number(player.weight_kg))} kg` : null
+  ].filter(Boolean).join(" · ");
   return `
     <article class="player-card">
       ${player.photo_url ? `<img src="${escapeHtml(player.photo_url)}" alt="${escapeHtml(player.name)}" loading="lazy">` : ""}
       <strong>${escapeHtml(player.name)}</strong>
       <span>${escapeHtml(player.position || "Position TBA")}</span>
-      <small>${player.shirt_number ? `#${fmt.format(player.shirt_number)}` : "No shirt number"} · ${escapeHtml(club)}</small>
+      <small>${escapeHtml(bio)} · ${escapeHtml(club)}</small>
       <b>${escapeHtml(rating)}</b>
     </article>
   `;
@@ -1604,14 +1768,23 @@ function bindShellEvents() {
   document.querySelectorAll("[data-team-roster]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedTeamId = Number(button.dataset.teamRoster);
-      state.active = "groups";
+      state.active = "teamProfile";
       renderApp();
     });
+  });
+
+  document.querySelector("[data-back-groups]")?.addEventListener("click", () => {
+    state.active = "groups";
+    renderApp();
   });
 
   document.querySelector("[data-close-roster]")?.addEventListener("click", () => {
     state.selectedTeamId = null;
     renderApp();
+  });
+
+  document.querySelectorAll("[data-refresh-fifa-team]").forEach((button) => {
+    button.addEventListener("click", () => refreshFifaTeam(button.dataset.refreshFifaTeam));
   });
 
   document.getElementById("match-search")?.addEventListener("input", (event) => {
@@ -2005,7 +2178,7 @@ async function syncProviders() {
       "Content-Type": "application/json",
       Authorization: `Bearer ${state.session.access_token}`
     },
-    body: JSON.stringify({ includeOdds: true, includeRankings: true, includeSquads: true })
+    body: JSON.stringify({ includeOdds: true, includeRankings: true, includeFifaProfiles: true, includeSquads: true })
   });
   const result = await response.json();
   if (!response.ok) {
@@ -2016,9 +2189,39 @@ async function syncProviders() {
     const footballDataStatus = result.footballDataResult?.status || "unknown";
     const statsStatus = result.statsResult?.status || "unknown";
     const rankingStatus = result.rankingResult?.status || "unknown";
+    const fifaProfileStatus = result.fifaProfileResult?.status || "unknown";
     const squadStatus = result.squadResult?.status || "unknown";
     const oddsStatus = result.oddsResult?.status || "unknown";
-    state.message = `Provider sync finished. API-FOOTBALL: ${fixtureStatus}; football-data.org: ${footballDataStatus}; stats: ${statsStatus}; rankings: ${rankingStatus}; squads: ${squadStatus}; odds: ${oddsStatus}.`;
+    state.message = `Provider sync finished. API-FOOTBALL: ${fixtureStatus}; football-data.org: ${footballDataStatus}; stats: ${statsStatus}; rankings: ${rankingStatus}; FIFA profiles: ${fifaProfileStatus}; squads: ${squadStatus}; odds: ${oddsStatus}.`;
+    state.error = "";
+  }
+  await loadData();
+}
+
+async function refreshFifaTeam(teamCode) {
+  const response = await fetch("/api/sync-football-data", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${state.session.access_token}`
+    },
+    body: JSON.stringify({
+      includeFixtures: false,
+      includeOdds: false,
+      includeStats: false,
+      includeRankings: false,
+      includeFifaProfiles: true,
+      includeSquads: true,
+      fifaTeamCode: teamCode,
+      maxSquadTeams: 1
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    state.error = result.error || "FIFA team refresh failed";
+    state.message = "";
+  } else {
+    state.message = `FIFA refresh finished for ${teamCode}: profiles ${result.fifaProfileResult?.status || "unknown"}; squads ${result.squadResult?.players || 0} players.`;
     state.error = "";
   }
   await loadData();

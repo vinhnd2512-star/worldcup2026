@@ -10,7 +10,23 @@ alter table public.teams
   add column if not exists fifa_rank integer,
   add column if not exists fifa_points numeric(8, 2),
   add column if not exists rating_source text,
-  add column if not exists rating_updated_at timestamptz;
+  add column if not exists rating_updated_at timestamptz,
+  add column if not exists fifa_team_id text,
+  add column if not exists fifa_profile_json jsonb not null default '{}',
+  add column if not exists coach_name text,
+  add column if not exists world_cup_titles integer not null default 0,
+  add column if not exists world_cup_title_years integer[] not null default '{}',
+  add column if not exists profile_updated_at timestamptz;
+
+alter table public.team_players
+  add column if not exists height_cm numeric(5, 1),
+  add column if not exists weight_kg numeric(5, 1),
+  add column if not exists preferred_foot text,
+  add column if not exists fifa_position_code integer,
+  add column if not exists real_position integer,
+  add column if not exists position_side integer,
+  add column if not exists active_status integer,
+  add column if not exists fifa_payload_json jsonb not null default '{}';
 
 -- Remove old demo rows from the earlier MVP seed without touching live provider sync rows.
 delete from public.sync_runs
@@ -201,6 +217,23 @@ set fifa_rank = fifa_rankings.fifa_rank,
     rating_updated_at = now()
 from fifa_rankings
 where t.code = fifa_rankings.code;
+
+with world_cup_history(code, title_years) as (
+  values
+    ('ARG', array[1978, 1986, 2022]),
+    ('BRA', array[1958, 1962, 1970, 1994, 2002]),
+    ('ENG', array[1966]),
+    ('ESP', array[2010]),
+    ('FRA', array[1998, 2018]),
+    ('GER', array[1954, 1974, 1990, 2014]),
+    ('URU', array[1930, 1950])
+)
+update public.teams t
+set world_cup_titles = cardinality(world_cup_history.title_years),
+    world_cup_title_years = world_cup_history.title_years,
+    profile_updated_at = coalesce(t.profile_updated_at, now())
+from world_cup_history
+where t.code = world_cup_history.code;
 
 insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
 values

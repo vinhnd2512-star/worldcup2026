@@ -39,7 +39,13 @@ create table if not exists public.teams (
   fifa_rank integer,
   fifa_points numeric(8, 2),
   rating_source text,
-  rating_updated_at timestamptz
+  rating_updated_at timestamptz,
+  fifa_team_id text,
+  fifa_profile_json jsonb not null default '{}',
+  coach_name text,
+  world_cup_titles integer not null default 0,
+  world_cup_title_years integer[] not null default '{}',
+  profile_updated_at timestamptz
 );
 
 alter table public.teams
@@ -51,7 +57,13 @@ alter table public.teams
   add column if not exists fifa_rank integer,
   add column if not exists fifa_points numeric(8, 2),
   add column if not exists rating_source text,
-  add column if not exists rating_updated_at timestamptz;
+  add column if not exists rating_updated_at timestamptz,
+  add column if not exists fifa_team_id text,
+  add column if not exists fifa_profile_json jsonb not null default '{}',
+  add column if not exists coach_name text,
+  add column if not exists world_cup_titles integer not null default 0,
+  add column if not exists world_cup_title_years integer[] not null default '{}',
+  add column if not exists profile_updated_at timestamptz;
 
 create table if not exists public.team_players (
   id bigint generated always as identity primary key,
@@ -66,6 +78,14 @@ create table if not exists public.team_players (
   overall_rating integer,
   rating_source text,
   rating_updated_at timestamptz,
+  height_cm numeric(5, 1),
+  weight_kg numeric(5, 1),
+  preferred_foot text,
+  fifa_position_code integer,
+  real_position integer,
+  position_side integer,
+  active_status integer,
+  fifa_payload_json jsonb not null default '{}',
   source text not null default 'manual',
   updated_at timestamptz not null default now()
 );
@@ -75,7 +95,15 @@ alter table public.team_players
   add column if not exists photo_url text,
   add column if not exists overall_rating integer,
   add column if not exists rating_source text,
-  add column if not exists rating_updated_at timestamptz;
+  add column if not exists rating_updated_at timestamptz,
+  add column if not exists height_cm numeric(5, 1),
+  add column if not exists weight_kg numeric(5, 1),
+  add column if not exists preferred_foot text,
+  add column if not exists fifa_position_code integer,
+  add column if not exists real_position integer,
+  add column if not exists position_side integer,
+  add column if not exists active_status integer,
+  add column if not exists fifa_payload_json jsonb not null default '{}';
 
 create table if not exists public.matches (
   id bigint generated always as identity primary key,
@@ -100,6 +128,17 @@ create table if not exists public.matches (
 alter table public.matches
   add column if not exists home_penalties integer,
   add column if not exists away_penalties integer;
+
+create table if not exists public.team_lineups (
+  id bigint generated always as identity primary key,
+  team_id bigint not null references public.teams(id) on delete cascade,
+  match_id bigint references public.matches(id) on delete cascade,
+  formation text,
+  source text not null default 'projected',
+  lineup_json jsonb not null default '[]',
+  updated_at timestamptz not null default now(),
+  unique(team_id, match_id, source)
+);
 
 create table if not exists public.match_stats (
   id bigint generated always as identity primary key,
@@ -288,6 +327,13 @@ create index if not exists matches_away_team_id_idx
 create index if not exists team_players_team_position_idx
   on public.team_players (team_id, position, shirt_number);
 
+create unique index if not exists teams_fifa_team_id_idx
+  on public.teams (fifa_team_id)
+  where fifa_team_id is not null;
+
+create index if not exists team_lineups_team_match_idx
+  on public.team_lineups (team_id, match_id, updated_at desc);
+
 create index if not exists teams_fifa_rank_idx
   on public.teams (fifa_rank)
   where fifa_rank is not null;
@@ -399,6 +445,7 @@ alter table public.profiles enable row level security;
 alter table public.wallet_ledger enable row level security;
 alter table public.teams enable row level security;
 alter table public.team_players enable row level security;
+alter table public.team_lineups enable row level security;
 alter table public.matches enable row level security;
 alter table public.match_stats enable row level security;
 alter table public.bracket_matches enable row level security;
@@ -425,6 +472,13 @@ create policy public_read_teams on public.teams for select to authenticated usin
 
 drop policy if exists public_read_team_players on public.team_players;
 create policy public_read_team_players on public.team_players for select to authenticated using (true);
+
+drop policy if exists public_read_team_lineups on public.team_lineups;
+create policy public_read_team_lineups on public.team_lineups for select to authenticated using (true);
+
+drop policy if exists admin_write_team_lineups on public.team_lineups;
+create policy admin_write_team_lineups on public.team_lineups
+  for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists public_read_matches on public.matches;
 create policy public_read_matches on public.matches for select to authenticated using (true);

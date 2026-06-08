@@ -8,12 +8,26 @@ const WORLD_CUP_SPORT_KEY = "soccer_fifa_world_cup";
 const FIFA_RANKING_URL = "https://inside.fifa.com/fifa-world-ranking/men";
 const FIFA_RANKING_API_URL = "https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en";
 const FIFA_RANKING_SOURCE = "FIFA/Coca-Cola Men's World Ranking";
+const FIFA_API_BASE_URL = "https://api.fifa.com/api/v3";
+const FIFA_WORLD_CUP_COMPETITION_ID = 17;
+const FIFA_WORLD_CUP_SEASON_ID = 285023;
+const FIFA_TEAM_SOURCE = `FIFA team API (${FIFA_API_BASE_URL}/competitions/teams/${FIFA_WORLD_CUP_SEASON_ID})`;
+const FIFA_SQUAD_SOURCE = `FIFA squad API (${FIFA_API_BASE_URL}/teams/{id}/squad?idCompetition=${FIFA_WORLD_CUP_COMPETITION_ID}&idSeason=${FIFA_WORLD_CUP_SEASON_ID})`;
 const ODDS_MATCH_WINDOW_HOURS = 36;
 const DEFAULT_MAX_STATS_FIXTURES = 12;
 const DEFAULT_MAX_SQUAD_TEAMS = 48;
 const STAT_SYNC_WINDOW_HOURS = 96;
 const LIVE_STATUSES = new Set(["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"]);
 const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
+const WORLD_CUP_TITLE_YEARS = {
+  ARG: [1978, 1986, 2022],
+  BRA: [1958, 1962, 1970, 1994, 2002],
+  ENG: [1966],
+  ESP: [2010],
+  FRA: [1998, 2018],
+  GER: [1954, 1974, 1990, 2014],
+  URU: [1930, 1950]
+};
 
 async function readJson(request) {
   const chunks = [];
@@ -148,6 +162,21 @@ async function fifaRankingsLive() {
   });
   if (!response.ok) {
     throw new Error(`FIFA live ranking API failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json();
+}
+
+async function fifaApi(path, params = {}) {
+  const url = new URL(`${FIFA_API_BASE_URL}${path}`);
+  Object.entries({ language: "en", ...params }).forEach(([key, value]) => url.searchParams.set(key, String(value)));
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "WorldCup Predict FIFA profile sync (+https://www.fifa.com)"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`FIFA API ${path} failed: ${response.status} ${await response.text()}`);
   }
   return response.json();
 }
@@ -305,7 +334,21 @@ async function getTeamsForRankingSync() {
   return response.json();
 }
 
-async function getTeamsForSquadSync(limit) {
+async function getTeamsForFifaSquadSync(limit, teamCode = "") {
+  const filters = [
+    "select=id,code,name,country,logo_url,flag_url,fifa_team_id,coach_name,world_cup_titles,world_cup_title_years",
+    "order=name.asc",
+    `limit=${limit}`
+  ];
+  if (teamCode) filters.splice(1, 0, `code=eq.${encodeURIComponent(teamCode)}`);
+  const response = await supabaseFetch(`/rest/v1/teams?${filters.join("&")}`);
+  if (!response.ok) {
+    throw new Error(`Supabase read teams for FIFA squad sync failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json();
+}
+
+async function getTeamsForApiFootballSquadSync(limit) {
   const response = await supabaseFetch(
     `/rest/v1/teams?select=id,provider_id,code,name&provider_id=not.is.null&order=name.asc&limit=${limit}`
   );
@@ -369,6 +412,62 @@ function fifaRankingRows(payload) {
       };
     })
     .filter((row) => row.description && row.fifa_rank && row.fifa_points !== null);
+}
+
+function localizedDescription(value) {
+  const rows = Array.isArray(value) ? value : [];
+  return rows.find((item) => item.Locale === "en-GB")?.Description
+    || rows.find((item) => String(item.Locale || "").toLowerCase().startsWith("en"))?.Description
+    || rows[0]?.Description
+    || "";
+}
+
+function fifaTeamRows(payload) {
+  return Array.isArray(payload?.Results) ? payload.Results : Array.isArray(payload) ? payload : [];
+}
+
+function fifaTeamName(row) {
+  return localizedDescription(row?.TeamName)
+    || localizedDescription(row?.ShortClubName)
+    || row?.Name
+    || row?.TeamName
+    || "";
+}
+
+function fifaCoachName(row) {
+  return localizedDescription(row?.CoachName)
+    || localizedDescription(row?.TeamCoachName)
+    || localizedDescription(row?.ManagerName)
+    || row?.CoachName
+    || row?.TeamCoachName
+    || row?.ManagerName
+    || null;
+}
+
+function fifaPictureUrl(value, format = "sq", size = 4) {
+  const raw = typeof value === "string" ? value : value?.PictureUrl;
+  if (!raw) return null;
+  return raw.replaceAll("{format}", format).replaceAll("{size}", String(size));
+}
+
+function numberOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function integerOrNull(value) {
+  const numeric = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function dateOnly(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : null;
+}
+
+function titleYearsForCode(code) {
+  return WORLD_CUP_TITLE_YEARS[String(code || "").toUpperCase()] || [];
 }
 
 function hoursBetween(left, right) {
@@ -910,66 +1009,173 @@ async function syncFifaRankings() {
   };
 }
 
-async function syncApiFootballSquads(maxTeams = DEFAULT_MAX_SQUAD_TEAMS) {
-  if (!env("API_FOOTBALL_KEY")) {
-    await recordSyncRun({
-      provider: "api-football",
-      jobType: "squads",
-      status: "skipped",
-      requestCount: 0,
-      message: "API_FOOTBALL_KEY is not configured."
-    });
-    return { provider: "api-football", status: "skipped", requests: 0, teams: 0, players: 0 };
+function matchFifaTeamRows(teams, fifaRows) {
+  const byCode = new Map();
+  const byName = new Map();
+  for (const row of fifaRows) {
+    const code = String(row?.IdCountry || row?.TeamCode || row?.CountryCode || "").toUpperCase();
+    const name = fifaTeamName(row);
+    if (code && !byCode.has(code)) byCode.set(code, row);
+    const nameKey = normalizeTeamName(name);
+    if (nameKey && !byName.has(nameKey)) byName.set(nameKey, row);
   }
 
-  const teams = await getTeamsForSquadSync(maxTeams);
+  return teams.map((team) => {
+    const row = byCode.get(String(team.code || "").toUpperCase())
+      || byName.get(normalizeTeamName(team.name))
+      || byName.get(normalizeTeamName(team.country));
+    return { team, row };
+  });
+}
+
+async function syncFifaTeamProfiles(maxTeams = DEFAULT_MAX_SQUAD_TEAMS, teamCode = "") {
+  const teams = await getTeamsForFifaSquadSync(maxTeams, teamCode);
   if (!teams.length) {
     await recordSyncRun({
-      provider: "api-football",
+      provider: "fifa",
+      jobType: "team-profiles",
+      status: "skipped",
+      requestCount: 0,
+      message: teamCode ? `No Supabase team found for ${teamCode}.` : "No Supabase teams are available for FIFA profile sync."
+    });
+    return { provider: "fifa", status: "skipped", requests: 0, teams: 0, matched: 0 };
+  }
+
+  const payload = await fifaApi(`/competitions/teams/${FIFA_WORLD_CUP_SEASON_ID}`);
+  const matches = matchFifaTeamRows(teams, fifaTeamRows(payload));
+  const updatedAt = new Date().toISOString();
+  let matched = 0;
+  const unmatched = [];
+
+  for (const { team, row } of matches) {
+    const titleYears = titleYearsForCode(team.code);
+    if (!row) {
+      unmatched.push(`${team.name} (${team.code})`);
+      await patchJson("teams", [`id=eq.${team.id}`], {
+        world_cup_titles: titleYears.length,
+        world_cup_title_years: titleYears,
+        coach_name: team.coach_name || "TBA",
+        profile_updated_at: updatedAt
+      });
+      continue;
+    }
+
+    const fifaTeamId = row?.IdTeam || row?.TeamId || row?.Id;
+    await patchJson("teams", [`id=eq.${team.id}`], {
+      fifa_team_id: fifaTeamId ? String(fifaTeamId) : team.fifa_team_id,
+      logo_url: fifaPictureUrl(row?.PictureUrl, "sq", 4) || team.logo_url || null,
+      flag_url: fifaPictureUrl(row?.PictureUrl, "sq", 4) || team.flag_url || null,
+      fifa_profile_json: row,
+      coach_name: fifaCoachName(row) || team.coach_name || "TBA",
+      world_cup_titles: titleYears.length,
+      world_cup_title_years: titleYears,
+      profile_updated_at: updatedAt
+    });
+    matched += 1;
+  }
+
+  await recordSyncRun({
+    provider: "fifa",
+    jobType: "team-profiles",
+    status: "success",
+    requestCount: 1,
+    message: `Mapped ${matched}/${teams.length} teams to FIFA team IDs from ${FIFA_TEAM_SOURCE}; unmatched examples: ${unmatched.slice(0, 8).join(", ") || "none"}.`
+  });
+
+  return {
+    provider: "fifa",
+    status: "success",
+    requests: 1,
+    teams: teams.length,
+    matched,
+    unmatched: unmatched.length,
+    source: FIFA_TEAM_SOURCE
+  };
+}
+
+function fifaPlayerRow(player, team) {
+  const name = localizedDescription(player?.PlayerName) || localizedDescription(player?.ShortName);
+  const providerId = player?.IdPlayer || player?.Properties?.IdIFES;
+  const position = localizedDescription(player?.RealPositionLocalized) || localizedDescription(player?.PositionLocalized);
+  const photoUrl = fifaPictureUrl(player?.PlayerPicture, "sq", 4)
+    || fifaPictureUrl(player?.PictureUrl, "sq", 4)
+    || fifaPictureUrl(player?.ThumbnailUrl, "sq", 4);
+  if (!name || !providerId) return null;
+  return {
+    team_id: team.id,
+    provider_id: `fifa-${providerId}`,
+    name,
+    position: position || null,
+    shirt_number: integerOrNull(player?.JerseyNum),
+    date_of_birth: dateOnly(player?.BirthDate),
+    club: player?.ClubName || player?.Club || null,
+    photo_url: photoUrl,
+    height_cm: numberOrNull(player?.Height),
+    weight_kg: numberOrNull(player?.Weight),
+    preferred_foot: player?.PreferredFoot ? String(player.PreferredFoot) : null,
+    fifa_position_code: integerOrNull(player?.Position),
+    real_position: integerOrNull(player?.RealPosition),
+    position_side: integerOrNull(player?.RealPositionSide),
+    active_status: integerOrNull(player?.ActiveStatus),
+    rating_source: FIFA_SQUAD_SOURCE,
+    rating_updated_at: new Date().toISOString(),
+    source: "fifa",
+    fifa_payload_json: player,
+    updated_at: new Date().toISOString()
+  };
+}
+
+async function syncFifaSquads(maxTeams = DEFAULT_MAX_SQUAD_TEAMS, teamCode = "") {
+  let teams = await getTeamsForFifaSquadSync(maxTeams, teamCode);
+  if (!teams.some((team) => team.fifa_team_id)) {
+    await syncFifaTeamProfiles(maxTeams, teamCode);
+    teams = await getTeamsForFifaSquadSync(maxTeams, teamCode);
+  }
+  teams = teams.filter((team) => team.fifa_team_id);
+  if (!teams.length) {
+    await recordSyncRun({
+      provider: "fifa",
       jobType: "squads",
       status: "skipped",
       requestCount: 0,
-      message: "No teams with numeric API-FOOTBALL provider_id are available for squad sync."
+      message: teamCode
+        ? `No FIFA team ID is available for ${teamCode}; run team profile sync first.`
+        : "No teams with FIFA team IDs are available for squad sync."
     });
-    return { provider: "api-football", status: "skipped", requests: 0, teams: 0, players: 0 };
+    return { provider: "fifa", status: "skipped", requests: 0, teams: 0, players: 0 };
   }
 
   const rows = [];
   let requests = 0;
   for (const team of teams) {
-    const payload = await apiFootball("/players/squads", { team: team.provider_id });
+    const payload = await fifaApi(`/teams/${team.fifa_team_id}/squad`, {
+      idCompetition: FIFA_WORLD_CUP_COMPETITION_ID,
+      idSeason: FIFA_WORLD_CUP_SEASON_ID
+    });
     requests += 1;
-    const squad = payload.response?.[0]?.players || [];
+    const squad = Array.isArray(payload?.Players) ? payload.Players : [];
     for (const player of squad) {
-      if (!player?.id || !player.name) continue;
-      rows.push({
-        team_id: team.id,
-        provider_id: `api-football-${player.id}`,
-        name: player.name,
-        position: player.position || null,
-        shirt_number: player.number || null,
-        photo_url: player.photo || null,
-        source: "api-football",
-        updated_at: new Date().toISOString()
-      });
+      const row = fifaPlayerRow(player, team);
+      if (row) rows.push(row);
     }
   }
 
   await upsertJson("team_players", rows, "provider_id");
   await recordSyncRun({
-    provider: "api-football",
+    provider: "fifa",
     jobType: "squads",
     status: "success",
     requestCount: requests,
-    message: `Synced ${rows.length} squad players for ${teams.length} teams from API-FOOTBALL /players/squads.`
+    message: `Synced ${rows.length} squad players for ${teams.length} teams from ${FIFA_SQUAD_SOURCE}.`
   });
 
   return {
-    provider: "api-football",
+    provider: "fifa",
     status: "success",
     requests,
     teams: teams.length,
-    players: rows.length
+    players: rows.length,
+    source: FIFA_SQUAD_SOURCE
   };
 }
 
@@ -1131,10 +1337,13 @@ export default async function handler(request, response) {
   if (request.method === "POST") {
     body = await readJson(request);
   }
+  const includeFixtures = body.includeFixtures !== false;
   const includeOdds = body.includeOdds !== false;
   const includeStats = body.includeStats !== false;
   const includeRankings = body.includeRankings !== false;
   const includeSquads = body.includeSquads !== false;
+  const includeFifaProfiles = body.includeFifaProfiles !== false;
+  const fifaTeamCode = String(body.fifaTeamCode || "").trim().toUpperCase();
   const maxStatsFixtures = Math.max(
     0,
     Math.min(50, Number(body.maxStatsFixtures || env("MAX_STATS_FIXTURES") || DEFAULT_MAX_STATS_FIXTURES))
@@ -1144,13 +1353,15 @@ export default async function handler(request, response) {
     Math.min(64, Number(body.maxSquadTeams || env("MAX_SQUAD_TEAMS") || DEFAULT_MAX_SQUAD_TEAMS))
   );
 
-  const fixtureResult = await runProviderJob({
-    provider: "api-football",
-    jobType: "fixtures",
-    fallback: { teams: 0, matches: 0 },
-    task: syncApiFootballFixtures
-  });
-  const footballDataResult = fixtureResult.status === "failed"
+  const fixtureResult = includeFixtures
+    ? await runProviderJob({
+        provider: "api-football",
+        jobType: "fixtures",
+        fallback: { teams: 0, matches: 0 },
+        task: syncApiFootballFixtures
+      })
+    : { provider: "api-football", status: "skipped", requests: 0, teams: 0, matches: 0 };
+  const footballDataResult = includeFixtures && fixtureResult.status === "failed"
     ? await runProviderJob({
         provider: "football-data.org",
         jobType: "fixtures",
@@ -1174,14 +1385,22 @@ export default async function handler(request, response) {
         task: syncFifaRankings
       })
     : { provider: "fifa", status: "skipped", requests: 0, rankings: 0 };
+  const fifaProfileResult = includeFifaProfiles
+    ? await runProviderJob({
+        provider: "fifa",
+        jobType: "team-profiles",
+        fallback: { teams: 0, matched: 0 },
+        task: () => syncFifaTeamProfiles(maxSquadTeams, fifaTeamCode)
+      })
+    : { provider: "fifa", status: "skipped", requests: 0, teams: 0, matched: 0 };
   const squadResult = includeSquads
     ? await runProviderJob({
-        provider: "api-football",
+        provider: "fifa",
         jobType: "squads",
         fallback: { teams: 0, players: 0 },
-        task: () => syncApiFootballSquads(maxSquadTeams)
+        task: () => syncFifaSquads(maxSquadTeams, fifaTeamCode)
       })
-    : { provider: "api-football", status: "skipped", requests: 0, teams: 0, players: 0 };
+    : { provider: "fifa", status: "skipped", requests: 0, teams: 0, players: 0 };
   const oddsResult = includeOdds
     ? await runProviderJob({
         provider: "the-odds-api",
@@ -1191,7 +1410,7 @@ export default async function handler(request, response) {
       })
     : { provider: "the-odds-api", status: "skipped", requests: 0, events: 0 };
 
-  const results = [fixtureResult, footballDataResult, statsResult, rankingResult, squadResult, oddsResult];
+  const results = [fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, oddsResult];
   const status = results.some((result) => result.status === "failed") ? "partial" : "ok";
-  return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, rankingResult, squadResult, oddsResult });
+  return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, oddsResult });
 }

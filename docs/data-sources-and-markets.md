@@ -62,8 +62,9 @@ Reference:
 Use FIFA rankings as the authoritative team-strength display and keep the source/date on every imported value.
 
 - FIFA/Coca-Cola Men's World Ranking live API stores team rank and points for `teams.fifa_rank`, `teams.fifa_points`, `teams.rating_source`, and `teams.rating_updated_at`. The sync merges by `TeamName[].Description` first, then falls back to `IdCountry` matching `teams.code`.
-- FIFA official World Cup squad lists are the authoritative roster source once squads are confirmed.
-- API-FOOTBALL `players/squads` is the preferred machine-readable roster feed for `team_players` when provider team IDs are available.
+- FIFA competition teams (`/api/v3/competitions/teams/285023`) map official `teams.fifa_team_id`, profile payload, coach fallback, and World Cup title metadata.
+- FIFA official squad endpoint (`/api/v3/teams/{fifa_team_id}/squad?idCompetition=17&idSeason=285023`) is the authoritative `team_players` source for name, position, shirt number, birth date, height, weight, photo, and raw FIFA payload.
+- API-FOOTBALL `players/squads` is no longer the primary roster source, but API-FOOTBALL still powers fixture/stat sync when configured.
 - football-data.org team resources can fill basic squad fields when API-FOOTBALL coverage or quota is unavailable.
 - EA SPORTS FC ratings can be imported manually for optional `team_players.overall_rating`; treat them as game ratings, not official FIFA ratings.
 
@@ -71,6 +72,8 @@ References:
 
 - https://inside.fifa.com/fifa-world-ranking/men
 - https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en
+- https://api.fifa.com/api/v3/competitions/teams/285023?language=en
+- https://api.fifa.com/api/v3/teams/43922/squad?idCompetition=17&idSeason=285023&language=en
 - https://www.fifa.com/en/articles/fifa-world-cup-2026-squads-confirmed
 - https://www.api-football.com/documentation-v3#operation/get-players-squads
 - https://docs.football-data.org/general/v4/team.html

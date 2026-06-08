@@ -993,7 +993,7 @@ select:focus {
   padding: 4px;
   border: 1px solid rgba(0, 126, 92, 0.22);
   border-radius: 999px;
-  background: #eaf5ef;
+  background: var(--green);
   box-shadow: 0 10px 24px rgba(0, 126, 92, 0.08);
 }
 
@@ -1002,14 +1002,14 @@ select:focus {
   border: 0;
   border-radius: 999px;
   padding: 0 18px;
-  color: var(--gold-soft);
+  color: #ffffff;
   background: transparent;
   font-weight: 900;
 }
 
 .stats-tabs button.active {
   color: #ffffff;
-  background: var(--gold);
+  background: var(--gold-soft);
   box-shadow: 0 8px 18px rgba(0, 126, 92, 0.2);
 }
 
@@ -1388,6 +1388,80 @@ select {
   border-radius: 8px;
 }
 
+.team-profile-page {
+  gap: 18px;
+}
+
+.team-profile-hero {
+  min-height: 260px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.team-profile-hero h1 {
+  margin: 8px 0;
+}
+
+.team-profile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.team-profile-grid,
+.team-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.team-sheet-grid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+}
+
+.team-profile-metric {
+  min-height: 116px;
+}
+
+.team-profile-metric strong {
+  font-size: clamp(18px, 2vw, 28px);
+}
+
+.lineup-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.lineup-player {
+  min-height: 92px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(0, 168, 120, 0.14), rgba(255, 255, 255, 0.8));
+}
+
+.lineup-player b {
+  color: var(--gold);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.lineup-player span {
+  font-weight: 900;
+}
+
+.lineup-player small {
+  color: var(--muted);
+}
+
 .roster-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1708,8 +1782,17 @@ select {
   .prediction-metrics,
   .health-grid,
   .groups-grid,
-  .roster-grid {
+  .roster-grid,
+  .team-profile-grid,
+  .team-sheet-grid,
+  .lineup-board {
     grid-template-columns: 1fr;
+  }
+
+  .team-profile-hero {
+    min-height: 300px;
+    align-items: start;
+    flex-direction: column;
   }
 
   .standings-row {
