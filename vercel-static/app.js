@@ -957,13 +957,8 @@ function safeJson(value) {
 }
 
 function renderBracket() {
-  const rounds = [
-    ["round_of_32", "Round of 32"],
-    ["round_of_16", "Round of 16"],
-    ["quarter_final", "Quarter-finals"],
-    ["semi_final", "Semi-finals"],
-    ["final", "Final"]
-  ];
+  const stages = bracketStages();
+  const byMatchNo = new Map(state.bracketMatches.map((match) => [Number(match.match_no), match]));
   const thirdPlace = state.bracketMatches.filter((match) => match.round_key === "third_place");
   const hasBracket = state.bracketMatches.length > 0;
   return `
@@ -977,11 +972,53 @@ function renderBracket() {
       </div>
       ${
         hasBracket
-          ? `<div class="bracket-scroll"><div class="bracket-board bracket-tree">${rounds.map(([key, label]) => renderBracketRound(key, label)).join("")}${renderChampionTile()}</div></div>
+          ? `<div class="bracket-scroll"><div class="bracket-board bracket-tree linked-bracket">${stages.map((stage) => renderBracketStage(stage, byMatchNo)).join("")}</div></div>
              ${thirdPlace.length ? `<section class="third-place-row">${renderBracketRound("third_place", "Third-place")}</section>` : ""}`
           : `<section class="glass-card panel"><h2>No bracket data</h2><p>Run supabase/seed_bracket.sql after schema.sql.</p></section>`
       }
     </section>
+  `;
+}
+
+function bracketStages() {
+  return [
+    {
+      key: "round_of_32",
+      label: "Round of 32",
+      span: 1,
+      matches: [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87]
+    },
+    { key: "round_of_16", label: "Round of 16", span: 2, matches: [89, 90, 93, 94, 91, 92, 95, 96] },
+    { key: "quarter_final", label: "Quarter-finals", span: 4, matches: [97, 98, 99, 100] },
+    { key: "semi_final", label: "Semi-finals", span: 8, matches: [101, 102] },
+    { key: "final", label: "Final", span: 16, matches: [104] },
+    { key: "champion", label: "Champion", span: 16, matches: ["champion"] }
+  ];
+}
+
+function renderBracketStage(stage, byMatchNo) {
+  return `
+    <section class="bracket-round bracket-stage" data-round="${escapeHtml(stage.key)}">
+      <h3>${escapeHtml(stage.label)}</h3>
+      <div class="bracket-stage-grid">
+        ${stage.matches.map((matchNo, index) => renderBracketNode(stage, matchNo, index, byMatchNo)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderBracketNode(stage, matchNo, index, byMatchNo) {
+  const start = index * stage.span + 1;
+  const isSourceRound = stage.span === 1;
+  const content = matchNo === "champion"
+    ? renderChampionCard()
+    : byMatchNo.has(matchNo)
+      ? renderBracketMatch(byMatchNo.get(matchNo))
+      : `<article class="bracket-match glass-card muted"><div class="bracket-match-top"><span>Match ${escapeHtml(matchNo)}</span><span>TBA</span></div><div class="bracket-team"><span class="slot-box"></span><span>Path pending</span></div></article>`;
+  return `
+    <div class="bracket-node span-${stage.span} ${isSourceRound ? "source-node" : "merge-node"} ${matchNo === "champion" ? "champion-node" : ""}" style="grid-row: ${start} / span ${stage.span}">
+      ${content}
+    </div>
   `;
 }
 
@@ -1025,17 +1062,23 @@ function renderBracketMatch(match) {
 }
 
 function renderChampionTile() {
-  const final = state.bracketMatches.find((match) => match.match_no === 104);
-  const winner = final?.match ? matchWinner(final.match) : null;
   return `
     <section class="bracket-round champion-round">
       <h3>Champion</h3>
-      <article class="bracket-match champion-card glass-card">
-        <div class="bracket-match-top"><span>World Cup 2026</span><span>Final path</span></div>
-        <div class="bracket-team">${winner ? `<span class="fixture-flag">${teamFlagContent(winner)}</span>` : `<span class="slot-box"></span>`}<span>${escapeHtml(winner?.name || "Champion")}</span></div>
-        <small>${winner ? "Confirmed from final result" : "Winner match 104"}</small>
-      </article>
+      ${renderChampionCard()}
     </section>
+  `;
+}
+
+function renderChampionCard() {
+  const final = state.bracketMatches.find((match) => match.match_no === 104);
+  const winner = final?.match ? matchWinner(final.match) : null;
+  return `
+    <article class="bracket-match champion-card glass-card">
+      <div class="bracket-match-top"><span>World Cup 2026</span><span>Final path</span></div>
+      <div class="bracket-team">${winner ? `<span class="fixture-flag">${teamFlagContent(winner)}</span>` : `<span class="slot-box"></span>`}<span>${escapeHtml(winner?.name || "Champion")}</span></div>
+      <small>${winner ? "Confirmed from final result" : "Winner match 104"}</small>
+    </article>
   `;
 }
 
