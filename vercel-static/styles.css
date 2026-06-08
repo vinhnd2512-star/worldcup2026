@@ -1476,13 +1476,13 @@ select {
 
 .football-pitch {
   position: relative;
-  min-height: 460px;
+  min-height: 690px;
   overflow: hidden;
   border: 2px solid rgba(255, 255, 255, 0.78);
   border-radius: 8px;
   background:
     repeating-linear-gradient(
-      90deg,
+      0deg,
       rgba(0, 126, 92, 0.95) 0,
       rgba(0, 126, 92, 0.95) 72px,
       rgba(0, 150, 104, 0.95) 72px,
@@ -1509,10 +1509,10 @@ select {
 }
 
 .football-pitch::after {
-  left: 50%;
-  top: 12px;
-  bottom: 12px;
-  width: 2px;
+  left: 12px;
+  right: 12px;
+  top: 50%;
+  height: 2px;
   background: rgba(255, 255, 255, 0.72);
 }
 
@@ -1531,21 +1531,21 @@ select {
 }
 
 .pitch-box {
-  top: 50%;
-  width: 76px;
-  height: 210px;
+  left: 50%;
+  width: min(46%, 260px);
+  height: 82px;
   border: 2px solid rgba(255, 255, 255, 0.72);
-  transform: translateY(-50%);
+  transform: translateX(-50%);
 }
 
 .pitch-box.own {
-  left: 12px;
-  border-left: 0;
+  bottom: 12px;
+  border-bottom: 0;
 }
 
 .pitch-box.away {
-  right: 12px;
-  border-right: 0;
+  top: 12px;
+  border-top: 0;
 }
 
 .pitch-role-zone {
@@ -1553,17 +1553,19 @@ select {
   z-index: 1;
   display: grid;
   align-content: center;
-  gap: 6px;
-  min-width: 112px;
-  min-height: 96px;
+  gap: 8px;
+  width: min(86%, 620px);
+  min-height: 126px;
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 8px;
   color: #ffffff;
-  background: rgba(6, 63, 49, 0.44);
+  background: rgba(6, 63, 49, 0.34);
   box-shadow: 0 12px 24px rgba(8, 52, 39, 0.22);
-  text-align: left;
+  text-align: center;
   cursor: pointer;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .pitch-role-zone:hover,
@@ -1573,41 +1575,71 @@ select {
   box-shadow: 0 16px 30px rgba(8, 52, 39, 0.28);
 }
 
-.pitch-role-zone span {
+.pitch-role-label {
   font-weight: 900;
 }
 
 .pitch-role-zone strong {
-  font-size: 24px;
+  display: none;
 }
 
-.pitch-role-zone small {
-  color: rgba(255, 255, 255, 0.86);
-  line-height: 1.35;
+.pitch-role-players {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pitch-player-marker {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 58px;
+}
+
+.pitch-player-marker b {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  color: var(--gold-soft);
+  background: #ffffff;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  box-shadow: 0 10px 18px rgba(8, 52, 39, 0.22);
+}
+
+.pitch-player-marker small,
+.pitch-empty-marker {
+  max-width: 72px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pitch-role-zone.goalkeeper {
-  left: 28px;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 34px;
+  width: min(44%, 300px);
+  min-height: 104px;
 }
 
 .pitch-role-zone.defenders {
-  left: 24%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  top: 420px;
 }
 
 .pitch-role-zone.midfielders {
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  top: 244px;
 }
 
 .pitch-role-zone.forwards {
-  right: 9%;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 58px;
 }
 
 .role-squad-layout {
@@ -1967,7 +1999,7 @@ select {
   }
 
   .football-pitch {
-    min-height: 620px;
+    min-height: 660px;
   }
 
   .football-pitch::after {
@@ -1987,17 +2019,18 @@ select {
   }
 
   .pitch-box.own {
-    top: 12px;
+    top: auto;
+    bottom: 12px;
     border-left: 2px solid rgba(255, 255, 255, 0.72);
-    border-top: 0;
+    border-bottom: 0;
   }
 
   .pitch-box.away {
-    top: auto;
+    top: 12px;
     right: auto;
-    bottom: 12px;
+    bottom: auto;
     border-right: 2px solid rgba(255, 255, 255, 0.72);
-    border-bottom: 0;
+    border-top: 0;
   }
 
   .pitch-role-zone {
@@ -2009,23 +2042,24 @@ select {
   }
 
   .pitch-role-zone.goalkeeper {
-    top: 24px;
+    top: auto;
+    bottom: 24px;
     transform: translateX(-50%);
   }
 
   .pitch-role-zone.defenders {
-    top: 170px;
+    top: 392px;
     transform: translateX(-50%);
   }
 
   .pitch-role-zone.midfielders {
-    top: 318px;
+    top: 218px;
     transform: translateX(-50%);
   }
 
   .pitch-role-zone.forwards {
-    top: auto;
-    bottom: 24px;
+    top: 34px;
+    bottom: auto;
     transform: translateX(-50%);
   }
 

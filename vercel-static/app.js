@@ -1033,10 +1033,23 @@ function renderPitchRoleZone(role, players) {
   const selected = state.selectedRoleGroup === role.key;
   return `
     <button class="pitch-role-zone ${role.zone} ${selected ? "active" : ""}" data-role-filter="${role.key}">
-      <span>${role.label}</span>
+      <span class="pitch-role-label">${role.label}</span>
       <strong>${fmt.format(players.length)}</strong>
-      <small>${players.slice(0, 4).map((player) => escapeHtml(player.name || "TBA")).join(" · ") || "No players"}</small>
+      <div class="pitch-role-players">
+        ${players.map(renderPitchPlayerMarker).join("") || `<span class="pitch-empty-marker">No players</span>`}
+      </div>
     </button>
+  `;
+}
+
+function renderPitchPlayerMarker(player) {
+  const label = player.shirt_number ? String(player.shirt_number) : initials(player.name);
+  const shortName = String(player.name || "TBA").split(" ").slice(-1)[0] || "TBA";
+  return `
+    <span class="pitch-player-marker" title="${escapeHtml(player.name || "TBA")}">
+      <b>${escapeHtml(label)}</b>
+      <small>${escapeHtml(shortName)}</small>
+    </span>
   `;
 }
 
