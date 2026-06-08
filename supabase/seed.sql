@@ -4,7 +4,9 @@
 alter table public.teams
   add column if not exists group_name text,
   add column if not exists group_slot integer,
-  add column if not exists confederation text;
+  add column if not exists confederation text,
+  add column if not exists flag_code text,
+  add column if not exists flag_url text;
 
 -- Remove old demo rows from the earlier MVP seed without touching live provider sync rows.
 delete from public.sync_runs
@@ -79,6 +81,63 @@ set provider_id = excluded.provider_id,
     group_name = excluded.group_name,
     group_slot = excluded.group_slot,
     confederation = excluded.confederation;
+
+with flags(code, flag_code, flag_url) as (
+  values
+    ('MEX', 'mx', 'https://flagcdn.com/w80/mx.png'),
+    ('RSA', 'za', 'https://flagcdn.com/w80/za.png'),
+    ('KOR', 'kr', 'https://flagcdn.com/w80/kr.png'),
+    ('CZE', 'cz', 'https://flagcdn.com/w80/cz.png'),
+    ('CAN', 'ca', 'https://flagcdn.com/w80/ca.png'),
+    ('BIH', 'ba', 'https://flagcdn.com/w80/ba.png'),
+    ('QAT', 'qa', 'https://flagcdn.com/w80/qa.png'),
+    ('SUI', 'ch', 'https://flagcdn.com/w80/ch.png'),
+    ('BRA', 'br', 'https://flagcdn.com/w80/br.png'),
+    ('MAR', 'ma', 'https://flagcdn.com/w80/ma.png'),
+    ('HAI', 'ht', 'https://flagcdn.com/w80/ht.png'),
+    ('SCO', 'gb-sct', 'https://flagcdn.com/w80/gb-sct.png'),
+    ('USA', 'us', 'https://flagcdn.com/w80/us.png'),
+    ('PAR', 'py', 'https://flagcdn.com/w80/py.png'),
+    ('AUS', 'au', 'https://flagcdn.com/w80/au.png'),
+    ('TUR', 'tr', 'https://flagcdn.com/w80/tr.png'),
+    ('GER', 'de', 'https://flagcdn.com/w80/de.png'),
+    ('CUW', 'cw', 'https://flagcdn.com/w80/cw.png'),
+    ('CIV', 'ci', 'https://flagcdn.com/w80/ci.png'),
+    ('ECU', 'ec', 'https://flagcdn.com/w80/ec.png'),
+    ('NED', 'nl', 'https://flagcdn.com/w80/nl.png'),
+    ('JPN', 'jp', 'https://flagcdn.com/w80/jp.png'),
+    ('SWE', 'se', 'https://flagcdn.com/w80/se.png'),
+    ('TUN', 'tn', 'https://flagcdn.com/w80/tn.png'),
+    ('BEL', 'be', 'https://flagcdn.com/w80/be.png'),
+    ('EGY', 'eg', 'https://flagcdn.com/w80/eg.png'),
+    ('IRN', 'ir', 'https://flagcdn.com/w80/ir.png'),
+    ('NZL', 'nz', 'https://flagcdn.com/w80/nz.png'),
+    ('ESP', 'es', 'https://flagcdn.com/w80/es.png'),
+    ('CPV', 'cv', 'https://flagcdn.com/w80/cv.png'),
+    ('KSA', 'sa', 'https://flagcdn.com/w80/sa.png'),
+    ('URU', 'uy', 'https://flagcdn.com/w80/uy.png'),
+    ('FRA', 'fr', 'https://flagcdn.com/w80/fr.png'),
+    ('SEN', 'sn', 'https://flagcdn.com/w80/sn.png'),
+    ('IRQ', 'iq', 'https://flagcdn.com/w80/iq.png'),
+    ('NOR', 'no', 'https://flagcdn.com/w80/no.png'),
+    ('ARG', 'ar', 'https://flagcdn.com/w80/ar.png'),
+    ('ALG', 'dz', 'https://flagcdn.com/w80/dz.png'),
+    ('AUT', 'at', 'https://flagcdn.com/w80/at.png'),
+    ('JOR', 'jo', 'https://flagcdn.com/w80/jo.png'),
+    ('POR', 'pt', 'https://flagcdn.com/w80/pt.png'),
+    ('COD', 'cd', 'https://flagcdn.com/w80/cd.png'),
+    ('UZB', 'uz', 'https://flagcdn.com/w80/uz.png'),
+    ('COL', 'co', 'https://flagcdn.com/w80/co.png'),
+    ('ENG', 'gb-eng', 'https://flagcdn.com/w80/gb-eng.png'),
+    ('CRO', 'hr', 'https://flagcdn.com/w80/hr.png'),
+    ('GHA', 'gh', 'https://flagcdn.com/w80/gh.png'),
+    ('PAN', 'pa', 'https://flagcdn.com/w80/pa.png')
+)
+update public.teams t
+set flag_code = flags.flag_code,
+    flag_url = flags.flag_url
+from flags
+where t.code = flags.code;
 
 insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
 values

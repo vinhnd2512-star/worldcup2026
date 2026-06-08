@@ -33,13 +33,29 @@ create table if not exists public.teams (
   group_name text,
   group_slot integer,
   confederation text,
-  logo_url text
+  logo_url text,
+  flag_code text,
+  flag_url text
 );
 
 alter table public.teams
   add column if not exists group_name text,
   add column if not exists group_slot integer,
-  add column if not exists confederation text;
+  add column if not exists confederation text,
+  add column if not exists flag_code text,
+  add column if not exists flag_url text;
+
+create table if not exists public.team_players (
+  id bigint generated always as identity primary key,
+  team_id bigint not null references public.teams(id) on delete cascade,
+  provider_id text unique,
+  name text not null,
+  position text,
+  shirt_number integer,
+  date_of_birth date,
+  source text not null default 'manual',
+  updated_at timestamptz not null default now()
+);
 
 create table if not exists public.matches (
   id bigint generated always as identity primary key,
@@ -249,6 +265,9 @@ create index if not exists matches_home_team_id_idx
 create index if not exists matches_away_team_id_idx
   on public.matches (away_team_id);
 
+create index if not exists team_players_team_position_idx
+  on public.team_players (team_id, position, shirt_number);
+
 create index if not exists bracket_matches_round_order_idx
   on public.bracket_matches (round_key, display_order);
 
@@ -351,6 +370,7 @@ $$;
 alter table public.profiles enable row level security;
 alter table public.wallet_ledger enable row level security;
 alter table public.teams enable row level security;
+alter table public.team_players enable row level security;
 alter table public.matches enable row level security;
 alter table public.match_stats enable row level security;
 alter table public.bracket_matches enable row level security;
@@ -374,6 +394,9 @@ create policy profiles_admin_update on public.profiles
 
 drop policy if exists public_read_teams on public.teams;
 create policy public_read_teams on public.teams for select to authenticated using (true);
+
+drop policy if exists public_read_team_players on public.team_players;
+create policy public_read_team_players on public.team_players for select to authenticated using (true);
 
 drop policy if exists public_read_matches on public.matches;
 create policy public_read_matches on public.matches for select to authenticated using (true);

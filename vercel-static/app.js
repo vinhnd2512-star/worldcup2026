@@ -7,6 +7,7 @@ const state = {
   matches: [],
   bracketMatches: [],
   teams: [],
+  teamPlayers: [],
   outrightMarkets: [],
   bets: [],
   leaderboard: [],
@@ -26,7 +27,9 @@ const state = {
   },
   active: "matches",
   selectedMatchId: null,
+  selectedTeamId: null,
   matchFilter: "upcoming",
+  matchSearch: "",
   message: "",
   error: ""
 };
@@ -89,6 +92,7 @@ const flagImages = {
 
 const navItems = [
   ["matches", "Matches"],
+  ["groups", "Groups"],
   ["detail", "Predict"],
   ["bracket", "Bracket"],
   ["leaderboard", "Rankings"],
@@ -215,6 +219,14 @@ async function loadData() {
     const teamsResult = await state.client.from("teams").select("*").order("group_name", { ascending: true }).order("group_slot", { ascending: true }).order("name", { ascending: true });
     throwIfError(teamsResult.error);
     state.teams = teamsResult.data || [];
+
+    const playersResult = await state.client
+      .from("team_players")
+      .select("*,team:teams(*)")
+      .order("team_id", { ascending: true })
+      .order("position", { ascending: true })
+      .order("shirt_number", { ascending: true });
+    state.teamPlayers = playersResult.error ? [] : playersResult.data || [];
 
     const matchResult = await state.client
       .from("matches")
@@ -373,6 +385,7 @@ function renderApp() {
 
 function renderActiveView() {
   if (state.active === "detail") return renderDetail();
+  if (state.active === "groups") return renderGroups();
   if (state.active === "bracket") return renderBracket();
   if (state.active === "leaderboard") return renderLeaderboard();
   if (state.active === "history") return renderHistory();
@@ -459,8 +472,9 @@ function renderFixtureTable(matches) {
 
 function renderFixtureRow(match) {
   const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  const group = match.group_name ? formatGroupName(match.group_name) : "Knockout";
   return `
-    <article class="fixture-row">
+    <article class="fixture-row" data-group="${escapeHtml(match.group_name || "knockout")}">
       <span class="fixture-number">#${escapeHtml(fixtureNumber(match))}</span>
       <time>${dateText(match.starts_at)}</time>
       <div class="fixture-pair">
@@ -469,7 +483,7 @@ function renderFixtureRow(match) {
         ${fixtureTeam(match.away_team)}
       </div>
       <div class="fixture-meta">
-        <strong>${escapeHtml(scheduleLabel(match))}</strong>
+        <strong><span class="group-badge">${escapeHtml(group)}</span></strong>
         <small>${escapeHtml(matchLocation(match))}</small>
       </div>
       <span class="fixture-market-count">${fmt.format(openMarkets)} open</span>
@@ -517,8 +531,8 @@ function renderScheduleFilters() {
   const base = [
     ["upcoming", "Upcoming"],
     ["today", "Today"],
-    ["knockout", "Knockout"],
-    ["all", "All"]
+    ["all", "All"],
+    ["knockout", "Knockout"]
   ];
   const groups = [...new Set(state.matches.map((match) => match.group_name).filter(Boolean))]
     .sort()
@@ -530,6 +544,10 @@ function renderScheduleFilters() {
         <h2>Lịch & bảng đấu</h2>
         <p>Xem theo ngày, bảng hoặc vòng knockout. Bấm trận để vào trang cược.</p>
       </div>
+      <label class="search-field">
+        Search
+        <input id="match-search" value="${escapeHtml(state.matchSearch)}" placeholder="Group A, Mexico, match 1...">
+      </label>
       <div class="filter-scroll">
         ${filters.map(([key, label]) => `<button class="filter-pill ${state.matchFilter === key ? "active" : ""}" data-match-filter="${escapeHtml(key)}">${escapeHtml(label)}</button>`).join("")}
       </div>
@@ -540,12 +558,29 @@ function renderScheduleFilters() {
 function filteredScheduleMatches() {
   const now = new Date();
   const todayKey = localDateKey(now);
+  const search = state.matchSearch.trim().toLowerCase();
   return state.matches.filter((match) => {
-    if (state.matchFilter === "all") return true;
-    if (state.matchFilter === "today") return localDateKey(new Date(match.starts_at)) === todayKey;
-    if (state.matchFilter === "knockout") return isKnockoutMatch(match);
-    if (state.matchFilter?.startsWith("group:")) return match.group_name === state.matchFilter.slice(6);
-    return new Date(match.starts_at).getTime() >= now.getTime() && match.status === "SCHEDULED";
+    let matchesFilter = false;
+    if (state.matchFilter === "all") matchesFilter = true;
+    else if (state.matchFilter === "today") matchesFilter = localDateKey(new Date(match.starts_at)) === todayKey;
+    else if (state.matchFilter === "knockout") matchesFilter = isKnockoutMatch(match);
+    else if (state.matchFilter?.startsWith("group:")) matchesFilter = match.group_name === state.matchFilter.slice(6);
+    else matchesFilter = new Date(match.starts_at).getTime() >= now.getTime() && match.status === "SCHEDULED";
+    if (!matchesFilter) return false;
+    if (!search) return true;
+    const haystack = [
+      fixtureNumber(match),
+      match.stage,
+      match.group_name,
+      formatGroupName(match.group_name),
+      match.home_team?.name,
+      match.home_team?.code,
+      match.away_team?.name,
+      match.away_team?.code,
+      match.venue,
+      match.city
+    ].join(" ").toLowerCase();
+    return haystack.includes(search);
   });
 }
 
@@ -665,6 +700,165 @@ function matchTitle(match) {
   return `${match.home_team?.name || "TBA"} vs ${match.away_team?.name || "TBA"}`;
 }
 
+function renderGroups() {
+  const groups = groupNames();
+  const selectedTeam = state.teams.find((team) => team.id === state.selectedTeamId);
+  return `
+    <div class="stack">
+      <div class="section-heading">
+        <div>
+          <h1>Group Standings</h1>
+          <p>Tables are calculated from settled group-stage match results.</p>
+        </div>
+        <span>${fmt.format(groups.length)} groups</span>
+      </div>
+      ${selectedTeam ? renderRosterPanel(selectedTeam) : ""}
+      <section class="groups-grid">
+        ${groups.map(renderGroupCard).join("") || `<section class="glass-card panel"><h2>No groups</h2><p>Run supabase/seed.sql.</p></section>`}
+      </section>
+    </div>
+  `;
+}
+
+function groupNames() {
+  return [...new Set(state.teams.map((team) => team.group_name).filter(Boolean))]
+    .sort((left, right) => String(left).localeCompare(String(right), "en", { numeric: true }));
+}
+
+function renderGroupCard(groupName) {
+  const rows = groupStandings(groupName);
+  return `
+    <article class="group-card glass-card">
+      <div class="group-card-top">
+        <div>
+          <h2>${escapeHtml(formatGroupName(groupName))}</h2>
+          <small>${fmt.format(rows.length)} teams</small>
+        </div>
+        <span class="group-badge">${escapeHtml(formatGroupName(groupName))}</span>
+      </div>
+      <div class="standings-table">
+        <div class="standings-row standings-head">
+          <span>#</span><span>Team</span><span>P</span><span>W</span><span>D</span><span>L</span><span>GD</span><span>Pts</span><span></span>
+        </div>
+        ${rows.map(renderStandingRow).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderStandingRow(row, index) {
+  const gd = row.goalsFor - row.goalsAgainst;
+  return `
+    <div class="standings-row">
+      <span>${index + 1}</span>
+      <span class="standing-team">
+        <span class="fixture-flag">${teamFlagContent(row.team)}</span>
+        <strong>${escapeHtml(row.team.name)}</strong>
+        <small>${escapeHtml(row.team.code)}</small>
+      </span>
+      <span>${fmt.format(row.played)}</span>
+      <span>${fmt.format(row.won)}</span>
+      <span>${fmt.format(row.drawn)}</span>
+      <span>${fmt.format(row.lost)}</span>
+      <span>${gd > 0 ? "+" : ""}${fmt.format(gd)}</span>
+      <b>${fmt.format(row.points)}</b>
+      <button class="ghost-button compact-button" data-team-roster="${row.team.id}">Players</button>
+    </div>
+  `;
+}
+
+function groupStandings(groupName) {
+  const rows = state.teams
+    .filter((team) => team.group_name === groupName)
+    .map((team) => ({
+      team,
+      played: 0,
+      won: 0,
+      drawn: 0,
+      lost: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      points: 0
+    }));
+  const byId = new Map(rows.map((row) => [row.team.id, row]));
+  state.matches
+    .filter((match) => match.group_name === groupName && isCompletedScore(match))
+    .forEach((match) => {
+      const home = byId.get(match.home_team_id);
+      const away = byId.get(match.away_team_id);
+      if (!home || !away) return;
+      const homeScore = number(match.home_score);
+      const awayScore = number(match.away_score);
+      home.played += 1;
+      away.played += 1;
+      home.goalsFor += homeScore;
+      home.goalsAgainst += awayScore;
+      away.goalsFor += awayScore;
+      away.goalsAgainst += homeScore;
+      if (homeScore > awayScore) {
+        home.won += 1;
+        away.lost += 1;
+        home.points += 3;
+      } else if (awayScore > homeScore) {
+        away.won += 1;
+        home.lost += 1;
+        away.points += 3;
+      } else {
+        home.drawn += 1;
+        away.drawn += 1;
+        home.points += 1;
+        away.points += 1;
+      }
+    });
+  return rows.sort((left, right) => {
+    const leftGd = left.goalsFor - left.goalsAgainst;
+    const rightGd = right.goalsFor - right.goalsAgainst;
+    return right.points - left.points
+      || rightGd - leftGd
+      || right.goalsFor - left.goalsFor
+      || number(left.team.group_slot) - number(right.team.group_slot)
+      || left.team.name.localeCompare(right.team.name);
+  });
+}
+
+function isCompletedScore(match) {
+  return ["FT", "AET", "PEN", "FT_PEN"].includes(match.status)
+    && match.home_score !== null
+    && match.away_score !== null;
+}
+
+function renderRosterPanel(team) {
+  const players = state.teamPlayers
+    .filter((player) => player.team_id === team.id)
+    .sort((left, right) => String(left.position || "").localeCompare(String(right.position || "")) || number(left.shirt_number) - number(right.shirt_number) || left.name.localeCompare(right.name));
+  return `
+    <section class="roster-panel glass-card">
+      <div class="section-heading">
+        <div>
+          <h2>${teamFlagContent(team)} ${escapeHtml(team.name)} players</h2>
+          <p>${escapeHtml(team.group_name ? formatGroupName(team.group_name) : "World Cup 2026")} roster</p>
+        </div>
+        <button class="ghost-button" data-close-roster>Close</button>
+      </div>
+      ${
+        players.length
+          ? `<div class="roster-grid">${players.map(renderPlayerCard).join("")}</div>`
+          : `<p class="empty-copy">Player list is not updated yet. Add real roster rows to public.team_players when available.</p>`
+      }
+    </section>
+  `;
+}
+
+function renderPlayerCard(player) {
+  return `
+    <article class="player-card">
+      <strong>${escapeHtml(player.name)}</strong>
+      <span>${escapeHtml(player.position || "Position TBA")}</span>
+      <small>${player.shirt_number ? `#${fmt.format(player.shirt_number)}` : "No shirt number"}</small>
+    </article>
+  `;
+}
+
 function renderDetail() {
   const match = selectedMatch();
   if (!match) return `<section class="glass-card panel"><h2>Không có trận để dự đoán</h2></section>`;
@@ -758,9 +952,9 @@ function renderBracket() {
     ["round_of_16", "Round of 16"],
     ["quarter_final", "Quarter-finals"],
     ["semi_final", "Semi-finals"],
-    ["third_place", "Third-place"],
     ["final", "Final"]
   ];
+  const thirdPlace = state.bracketMatches.filter((match) => match.round_key === "third_place");
   const hasBracket = state.bracketMatches.length > 0;
   return `
     <section class="view-shell">
@@ -773,7 +967,8 @@ function renderBracket() {
       </div>
       ${
         hasBracket
-          ? `<div class="bracket-board">${rounds.map(([key, label]) => renderBracketRound(key, label)).join("")}${renderChampionTile()}</div>`
+          ? `<div class="bracket-scroll"><div class="bracket-board bracket-tree">${rounds.map(([key, label]) => renderBracketRound(key, label)).join("")}${renderChampionTile()}</div></div>
+             ${thirdPlace.length ? `<section class="third-place-row">${renderBracketRound("third_place", "Third-place")}</section>` : ""}`
           : `<section class="glass-card panel"><h2>No bracket data</h2><p>Run supabase/seed_bracket.sql after schema.sql.</p></section>`
       }
     </section>
@@ -784,7 +979,7 @@ function renderBracketRound(roundKey, fallbackLabel) {
   const matches = state.bracketMatches.filter((match) => match.round_key === roundKey);
   if (!matches.length) return "";
   return `
-    <section class="bracket-round">
+    <section class="bracket-round" data-round="${escapeHtml(roundKey)}">
       <h3>${escapeHtml(matches[0]?.round_label || fallbackLabel)}</h3>
       ${matches.map(renderBracketMatch).join("")}
     </section>
@@ -796,6 +991,8 @@ function renderBracketMatch(match) {
   const displayDate = linked ? dateText(match.match.starts_at) : match.starts_at ? dateText(match.starts_at) : dateOnlyText(match.match_date);
   const homeLabel = linked ? match.match.home_team?.name : match.home_team?.name || match.home_label;
   const awayLabel = linked ? match.match.away_team?.name : match.away_team?.name || match.away_label;
+  const homeTeam = linked ? match.match.home_team : match.home_team;
+  const awayTeam = linked ? match.match.away_team : match.away_team;
   const location = linked ? matchLocation(match.match) : `${match.venue}${match.city ? ` · ${match.city}` : ""}`;
   const statusLabel = linked ? "Predict open" : match.is_confirmed ? "Confirmed" : "Pending";
   const content = `
@@ -803,8 +1000,8 @@ function renderBracketMatch(match) {
       <span>Match ${fmt.format(match.match_no)}</span>
       <time>${escapeHtml(displayDate)}</time>
     </div>
-    <div class="bracket-team">${escapeHtml(homeLabel)}</div>
-    <div class="bracket-team">${escapeHtml(awayLabel)}</div>
+    <div class="bracket-team">${homeTeam ? `<span class="fixture-flag">${teamFlagContent(homeTeam)}</span>` : `<span class="slot-box"></span>`}<span>${escapeHtml(homeLabel)}</span></div>
+    <div class="bracket-team">${awayTeam ? `<span class="fixture-flag">${teamFlagContent(awayTeam)}</span>` : `<span class="slot-box"></span>`}<span>${escapeHtml(awayLabel)}</span></div>
     <small>${escapeHtml(location)} · ${escapeHtml(statusLabel)}</small>
   `;
   if (linked) {
@@ -825,7 +1022,7 @@ function renderChampionTile() {
       <h3>Champion</h3>
       <article class="bracket-match champion-card glass-card">
         <div class="bracket-match-top"><span>World Cup 2026</span><span>Final path</span></div>
-        <div class="bracket-team">${escapeHtml(winner?.name || "Champion")}</div>
+        <div class="bracket-team">${winner ? `<span class="fixture-flag">${teamFlagContent(winner)}</span>` : `<span class="slot-box"></span>`}<span>${escapeHtml(winner?.name || "Champion")}</span></div>
         <small>${winner ? "Confirmed from final result" : "Winner match 104"}</small>
       </article>
     </section>
@@ -1247,6 +1444,25 @@ function bindShellEvents() {
       state.matchFilter = button.dataset.matchFilter;
       renderApp();
     });
+  });
+
+  document.querySelectorAll("[data-team-roster]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedTeamId = Number(button.dataset.teamRoster);
+      state.active = "groups";
+      renderApp();
+    });
+  });
+
+  document.querySelector("[data-close-roster]")?.addEventListener("click", () => {
+    state.selectedTeamId = null;
+    renderApp();
+  });
+
+  document.getElementById("match-search")?.addEventListener("input", (event) => {
+    state.matchSearch = event.target.value;
+    renderApp();
+    document.getElementById("match-search")?.focus();
   });
 
   document.querySelector("[data-reminder-focus]")?.addEventListener("click", () => {
@@ -1737,6 +1953,10 @@ function renderLeaderRow(row) {
 
 function teamFlagContent(team) {
   const code = team?.code;
+  const imageUrl = team?.flag_url || team?.logo_url || flagImages[code];
+  if (imageUrl) {
+    return `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(team?.name || code || "Team")} flag" loading="lazy">`;
+  }
   if (flagImages[code]) {
     return `<img src="${escapeHtml(flagImages[code])}" alt="${escapeHtml(team?.name || code)} flag" loading="lazy">`;
   }
