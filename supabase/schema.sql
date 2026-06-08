@@ -35,7 +35,11 @@ create table if not exists public.teams (
   confederation text,
   logo_url text,
   flag_code text,
-  flag_url text
+  flag_url text,
+  fifa_rank integer,
+  fifa_points numeric(8, 2),
+  rating_source text,
+  rating_updated_at timestamptz
 );
 
 alter table public.teams
@@ -43,7 +47,11 @@ alter table public.teams
   add column if not exists group_slot integer,
   add column if not exists confederation text,
   add column if not exists flag_code text,
-  add column if not exists flag_url text;
+  add column if not exists flag_url text,
+  add column if not exists fifa_rank integer,
+  add column if not exists fifa_points numeric(8, 2),
+  add column if not exists rating_source text,
+  add column if not exists rating_updated_at timestamptz;
 
 create table if not exists public.team_players (
   id bigint generated always as identity primary key,
@@ -53,9 +61,21 @@ create table if not exists public.team_players (
   position text,
   shirt_number integer,
   date_of_birth date,
+  club text,
+  photo_url text,
+  overall_rating integer,
+  rating_source text,
+  rating_updated_at timestamptz,
   source text not null default 'manual',
   updated_at timestamptz not null default now()
 );
+
+alter table public.team_players
+  add column if not exists club text,
+  add column if not exists photo_url text,
+  add column if not exists overall_rating integer,
+  add column if not exists rating_source text,
+  add column if not exists rating_updated_at timestamptz;
 
 create table if not exists public.matches (
   id bigint generated always as identity primary key,
@@ -267,6 +287,14 @@ create index if not exists matches_away_team_id_idx
 
 create index if not exists team_players_team_position_idx
   on public.team_players (team_id, position, shirt_number);
+
+create index if not exists teams_fifa_rank_idx
+  on public.teams (fifa_rank)
+  where fifa_rank is not null;
+
+create index if not exists team_players_rating_idx
+  on public.team_players (team_id, overall_rating desc)
+  where overall_rating is not null;
 
 create index if not exists bracket_matches_round_order_idx
   on public.bracket_matches (round_key, display_order);
@@ -688,6 +716,169 @@ begin
   );
 
   return v_bet;
+end;
+$$;
+
+create or replace function public.update_bet(
+  p_bet_id bigint,
+  p_market_id bigint,
+  p_selection_key text,
+  p_stake numeric,
+  p_selection_json jsonb default '{}'
+)
+returns public.bets
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user public.profiles%rowtype;
+  v_bet public.bets%rowtype;
+  v_match public.matches%rowtype;
+  v_market public.match_markets%rowtype;
+  v_updated public.bets%rowtype;
+  v_next_stake numeric(12, 2);
+  v_stake_delta numeric(12, 2);
+  v_balance_after numeric(12, 2);
+  v_selection_key text;
+  v_selection_label text;
+  v_selection_json jsonb;
+  v_payout numeric(12, 2);
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if p_stake <= 0 then
+    raise exception 'stake must be positive';
+  end if;
+
+  select * into v_user
+  from public.profiles
+  where id = auth.uid()
+  for update;
+
+  if not found or v_user.is_active is false then
+    raise exception 'user is inactive';
+  end if;
+
+  select * into v_bet
+  from public.bets
+  where id = p_bet_id
+  for update;
+
+  if not found then
+    raise exception 'bet not found';
+  end if;
+  if v_bet.user_id <> auth.uid() then
+    raise exception 'cannot update another user''s bet';
+  end if;
+  if v_bet.status <> 'placed' then
+    raise exception 'only placed bets can be updated';
+  end if;
+  if v_bet.match_id is null then
+    raise exception 'outright bets cannot be updated from prediction stats';
+  end if;
+
+  select * into v_match
+  from public.matches
+  where id = v_bet.match_id;
+
+  if not found then
+    raise exception 'match not found';
+  end if;
+  if v_match.status not in ('SCHEDULED', 'NS', 'TBD') then
+    raise exception 'match is not open for pre-match betting';
+  end if;
+
+  select * into v_market
+  from public.match_markets
+  where id = coalesce(p_market_id, v_bet.market_id)
+    and match_id = v_bet.match_id
+    and is_open = true;
+
+  if not found then
+    raise exception 'market is not open';
+  end if;
+  if now() >= coalesce(v_market.closes_at, v_match.starts_at) then
+    raise exception 'betting is locked for this match';
+  end if;
+
+  if v_market.market_key = 'correct_score' then
+    if not (p_selection_json ? 'home_score') or not (p_selection_json ? 'away_score') then
+      raise exception 'correct score requires home_score and away_score';
+    end if;
+    if (p_selection_json->>'home_score')::integer < 0 or (p_selection_json->>'away_score')::integer < 0 then
+      raise exception 'correct score values must be non-negative';
+    end if;
+    v_selection_key := (p_selection_json->>'home_score') || '-' || (p_selection_json->>'away_score');
+    v_selection_label := (p_selection_json->>'home_score') || ' - ' || (p_selection_json->>'away_score');
+    v_selection_json := jsonb_build_object(
+      'home_score', (p_selection_json->>'home_score')::integer,
+      'away_score', (p_selection_json->>'away_score')::integer,
+      'line', v_market.line
+    );
+  elsif p_selection_key <> v_market.selection_key then
+    raise exception 'selection does not match selected market';
+  else
+    v_selection_key := v_market.selection_key;
+    v_selection_label := v_market.selection_label;
+    v_selection_json := coalesce(p_selection_json, '{}') || jsonb_build_object('line', v_market.line);
+  end if;
+
+  v_next_stake := round(p_stake, 2);
+  v_stake_delta := v_next_stake - v_bet.stake;
+  if v_stake_delta > 0 and v_user.wallet_balance < v_stake_delta then
+    raise exception 'insufficient point balance';
+  end if;
+
+  v_balance_after := v_user.wallet_balance - v_stake_delta;
+  update public.profiles
+  set wallet_balance = v_balance_after
+  where id = auth.uid();
+
+  if v_stake_delta <> 0 then
+    insert into public.wallet_ledger (user_id, actor_id, amount, kind, reason, balance_after)
+    values (
+      auth.uid(),
+      auth.uid(),
+      -v_stake_delta,
+      case when v_stake_delta > 0 then 'bet_stake_adjustment' else 'bet_stake_refund' end,
+      'Updated ' || v_market.market_key || ': ' || v_selection_label,
+      v_balance_after
+    );
+  end if;
+
+  v_payout := round(v_next_stake * v_market.odds_multiplier, 2);
+  update public.bets
+  set market_id = v_market.id,
+      market_key = v_market.market_key,
+      selection_key = v_selection_key,
+      selection_label = v_selection_label,
+      stake = v_next_stake,
+      locked_multiplier = v_market.odds_multiplier,
+      potential_payout = v_payout,
+      selection_json = v_selection_json
+  where id = p_bet_id
+  returning * into v_updated;
+
+  insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
+  values (
+    auth.uid(),
+    'bet.update',
+    'bet',
+    p_bet_id::text,
+    jsonb_build_object(
+      'match_id', v_updated.match_id,
+      'market_key', v_updated.market_key,
+      'selection_key', v_updated.selection_key,
+      'stake_before', v_bet.stake,
+      'stake_after', v_updated.stake,
+      'stake_delta', v_stake_delta,
+      'locked_multiplier', v_updated.locked_multiplier
+    )
+  );
+
+  return v_updated;
 end;
 $$;
 

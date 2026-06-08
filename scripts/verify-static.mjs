@@ -47,6 +47,7 @@ const requiredEnv = [
 
 const requiredAppTokens = [
   "place_bet",
+  "update_bet",
   "place_outright_bet",
   "settle_tournament_winner",
   "admin_adjust_wallet",
@@ -72,8 +73,12 @@ const requiredAppTokens = [
   "bracket_matches",
   "renderBracket",
   "renderReminderPanel",
+  "renderPredictionStats",
+  "data-prediction-stats-tab",
+  "update-bet-form",
   "data-match-filter",
   "matchFilter",
+  "predictionStats",
   "Champion",
   "admin-filter-form",
   "applyAdminFilters"
@@ -105,6 +110,11 @@ const requiredSqlTokens = [
   "create table if not exists public.outright_markets",
   "create table if not exists public.bets",
   "create table if not exists public.audit_logs",
+  "fifa_rank",
+  "fifa_points",
+  "overall_rating",
+  "rating_source",
+  "rating_updated_at",
   "create index if not exists bets_user_placed_at_idx",
   "create index if not exists bets_open_match_idx",
   "create index if not exists wallet_ledger_user_created_at_idx",
@@ -123,12 +133,16 @@ const requiredSqlTokens = [
   "bet_payout",
   "bet_refund",
   "create or replace function public.place_bet",
+  "create or replace function public.update_bet",
   "create or replace function public.place_outright_bet",
   "create or replace function public.admin_update_match_market",
   "create or replace function public.admin_update_outright_market",
   "create or replace function public.admin_void_bet",
   "create or replace function public.settle_match_bets",
   "create or replace function public.settle_tournament_winner",
+  "bet_stake_adjustment",
+  "bet_stake_refund",
+  "'bet.update'",
   "enable row level security"
 ];
 

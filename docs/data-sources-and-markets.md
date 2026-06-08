@@ -57,6 +57,24 @@ Reference:
 
 - https://www.football-data.org/coverage
 
+### Team ranking and player roster sources
+
+Use FIFA rankings as the authoritative team-strength display and keep the source/date on every imported value.
+
+- FIFA/Coca-Cola Men's World Ranking stores team rank and points for `teams.fifa_rank`, `teams.fifa_points`, `teams.rating_source`, and `teams.rating_updated_at`.
+- FIFA official World Cup squad lists are the authoritative roster source once squads are confirmed.
+- API-FOOTBALL `players/squads` is the preferred machine-readable roster feed for `team_players` when provider team IDs are available.
+- football-data.org team resources can fill basic squad fields when API-FOOTBALL coverage or quota is unavailable.
+- EA SPORTS FC ratings can be imported manually for optional `team_players.overall_rating`; treat them as game ratings, not official FIFA ratings.
+
+References:
+
+- https://inside.fifa.com/fifa-world-ranking/men
+- https://www.fifa.com/en/articles/fifa-world-cup-2026-squads-confirmed
+- https://www.api-football.com/documentation-v3#operation/get-players-squads
+- https://docs.football-data.org/general/v4/team.html
+- https://www.ea.com/en/games/ea-sports-fc/ratings
+
 ### Official knockout bracket: FIFA
 
 The app includes `supabase/seed_bracket.sql`, which seeds the official FIFA World Cup 2026 knockout path for matches 73-104 into `bracket_matches`. This gives players an in-app bracket even when free fixture APIs do not cover World Cup 2026.

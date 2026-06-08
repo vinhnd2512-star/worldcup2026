@@ -25,11 +25,15 @@ Run this after Supabase schema/seed, Vercel deployment, and environment variable
 1. Log in as the player.
    - Expected: balance, fixtures, markets, tournament winner options, rankings, and history render.
 2. Place a correct-score bet.
-   - Expected: wallet decreases by stake and History shows the prediction.
+   - Expected: wallet decreases by stake, app opens Prediction stats > Upcoming, and the open prediction count increases.
 3. Place one non-score market bet, preferably `draw_no_bet`.
    - Expected: wallet decreases by stake and the stored selection label matches the market option.
 4. Place a tournament-winner bet.
-   - Expected: History shows an outright bet with locked multiplier.
+   - Expected: Prediction stats shows an outright bet with locked multiplier.
+5. Edit the open correct-score prediction before lock time.
+   - Expected: score/stake update succeeds, multiplier is re-locked from the current market, wallet ledger records only the stake delta, and audit log records `bet.update`.
+6. Try editing the same bet after moving the match out of pre-match status or after lock time.
+   - Expected: update is blocked by the `update_bet` RPC.
 
 ## Settlement Flow
 
@@ -42,6 +46,8 @@ Run this after Supabase schema/seed, Vercel deployment, and environment variable
    - Expected: leaderboard score equals settled net points plus prediction bonuses.
 5. Void one still-open placed bet from Recent predictions.
    - Expected: bet becomes `refunded`, stake returns, settlement row exists, audit log shows `bet.void`.
+6. Reopen Prediction stats.
+   - Expected: settled bets appear in Completed/History, while only still-placed bets remain in Upcoming.
 
 ## Reporting Flow
 

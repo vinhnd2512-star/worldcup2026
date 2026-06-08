@@ -978,6 +978,48 @@ select:focus {
   border-color: rgba(255, 180, 171, 0.65);
 }
 
+.prediction-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.stats-tabs {
+  justify-content: start;
+}
+
+.history-row.upcoming {
+  grid-template-columns: minmax(0, 1.45fr) 110px 130px 120px 100px 110px minmax(260px, 0.95fr);
+  gap: 12px;
+}
+
+.update-bet-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.update-bet-form label,
+.locked-copy {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.update-bet-form input {
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+}
+
+.locked-copy b {
+  color: var(--muted);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1331,9 +1373,23 @@ select {
   background: var(--surface-2);
 }
 
+.player-card img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
 .player-card span,
 .player-card small {
   color: var(--muted);
+}
+
+.player-card b {
+  color: var(--gold);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
 }
 
 .bracket-scroll {
@@ -1439,6 +1495,7 @@ select {
 
   .market-grid,
   .metric-grid,
+  .prediction-metrics,
   .health-grid,
   .groups-grid,
   .roster-grid {
@@ -1503,6 +1560,7 @@ select {
   .podium,
   .market-grid,
   .metric-grid,
+  .prediction-metrics,
   .health-grid,
   .groups-grid,
   .roster-grid {
@@ -1572,8 +1630,13 @@ select {
   }
 
   .history-row,
+  .history-row.upcoming,
   .user-row {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .update-bet-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -28,6 +28,7 @@ const state = {
   active: "matches",
   selectedMatchId: null,
   selectedTeamId: null,
+  predictionStatsTab: "upcoming",
   matchFilter: "upcoming",
   matchSearch: "",
   message: "",
@@ -96,7 +97,7 @@ const navItems = [
   ["detail", "Predict"],
   ["bracket", "Bracket"],
   ["leaderboard", "Rankings"],
-  ["history", "History"]
+  ["predictionStats", "Thống kê dự đoán"]
 ];
 
 const fmt = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
@@ -388,6 +389,7 @@ function renderActiveView() {
   if (state.active === "groups") return renderGroups();
   if (state.active === "bracket") return renderBracket();
   if (state.active === "leaderboard") return renderLeaderboard();
+  if (state.active === "predictionStats") return renderPredictionStats();
   if (state.active === "history") return renderHistory();
   if (state.active === "admin" && state.profile.role === "admin") return renderAdmin();
   return renderMatches();
@@ -748,13 +750,14 @@ function renderGroupCard(groupName) {
 
 function renderStandingRow(row, index) {
   const gd = row.goalsFor - row.goalsAgainst;
+  const rating = row.team.fifa_rank ? `FIFA #${fmt.format(number(row.team.fifa_rank))}` : (row.team.rating_source ? row.team.rating_source : "Rating TBA");
   return `
     <div class="standings-row">
       <span>${index + 1}</span>
       <span class="standing-team">
         <span class="fixture-flag">${teamFlagContent(row.team)}</span>
         <strong>${escapeHtml(row.team.name)}</strong>
-        <small>${escapeHtml(row.team.code)}</small>
+        <small>${escapeHtml(row.team.code)} · ${escapeHtml(rating)}</small>
       </span>
       <span>${fmt.format(row.played)}</span>
       <span>${fmt.format(row.won)}</span>
@@ -831,12 +834,15 @@ function renderRosterPanel(team) {
   const players = state.teamPlayers
     .filter((player) => player.team_id === team.id)
     .sort((left, right) => String(left.position || "").localeCompare(String(right.position || "")) || number(left.shirt_number) - number(right.shirt_number) || left.name.localeCompare(right.name));
+  const ranking = team.fifa_rank
+    ? `FIFA #${fmt.format(number(team.fifa_rank))}${team.fifa_points ? ` · ${fmtOne.format(number(team.fifa_points))} pts` : ""}`
+    : "Team rating not synced yet";
   return `
     <section class="roster-panel glass-card">
       <div class="section-heading">
         <div>
           <h2>${teamFlagContent(team)} ${escapeHtml(team.name)} players</h2>
-          <p>${escapeHtml(team.group_name ? formatGroupName(team.group_name) : "World Cup 2026")} roster</p>
+          <p>${escapeHtml(team.group_name ? formatGroupName(team.group_name) : "World Cup 2026")} roster · ${escapeHtml(ranking)}</p>
         </div>
         <button class="ghost-button" data-close-roster>Close</button>
       </div>
@@ -850,11 +856,15 @@ function renderRosterPanel(team) {
 }
 
 function renderPlayerCard(player) {
+  const rating = player.overall_rating ? `OVR ${fmt.format(number(player.overall_rating))}` : (player.rating_source ? "Rating pending" : "OVR TBA");
+  const club = player.club || player.source || "Club TBA";
   return `
     <article class="player-card">
+      ${player.photo_url ? `<img src="${escapeHtml(player.photo_url)}" alt="${escapeHtml(player.name)}" loading="lazy">` : ""}
       <strong>${escapeHtml(player.name)}</strong>
       <span>${escapeHtml(player.position || "Position TBA")}</span>
-      <small>${player.shirt_number ? `#${fmt.format(player.shirt_number)}` : "No shirt number"}</small>
+      <small>${player.shirt_number ? `#${fmt.format(player.shirt_number)}` : "No shirt number"} · ${escapeHtml(club)}</small>
+      <b>${escapeHtml(rating)}</b>
     </article>
   `;
 }
@@ -1067,7 +1077,102 @@ function renderLeaderboard() {
   `;
 }
 
+function renderPredictionStats() {
+  const upcoming = state.bets.filter((bet) => bet.status === "placed");
+  const upcomingMatchCount = new Set(upcoming.map((bet) => bet.match_id).filter(Boolean)).size;
+  const totalStake = upcoming.reduce((sum, bet) => sum + number(bet.stake), 0);
+  const net = state.bets.reduce((sum, bet) => sum + number(bet.points_delta) + number(bet.prediction_bonus), 0);
+  const won = state.bets.filter((bet) => bet.status === "won").length;
+  const activeList = state.predictionStatsTab === "upcoming" ? upcoming : state.bets;
+  return `
+    <div class="stack">
+      <section class="hero stadium-surface">
+        <span class="pill">Premium Predictor</span>
+        <h1>Thống kê dự đoán</h1>
+        <p>${fmt.format(upcomingMatchCount)} trận đang dự đoán · ${fmt.format(upcoming.length)} phiếu mở · ${fmt.format(totalStake)} pts đang mở · Net ${fmt.format(net)} pts</p>
+      </section>
+      <section class="prediction-metrics">
+        <div class="glass-card metric"><span>Trận đang dự đoán</span><strong>${fmt.format(upcomingMatchCount)}</strong></div>
+        <div class="glass-card metric"><span>Phiếu đang mở</span><strong>${fmt.format(upcoming.length)}</strong></div>
+        <div class="glass-card metric"><span>Đã dự đoán</span><strong>${fmt.format(state.bets.length)}</strong></div>
+        <div class="glass-card metric"><span>Dự đoán thắng</span><strong>${fmt.format(won)}</strong></div>
+      </section>
+      <div class="segmented stats-tabs">
+        <button class="${state.predictionStatsTab === "upcoming" ? "active" : ""}" data-prediction-stats-tab="upcoming">Sắp diễn ra</button>
+        <button class="${state.predictionStatsTab === "history" ? "active" : ""}" data-prediction-stats-tab="history">Đã dự đoán</button>
+      </div>
+      <div class="section-heading">
+        <h2>${state.predictionStatsTab === "upcoming" ? "Dự đoán đang mở" : "Lịch sử dự đoán"}</h2>
+        <span>${fmt.format(activeList.length)} bet</span>
+      </div>
+      <section class="stack">
+        ${activeList.map((bet) => state.predictionStatsTab === "upcoming" ? renderUpcomingBetRow(bet) : renderHistoryRow(bet)).join("") || `<div class="glass-card panel"><p>Chưa có dự đoán trong nhóm này.</p></div>`}
+      </section>
+    </div>
+  `;
+}
+
+function renderUpcomingBetRow(bet) {
+  const match = matchForBet(bet);
+  const market = marketForBet(bet, match);
+  const title = match ? `${match.home_team.name} vs ${match.away_team.name}` : bet.market_key;
+  const locked = number(bet.locked_multiplier);
+  const current = number(market?.odds_multiplier || bet.locked_multiplier);
+  const closesAt = market?.closes_at || match?.starts_at || bet.placed_at;
+  const editable = canUpdateBet(bet, match, market);
+  const homeScore = Number(bet.selection_json?.home_score ?? 0);
+  const awayScore = Number(bet.selection_json?.away_score ?? 0);
+  return `
+    <article class="history-row upcoming">
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${match ? `${dateText(match.starts_at)} · lock ${dateText(closesAt)}` : dateText(bet.placed_at)}</small>
+      </div>
+      <div><small>Market</small><b>${escapeHtml(bet.market_key)}</b></div>
+      <div><small>Dự đoán</small><b>${escapeHtml(bet.selection_label)}</b></div>
+      <div><small>Hệ số</small><b>x${fmtOne.format(locked)} / x${fmtOne.format(current)}</b></div>
+      <div><small>Stake</small><b>${fmt.format(number(bet.stake))} pts</b></div>
+      <div><small>Payout</small><b>${fmt.format(number(bet.potential_payout))} pts</b></div>
+      ${
+        editable
+          ? `<form class="update-bet-form" data-update-bet="${bet.id}">
+              ${
+                bet.market_key === "correct_score"
+                  ? `<label>Home<input name="home_score" type="number" min="0" step="1" value="${homeScore}"></label>
+                     <label>Away<input name="away_score" type="number" min="0" step="1" value="${awayScore}"></label>`
+                  : `<label>Selection<input value="${escapeHtml(bet.selection_label)}" disabled></label>`
+              }
+              <label>Stake<input name="stake" type="number" min="1" step="1" value="${number(bet.stake)}"></label>
+              <button class="primary-button compact-button">Cập nhật</button>
+            </form>`
+          : `<div class="locked-copy"><small>Không thể sửa</small><b>${match ? escapeHtml(match.status) : "Outright"}</b></div>`
+      }
+    </article>
+  `;
+}
+
+function matchForBet(bet) {
+  return state.matches.find((match) => match.id === bet.match_id) || bet.match || null;
+}
+
+function marketForBet(bet, match = matchForBet(bet)) {
+  if (!match) return null;
+  return (match.match_markets || []).find((market) => market.id === bet.market_id)
+    || (match.match_markets || []).find((market) => market.market_key === bet.market_key && market.selection_key === bet.selection_key)
+    || (match.match_markets || []).find((market) => market.market_key === bet.market_key)
+    || null;
+}
+
+function canUpdateBet(bet, match = matchForBet(bet), market = marketForBet(bet, match)) {
+  if (!match || !market || bet.status !== "placed") return false;
+  if (!["SCHEDULED", "NS", "TBD"].includes(match.status)) return false;
+  const closeTime = new Date(market.closes_at || match.starts_at).getTime();
+  return Number.isFinite(closeTime) && closeTime > Date.now() && market.is_open !== false;
+}
+
 function renderHistory() {
+  state.predictionStatsTab = "history";
+  return renderPredictionStats();
   const net = state.bets.reduce((sum, bet) => sum + number(bet.points_delta) + number(bet.prediction_bonus), 0);
   return `
     <div class="stack">
@@ -1085,7 +1190,7 @@ function renderHistory() {
 }
 
 function renderHistoryRow(bet) {
-  const match = bet.match;
+  const match = matchForBet(bet) || bet.match;
   const title = match ? `${match.home_team.name} vs ${match.away_team.name}` : bet.market_key;
   const delta = number(bet.points_delta);
   const bonus = number(bet.prediction_bonus);
@@ -1446,6 +1551,13 @@ function bindShellEvents() {
     });
   });
 
+  document.querySelectorAll("[data-prediction-stats-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.predictionStatsTab = button.dataset.predictionStatsTab;
+      renderApp();
+    });
+  });
+
   document.querySelectorAll("[data-team-roster]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedTeamId = Number(button.dataset.teamRoster);
@@ -1486,6 +1598,9 @@ function bindShellEvents() {
   });
 
   document.getElementById("score-bet-form")?.addEventListener("submit", placeScoreBet);
+  document.querySelectorAll(".update-bet-form").forEach((form) => {
+    form.addEventListener("submit", updateBet);
+  });
   document.querySelectorAll("[data-market]").forEach((button) => {
     button.addEventListener("click", () => placeMarketBet(Number(button.dataset.market)));
   });
@@ -1554,6 +1669,50 @@ function hydrateOutrightControlForm() {
   document.getElementById("admin-outright-closes-at").value = option.dataset.closesAt || "";
 }
 
+async function updateBet(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const bet = state.bets.find((item) => item.id === Number(form.dataset.updateBet));
+  if (!bet) return;
+  const match = matchForBet(bet);
+  const market = marketForBet(bet, match);
+  if (!match || !market) {
+    state.error = "Không tìm thấy market để cập nhật dự đoán.";
+    state.message = "";
+    renderApp();
+    return;
+  }
+
+  const stake = Number(form.elements.stake.value);
+  const selectionJson = bet.market_key === "correct_score"
+    ? {
+        home_score: Number(form.elements.home_score.value),
+        away_score: Number(form.elements.away_score.value)
+      }
+    : { line: market.line };
+  const selectionKey = bet.market_key === "correct_score"
+    ? `${selectionJson.home_score}-${selectionJson.away_score}`
+    : market.selection_key;
+
+  const { error } = await state.client.rpc("update_bet", {
+    p_bet_id: bet.id,
+    p_market_id: market.id,
+    p_selection_key: selectionKey,
+    p_stake: stake,
+    p_selection_json: selectionJson
+  });
+  if (error) {
+    state.error = error.message;
+    state.message = "";
+  } else {
+    state.message = "Đã cập nhật dự đoán trước giờ khóa cược.";
+    state.error = "";
+    state.active = "predictionStats";
+    state.predictionStatsTab = "upcoming";
+  }
+  await loadData();
+}
+
 async function placeScoreBet(event) {
   event.preventDefault();
   const match = selectedMatch();
@@ -1606,7 +1765,8 @@ async function placeOutrightBet(marketId) {
   } else {
     state.message = `Đã đặt kèo vô địch: ${market.selection_label}.`;
     state.error = "";
-    state.active = "history";
+    state.active = "predictionStats";
+    state.predictionStatsTab = "upcoming";
   }
   await loadData();
 }
@@ -1619,7 +1779,8 @@ async function placeBet(payload) {
   } else {
     state.message = "Đã ghi nhận dự đoán và trừ điểm cược.";
     state.error = "";
-    state.active = "history";
+    state.active = "predictionStats";
+    state.predictionStatsTab = "upcoming";
   }
   await loadData();
 }
