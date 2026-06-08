@@ -6,6 +6,7 @@ const state = {
   profile: null,
   matches: [],
   bracketMatches: [],
+  teams: [],
   outrightMarkets: [],
   bets: [],
   leaderboard: [],
@@ -31,16 +32,59 @@ const state = {
 };
 
 const flags = {
-  ARG: "ARG",
-  BRA: "BRA",
-  FRA: "FRA",
-  GER: "GER",
-  ESP: "ESP",
-  MEX: "MEX",
-  NED: "NED",
-  POR: "POR",
-  SRB: "SRB",
-  URU: "URU"
+  ALG: "🇩🇿",
+  ARG: "🇦🇷",
+  AUS: "🇦🇺",
+  AUT: "🇦🇹",
+  BEL: "🇧🇪",
+  BIH: "🇧🇦",
+  BRA: "🇧🇷",
+  CAN: "🇨🇦",
+  CIV: "🇨🇮",
+  COD: "🇨🇩",
+  COL: "🇨🇴",
+  CPV: "🇨🇻",
+  CRO: "🇭🇷",
+  CUW: "🇨🇼",
+  CZE: "🇨🇿",
+  ECU: "🇪🇨",
+  EGY: "🇪🇬",
+  ENG: "🏴",
+  ESP: "🇪🇸",
+  FRA: "🇫🇷",
+  GER: "🇩🇪",
+  GHA: "🇬🇭",
+  HAI: "🇭🇹",
+  IRQ: "🇮🇶",
+  IRN: "🇮🇷",
+  JOR: "🇯🇴",
+  JPN: "🇯🇵",
+  KOR: "🇰🇷",
+  KSA: "🇸🇦",
+  MAR: "🇲🇦",
+  MEX: "🇲🇽",
+  NED: "🇳🇱",
+  NOR: "🇳🇴",
+  NZL: "🇳🇿",
+  PAN: "🇵🇦",
+  PAR: "🇵🇾",
+  POR: "🇵🇹",
+  QAT: "🇶🇦",
+  RSA: "🇿🇦",
+  SCO: "🏴",
+  SEN: "🇸🇳",
+  SUI: "🇨🇭",
+  SWE: "🇸🇪",
+  TUN: "🇹🇳",
+  TUR: "🇹🇷",
+  URU: "🇺🇾",
+  USA: "🇺🇸",
+  UZB: "🇺🇿"
+};
+
+const flagImages = {
+  ENG: "https://flagcdn.com/w40/gb-eng.png",
+  SCO: "https://flagcdn.com/w40/gb-sct.png"
 };
 
 const navItems = [
@@ -168,6 +212,10 @@ async function loadData() {
     throwIfError(profileResult.error);
     state.profile = profileResult.data;
 
+    const teamsResult = await state.client.from("teams").select("*").order("group_name", { ascending: true }).order("group_slot", { ascending: true }).order("name", { ascending: true });
+    throwIfError(teamsResult.error);
+    state.teams = teamsResult.data || [];
+
     const matchResult = await state.client
       .from("matches")
       .select("*,home_team:teams!matches_home_team_id_fkey(*),away_team:teams!matches_away_team_id_fkey(*),match_markets(*)")
@@ -181,7 +229,7 @@ async function loadData() {
 
     const bracketResult = await state.client
       .from("bracket_matches")
-      .select("*,match:matches!bracket_matches_match_id_fkey(*,home_team:teams!matches_home_team_id_fkey(*),away_team:teams!matches_away_team_id_fkey(*))")
+      .select("*,home_team:teams!bracket_matches_home_team_id_fkey(*),away_team:teams!bracket_matches_away_team_id_fkey(*),match:matches!bracket_matches_match_id_fkey(*,home_team:teams!matches_home_team_id_fkey(*),away_team:teams!matches_away_team_id_fkey(*))")
       .order("display_order", { ascending: true });
     state.bracketMatches = bracketResult.error ? [] : bracketResult.data || [];
 
@@ -340,6 +388,7 @@ function renderMatches() {
     return `<section class="glass-card panel"><h2>Chưa có lịch đấu</h2><p>Hãy chạy Supabase seed.</p></section>`;
   }
   const visibleMatches = filteredMatches.filter((match) => match.id !== featured.id);
+  const summaryMatches = visibleMatches.slice(0, 6);
   const odd = featured.match_markets.find((market) => market.market_key === "correct_score")?.odds_multiplier || 2.45;
   return `
     <div class="dashboard-grid">
@@ -362,7 +411,9 @@ function renderMatches() {
           <p><button class="primary-button" data-match="${featured.id}">Dự đoán ngay</button></p>
         </section>
         <div class="section-heading"><h2>Lịch thi đấu</h2><span>${fmt.format(filteredMatches.length)} trận</span></div>
-        <section class="card-grid">${visibleMatches.map(renderMatchCard).join("") || "<p>Không có trận trong bộ lọc này.</p>"}</section>
+        ${renderFixtureTable(filteredMatches)}
+        <div class="section-heading"><h2>Trận nổi bật tiếp theo</h2><span>${fmt.format(summaryMatches.length)} trận</span></div>
+        <section class="card-grid">${summaryMatches.map(renderMatchCard).join("") || "<p>Không có trận trong bộ lọc này.</p>"}</section>
       </div>
       <aside class="stack">
         <section class="glass-card panel">
@@ -382,6 +433,65 @@ function renderMatches() {
       </aside>
     </div>
   `;
+}
+
+function renderFixtureTable(matches) {
+  return `
+    <section class="fixture-table glass-card">
+      <div class="section-heading">
+        <h2>Tất cả cặp trận</h2>
+        <span>${fmt.format(matches.length)} trận để predict</span>
+      </div>
+      <div class="fixture-head">
+        <span>Trận</span>
+        <span>Thời gian</span>
+        <span>Cặp đấu</span>
+        <span>Bảng / sân</span>
+        <span>Markets</span>
+        <span></span>
+      </div>
+      <div class="fixture-list">
+        ${matches.map(renderFixtureRow).join("") || `<p class="empty-copy">Không có trận trong bộ lọc này.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderFixtureRow(match) {
+  const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  return `
+    <article class="fixture-row">
+      <span class="fixture-number">#${escapeHtml(fixtureNumber(match))}</span>
+      <time>${dateText(match.starts_at)}</time>
+      <div class="fixture-pair">
+        ${fixtureTeam(match.home_team)}
+        <b>VS</b>
+        ${fixtureTeam(match.away_team)}
+      </div>
+      <div class="fixture-meta">
+        <strong>${escapeHtml(scheduleLabel(match))}</strong>
+        <small>${escapeHtml(matchLocation(match))}</small>
+      </div>
+      <span class="fixture-market-count">${fmt.format(openMarkets)} open</span>
+      <button class="compact-button primary-button" data-match="${match.id}">Predict</button>
+    </article>
+  `;
+}
+
+function fixtureTeam(team) {
+  return `
+    <span class="fixture-team">
+      <span class="fixture-flag">${teamFlagContent(team)}</span>
+      <span>${escapeHtml(team?.name || "TBA")}</span>
+      <small>${escapeHtml(team?.code || "TBA")}</small>
+    </span>
+  `;
+}
+
+function fixtureNumber(match) {
+  const providerNumber = String(match.provider_id || "").match(/(\d+)$/)?.[1];
+  if (providerNumber) return String(Number(providerNumber));
+  return match.id || "-";
 }
 
 function renderMatchCard(match) {
@@ -683,10 +793,11 @@ function renderBracketRound(roundKey, fallbackLabel) {
 
 function renderBracketMatch(match) {
   const linked = match.match_id && match.match;
-  const displayDate = linked ? dateText(match.match.starts_at) : dateOnlyText(match.match_date);
-  const homeLabel = linked ? match.match.home_team?.name : match.home_label;
-  const awayLabel = linked ? match.match.away_team?.name : match.away_label;
+  const displayDate = linked ? dateText(match.match.starts_at) : match.starts_at ? dateText(match.starts_at) : dateOnlyText(match.match_date);
+  const homeLabel = linked ? match.match.home_team?.name : match.home_team?.name || match.home_label;
+  const awayLabel = linked ? match.match.away_team?.name : match.away_team?.name || match.away_label;
   const location = linked ? matchLocation(match.match) : `${match.venue}${match.city ? ` · ${match.city}` : ""}`;
+  const statusLabel = linked ? "Predict open" : match.is_confirmed ? "Confirmed" : "Pending";
   const content = `
     <div class="bracket-match-top">
       <span>Match ${fmt.format(match.match_no)}</span>
@@ -694,7 +805,7 @@ function renderBracketMatch(match) {
     </div>
     <div class="bracket-team">${escapeHtml(homeLabel)}</div>
     <div class="bracket-team">${escapeHtml(awayLabel)}</div>
-    <small>${escapeHtml(location)}</small>
+    <small>${escapeHtml(location)} · ${escapeHtml(statusLabel)}</small>
   `;
   if (linked) {
     return `<button class="bracket-match glass-card linked" data-match="${match.match_id}">${content}</button>`;
@@ -820,6 +931,7 @@ function renderAdmin() {
         ${metric("Settled bets", report.settled_bets || 0)}
       </section>
       ${renderDeploymentHealth()}
+      ${renderBracketAdminPanel()}
       <section class="admin-grid">
         <form class="glass-card form-card form-grid" id="admin-filter-form">
           <h2>Report filters</h2>
@@ -847,12 +959,14 @@ function renderAdmin() {
         <form class="glass-card form-card form-grid" id="result-form">
           <h2>Kết quả & settle</h2>
           <label>Trận<select id="result-match">${state.matches.map((match) => `<option value="${match.id}">${escapeHtml(match.home_team.code)} vs ${escapeHtml(match.away_team.code)}</option>`).join("")}</select></label>
-          <label>Status<select id="result-status"><option>FT</option><option>PST</option><option>CANC</option><option>SCHEDULED</option></select></label>
+          <label>Status<select id="result-status"><option>FT</option><option>AET</option><option>PEN</option><option>FT_PEN</option><option>PST</option><option>CANC</option><option>SCHEDULED</option></select></label>
           <label>Tỷ số<input id="result-score" value="2-1"></label>
+          <label>Penalty<input id="result-penalties" placeholder="5-4, chỉ dùng khi PEN/FT_PEN"></label>
           <button class="primary-button">Lưu & settle</button>
         </form>
         <form class="glass-card form-card form-grid" id="market-control-form">
           <h2>Market controls</h2>
+          <p><small>Odds custom chỉ áp dụng cho các cược mới. Cược đã đặt giữ nguyên multiplier đã khóa.</small></p>
           <label>Kèo<select id="admin-market-id">${marketOptions}</select></label>
           <label>Multiplier<input id="admin-market-multiplier" type="number" min="1" step="0.01" value="2.00"></label>
           <label>Lock time<input id="admin-market-closes-at" type="datetime-local"></label>
@@ -912,6 +1026,44 @@ function renderAdmin() {
         ${state.syncRuns.map((run) => `<p><b>${escapeHtml(run.provider)}</b> · ${escapeHtml(run.job_type)} · ${escapeHtml(run.status)}<br><small>${escapeHtml(run.message || "")}</small></p>`).join("") || "<p>Chưa có sync run.</p>"}
       </section>
     </div>
+  `;
+}
+
+function renderBracketAdminPanel() {
+  const roundOf32 = state.bracketMatches.filter((match) => match.round_key === "round_of_32");
+  const matchOptions = roundOf32.map((match) => `
+    <option value="${match.match_no}">
+      Match ${fmt.format(match.match_no)} · ${escapeHtml(match.home_team?.name || match.home_label)} vs ${escapeHtml(match.away_team?.name || match.away_label)}
+    </option>
+  `).join("");
+  const teamOptions = state.teams.map((team) => `
+    <option value="${team.id}">${escapeHtml(team.group_name ? `Group ${team.group_name} · ` : "")}${escapeHtml(team.code)} · ${escapeHtml(team.name)}</option>
+  `).join("");
+  return `
+    <section class="glass-card panel">
+      <div class="section-heading">
+        <div>
+          <h2>Bracket confirmation</h2>
+          <p>Confirm Round of 32 teams when the API or group standings are ready. Winners advance automatically after settlement.</p>
+        </div>
+        <span>${fmt.format(roundOf32.filter((match) => match.is_confirmed).length)} confirmed</span>
+      </div>
+      <form class="bracket-admin-form" id="bracket-slot-form">
+        <label>Match<select id="bracket-match-no">${matchOptions}</select></label>
+        <label>Slot<select id="bracket-slot"><option value="home">Home</option><option value="away">Away</option></select></label>
+        <label>Team<select id="bracket-team-id">${teamOptions}</select></label>
+        <button class="primary-button">Confirm slot</button>
+      </form>
+      <div class="bracket-admin-grid">
+        ${roundOf32.map((match) => `
+          <article>
+            <b>Match ${fmt.format(match.match_no)}</b>
+            <span>${escapeHtml(match.home_team?.name || match.home_label)} vs ${escapeHtml(match.away_team?.name || match.away_label)}</span>
+            <small>${match.is_confirmed ? "Confirmed" : "Pending"}${match.match_id ? " · markets ready" : ""}</small>
+          </article>
+        `).join("") || "<p>Run seed_bracket.sql to load bracket slots.</p>"}
+      </div>
+    </section>
   `;
 }
 
@@ -1129,6 +1281,7 @@ function bindShellEvents() {
   document.getElementById("clear-admin-filters")?.addEventListener("click", clearAdminReportFilters);
   document.getElementById("top-up-form")?.addEventListener("submit", adjustWallet);
   document.getElementById("result-form")?.addEventListener("submit", updateResultAndSettle);
+  document.getElementById("bracket-slot-form")?.addEventListener("submit", setBracketSlot);
   document.getElementById("market-control-form")?.addEventListener("submit", updateMarketControl);
   document.getElementById("admin-market-id")?.addEventListener("change", hydrateMarketControlForm);
   hydrateMarketControlForm();
@@ -1293,14 +1446,40 @@ async function adjustWallet(event) {
   await loadData();
 }
 
+async function setBracketSlot(event) {
+  event.preventDefault();
+  const matchNo = Number(document.getElementById("bracket-match-no").value);
+  const slot = document.getElementById("bracket-slot").value;
+  const teamId = Number(document.getElementById("bracket-team-id").value);
+  const { error } = await state.client.rpc("admin_set_bracket_slot", {
+    p_match_no: matchNo,
+    p_slot: slot,
+    p_team_id: teamId
+  });
+  state.message = error ? "" : `Updated bracket match ${fmt.format(matchNo)} ${slot} slot.`;
+  state.error = error ? error.message : "";
+  await loadData();
+}
+
 async function updateResultAndSettle(event) {
   event.preventDefault();
   const matchId = Number(document.getElementById("result-match").value);
   const status = document.getElementById("result-status").value;
   const [home, away] = document.getElementById("result-score").value.split("-").map((part) => Number(part.trim()));
+  const penaltyValue = document.getElementById("result-penalties").value.trim();
+  const [homePenalties, awayPenalties] = penaltyValue
+    ? penaltyValue.split("-").map((part) => Number(part.trim()))
+    : [null, null];
   const { error: updateError } = await state.client
     .from("matches")
-    .update({ status, home_score: home, away_score: away, updated_at: new Date().toISOString() })
+    .update({
+      status,
+      home_score: home,
+      away_score: away,
+      home_penalties: Number.isFinite(homePenalties) ? homePenalties : null,
+      away_penalties: Number.isFinite(awayPenalties) ? awayPenalties : null,
+      updated_at: new Date().toISOString()
+    })
     .eq("id", matchId);
   if (updateError) {
     state.error = updateError.message;
@@ -1556,12 +1735,20 @@ function renderLeaderRow(row) {
   `;
 }
 
+function teamFlagContent(team) {
+  const code = team?.code;
+  if (flagImages[code]) {
+    return `<img src="${escapeHtml(flagImages[code])}" alt="${escapeHtml(team?.name || code)} flag" loading="lazy">`;
+  }
+  return flags[code] || "🏆";
+}
+
 function teamLockup(team, large = false) {
   return `
     <div class="team-lockup">
-      <div class="flag-orb ${large ? "large" : ""}">${flags[team.code] || "WC"}</div>
-      <strong>${escapeHtml(team.name)}</strong>
-      <small>${escapeHtml(team.code)}</small>
+      <div class="flag-orb ${large ? "large" : ""}">${teamFlagContent(team)}</div>
+      <strong>${escapeHtml(team?.name || "TBA")}</strong>
+      <small>${escapeHtml(team?.code || "TBA")}</small>
     </div>
   `;
 }

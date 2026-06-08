@@ -487,6 +487,14 @@ select:focus {
   font-size: 38px;
 }
 
+.flag-orb img,
+.fixture-flag img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 .vs-text {
   color: var(--gold);
   font-size: 48px;
@@ -580,6 +588,121 @@ select:focus {
   background: rgba(255, 255, 255, 0.05);
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
+}
+
+.fixture-table {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.fixture-head,
+.fixture-row {
+  display: grid;
+  grid-template-columns: 58px 112px minmax(260px, 1.35fr) minmax(190px, 0.9fr) 86px 94px;
+  align-items: center;
+  gap: 12px;
+}
+
+.fixture-head {
+  min-height: 34px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.fixture-list {
+  display: grid;
+  gap: 8px;
+  max-height: 640px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.fixture-row {
+  min-height: 76px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.fixture-number,
+.fixture-row time,
+.fixture-market-count {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.fixture-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fixture-pair b {
+  color: var(--gold);
+  font-size: 11px;
+  text-align: center;
+}
+
+.fixture-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fixture-team span:nth-child(2) {
+  overflow: hidden;
+  color: var(--gold-soft);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fixture-team small {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+}
+
+.fixture-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.fixture-meta {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fixture-meta strong,
+.fixture-meta small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fixture-meta small {
+  color: var(--muted);
+}
+
+.empty-copy {
+  margin: 0;
+  color: var(--muted);
 }
 
 .consensus,
@@ -923,6 +1046,38 @@ select:focus {
   justify-content: flex-end;
 }
 
+.bracket-admin-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 0.5fr) minmax(180px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin: 16px 0;
+}
+
+.bracket-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.bracket-admin-grid article {
+  display: grid;
+  gap: 4px;
+  min-height: 82px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.bracket-admin-grid span,
+.bracket-admin-grid small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .form-card {
   padding: 20px;
 }
@@ -948,6 +1103,11 @@ select:focus {
   .dashboard-grid,
   .detail-grid,
   .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bracket-admin-form,
+  .bracket-admin-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1026,6 +1186,49 @@ select:focus {
   .table-row span:nth-child(3),
   .table-row span:nth-child(4) {
     display: none;
+  }
+
+  .fixture-table {
+    padding: 14px;
+  }
+
+  .fixture-head {
+    display: none;
+  }
+
+  .fixture-list {
+    max-height: none;
+    padding-right: 0;
+  }
+
+  .fixture-row {
+    grid-template-columns: 48px minmax(0, 1fr) 82px;
+    align-items: start;
+  }
+
+  .fixture-row time,
+  .fixture-pair,
+  .fixture-meta {
+    grid-column: 2 / 4;
+  }
+
+  .fixture-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fixture-pair b {
+    display: none;
+  }
+
+  .fixture-market-count {
+    display: none;
+  }
+
+  .fixture-row .primary-button {
+    grid-column: 3;
+    grid-row: 1;
+    min-height: 34px;
+    padding: 0 12px;
   }
 
   .history-row,

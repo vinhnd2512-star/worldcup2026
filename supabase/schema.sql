@@ -52,12 +52,18 @@ create table if not exists public.matches (
   status text not null default 'SCHEDULED',
   home_score integer,
   away_score integer,
+  home_penalties integer,
+  away_penalties integer,
   venue text,
   city text,
   current_minute integer,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.matches
+  add column if not exists home_penalties integer,
+  add column if not exists away_penalties integer;
 
 create table if not exists public.match_stats (
   id bigint generated always as identity primary key,
@@ -75,13 +81,17 @@ create table if not exists public.match_stats (
 create table if not exists public.bracket_matches (
   match_no integer primary key,
   match_id bigint references public.matches(id) on delete set null,
+  home_team_id bigint references public.teams(id) on delete set null,
+  away_team_id bigint references public.teams(id) on delete set null,
   round_key text not null,
   round_label text not null,
   match_date date not null,
+  starts_at timestamptz,
   home_label text not null,
   away_label text not null,
   venue text not null,
   city text,
+  is_confirmed boolean not null default false,
   source text not null default 'fifa',
   source_url text,
   display_order integer not null default 0,
@@ -89,7 +99,20 @@ create table if not exists public.bracket_matches (
 );
 
 alter table public.bracket_matches
-  add column if not exists match_id bigint references public.matches(id) on delete set null;
+  add column if not exists match_id bigint references public.matches(id) on delete set null,
+  add column if not exists home_team_id bigint references public.teams(id) on delete set null,
+  add column if not exists away_team_id bigint references public.teams(id) on delete set null,
+  add column if not exists starts_at timestamptz,
+  add column if not exists is_confirmed boolean not null default false;
+
+create table if not exists public.bracket_slots (
+  match_no integer not null references public.bracket_matches(match_no) on delete cascade,
+  slot text not null check (slot in ('home', 'away')),
+  source_type text not null default 'manual' check (source_type in ('manual', 'winner', 'loser')),
+  source_match_no integer references public.bracket_matches(match_no) on delete cascade,
+  updated_at timestamptz not null default now(),
+  primary key (match_no, slot)
+);
 
 create table if not exists public.market_definitions (
   id bigint generated always as identity primary key,
@@ -232,6 +255,9 @@ create index if not exists bracket_matches_round_order_idx
 create index if not exists bracket_matches_match_id_idx
   on public.bracket_matches (match_id);
 
+create index if not exists bracket_slots_source_idx
+  on public.bracket_slots (source_match_no, source_type);
+
 create index if not exists match_markets_match_open_closes_idx
   on public.match_markets (match_id, is_open, closes_at);
 
@@ -328,6 +354,7 @@ alter table public.teams enable row level security;
 alter table public.matches enable row level security;
 alter table public.match_stats enable row level security;
 alter table public.bracket_matches enable row level security;
+alter table public.bracket_slots enable row level security;
 alter table public.market_definitions enable row level security;
 alter table public.match_markets enable row level security;
 alter table public.outright_markets enable row level security;
@@ -363,6 +390,13 @@ create policy public_read_bracket_matches on public.bracket_matches for select t
 
 drop policy if exists admin_write_bracket_matches on public.bracket_matches;
 create policy admin_write_bracket_matches on public.bracket_matches
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists public_read_bracket_slots on public.bracket_slots;
+create policy public_read_bracket_slots on public.bracket_slots for select to authenticated using (true);
+
+drop policy if exists admin_write_bracket_slots on public.bracket_slots;
+create policy admin_write_bracket_slots on public.bracket_slots
   for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists admin_write_match_stats on public.match_stats;
@@ -1021,6 +1055,306 @@ begin
 end;
 $$;
 
+create or replace function public.ensure_default_markets_for_match(p_match_id bigint)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_match public.matches%rowtype;
+  v_count integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'admin role required';
+  end if;
+
+  select * into v_match from public.matches where id = p_match_id;
+  if not found then
+    raise exception 'match not found';
+  end if;
+
+  insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
+  values
+    (v_match.id, 'correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null, 2.45, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2', 'home', 'Đội nhà thắng', null, 1.85, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2', 'draw', 'Hòa', null, 3.10, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2', 'away', 'Đội khách thắng', null, 2.05, 'internal', v_match.starts_at),
+    (v_match.id, 'draw_no_bet', 'Draw no bet', 'home', 'Home DNB', null, 1.65, 'internal', v_match.starts_at),
+    (v_match.id, 'draw_no_bet', 'Draw no bet', 'away', 'Away DNB', null, 1.75, 'internal', v_match.starts_at),
+    (v_match.id, 'total_goals', 'Tổng bàn thắng 2.5', 'over', 'Tài 2.5', 2.5, 1.92, 'internal', v_match.starts_at),
+    (v_match.id, 'total_goals', 'Tổng bàn thắng 2.5', 'under', 'Xỉu 2.5', 2.5, 1.88, 'internal', v_match.starts_at),
+    (v_match.id, 'btts', 'Hai đội cùng ghi bàn', 'yes', 'Có', null, 1.95, 'internal', v_match.starts_at),
+    (v_match.id, 'btts', 'Hai đội cùng ghi bàn', 'no', 'Không', null, 1.82, 'internal', v_match.starts_at),
+    (v_match.id, 'corners_total', 'Tổng phạt góc 8.5', 'over', 'Tài góc 8.5', 8.5, 1.90, 'internal', v_match.starts_at),
+    (v_match.id, 'corners_total', 'Tổng phạt góc 8.5', 'under', 'Xỉu góc 8.5', 8.5, 1.90, 'internal', v_match.starts_at),
+    (v_match.id, 'cards_total', 'Tổng thẻ 3.5', 'over', 'Tài thẻ 3.5', 3.5, 1.90, 'internal', v_match.starts_at),
+    (v_match.id, 'cards_total', 'Tổng thẻ 3.5', 'under', 'Xỉu thẻ 3.5', 3.5, 1.90, 'internal', v_match.starts_at)
+  on conflict (match_id, market_key, selection_key, line_key) do nothing;
+
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
+create or replace function public.ensure_bracket_match(p_match_no integer)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_bracket public.bracket_matches%rowtype;
+  v_match_id bigint;
+  v_starts_at timestamptz;
+begin
+  if not public.is_admin() then
+    raise exception 'admin role required';
+  end if;
+
+  select * into v_bracket from public.bracket_matches where match_no = p_match_no;
+  if not found then
+    raise exception 'bracket match not found';
+  end if;
+  if v_bracket.home_team_id is null or v_bracket.away_team_id is null then
+    return v_bracket.match_id;
+  end if;
+
+  v_starts_at := coalesce(v_bracket.starts_at, v_bracket.match_date::timestamp at time zone 'UTC');
+
+  insert into public.matches (provider_id, stage, group_name, home_team_id, away_team_id, starts_at, status, venue, city)
+  values (
+    'fifa-2026-' || lpad(p_match_no::text, 3, '0'),
+    v_bracket.round_label,
+    null,
+    v_bracket.home_team_id,
+    v_bracket.away_team_id,
+    v_starts_at,
+    'SCHEDULED',
+    v_bracket.venue,
+    v_bracket.city
+  )
+  on conflict (provider_id) do update
+  set stage = excluded.stage,
+      group_name = excluded.group_name,
+      home_team_id = excluded.home_team_id,
+      away_team_id = excluded.away_team_id,
+      starts_at = excluded.starts_at,
+      venue = excluded.venue,
+      city = excluded.city,
+      updated_at = now()
+  returning id into v_match_id;
+
+  update public.bracket_matches
+  set match_id = v_match_id,
+      starts_at = v_starts_at,
+      home_label = (select name from public.teams where id = v_bracket.home_team_id),
+      away_label = (select name from public.teams where id = v_bracket.away_team_id),
+      is_confirmed = true,
+      updated_at = now()
+  where match_no = p_match_no;
+
+  perform public.ensure_default_markets_for_match(v_match_id);
+  return v_match_id;
+end;
+$$;
+
+create or replace function public.admin_set_bracket_slot(
+  p_match_no integer,
+  p_slot text,
+  p_team_id bigint
+)
+returns public.bracket_matches
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_team public.teams%rowtype;
+  v_bracket public.bracket_matches%rowtype;
+begin
+  if not public.is_admin() then
+    raise exception 'admin role required';
+  end if;
+  if p_slot not in ('home', 'away') then
+    raise exception 'slot must be home or away';
+  end if;
+
+  select * into v_team from public.teams where id = p_team_id;
+  if not found then
+    raise exception 'team not found';
+  end if;
+
+  if p_slot = 'home' then
+    update public.bracket_matches
+    set home_team_id = p_team_id,
+        home_label = v_team.name,
+        updated_at = now()
+    where match_no = p_match_no
+    returning * into v_bracket;
+  else
+    update public.bracket_matches
+    set away_team_id = p_team_id,
+        away_label = v_team.name,
+        updated_at = now()
+    where match_no = p_match_no
+    returning * into v_bracket;
+  end if;
+
+  if not found then
+    raise exception 'bracket match not found';
+  end if;
+
+  update public.bracket_matches
+  set is_confirmed = home_team_id is not null and away_team_id is not null,
+      updated_at = now()
+  where match_no = p_match_no
+  returning * into v_bracket;
+
+  perform public.ensure_bracket_match(p_match_no);
+
+  insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
+  values (
+    auth.uid(),
+    'bracket.slot_set',
+    'bracket_match',
+    p_match_no::text,
+    jsonb_build_object('slot', p_slot, 'team_id', p_team_id)
+  );
+
+  return v_bracket;
+end;
+$$;
+
+create or replace function public.match_winner_team_id(p_match_id bigint)
+returns bigint
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_match public.matches%rowtype;
+begin
+  select * into v_match from public.matches where id = p_match_id;
+  if not found or v_match.status not in ('FT', 'AET', 'PEN', 'FT_PEN') then
+    return null;
+  end if;
+  if v_match.home_score is null or v_match.away_score is null then
+    return null;
+  end if;
+  if v_match.home_score > v_match.away_score then
+    return v_match.home_team_id;
+  elsif v_match.away_score > v_match.home_score then
+    return v_match.away_team_id;
+  elsif v_match.status in ('PEN', 'FT_PEN')
+    and v_match.home_penalties is not null
+    and v_match.away_penalties is not null then
+    if v_match.home_penalties > v_match.away_penalties then
+      return v_match.home_team_id;
+    elsif v_match.away_penalties > v_match.home_penalties then
+      return v_match.away_team_id;
+    end if;
+  end if;
+  return null;
+end;
+$$;
+
+create or replace function public.match_loser_team_id(p_match_id bigint)
+returns bigint
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_match public.matches%rowtype;
+  v_winner bigint;
+begin
+  select * into v_match from public.matches where id = p_match_id;
+  if not found then
+    return null;
+  end if;
+  v_winner := public.match_winner_team_id(p_match_id);
+  if v_winner is null then
+    return null;
+  end if;
+  if v_winner = v_match.home_team_id then
+    return v_match.away_team_id;
+  end if;
+  return v_match.home_team_id;
+end;
+$$;
+
+create or replace function public.advance_knockout_match(p_match_id bigint)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_source public.bracket_matches%rowtype;
+  v_slot record;
+  v_team_id bigint;
+  v_count integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'admin role required';
+  end if;
+
+  select * into v_source from public.bracket_matches where match_id = p_match_id;
+  if not found then
+    return 0;
+  end if;
+
+  for v_slot in
+    select * from public.bracket_slots
+    where source_match_no = v_source.match_no
+      and source_type in ('winner', 'loser')
+  loop
+    v_team_id := case
+      when v_slot.source_type = 'winner' then public.match_winner_team_id(p_match_id)
+      else public.match_loser_team_id(p_match_id)
+    end;
+    if v_team_id is null then
+      continue;
+    end if;
+
+    if v_slot.slot = 'home' then
+      update public.bracket_matches
+      set home_team_id = v_team_id,
+          home_label = (select name from public.teams where id = v_team_id),
+          is_confirmed = away_team_id is not null,
+          updated_at = now()
+      where match_no = v_slot.match_no;
+    else
+      update public.bracket_matches
+      set away_team_id = v_team_id,
+          away_label = (select name from public.teams where id = v_team_id),
+          is_confirmed = home_team_id is not null,
+          updated_at = now()
+      where match_no = v_slot.match_no;
+    end if;
+
+    perform public.ensure_bracket_match(v_slot.match_no);
+    v_count := v_count + 1;
+  end loop;
+
+  if v_count > 0 then
+    insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
+    values (
+      auth.uid(),
+      'bracket.advance',
+      'bracket_match',
+      v_source.match_no::text,
+      jsonb_build_object('match_id', p_match_id, 'advanced_slots', v_count)
+    );
+  end if;
+
+  return v_count;
+end;
+$$;
+
 create or replace function public.settle_match_bets(p_match_id bigint)
 returns integer
 language plpgsql
@@ -1039,6 +1373,7 @@ declare
   v_total_corners numeric;
   v_total_cards numeric;
   v_count integer := 0;
+  v_advanced integer := 0;
 begin
   if not public.is_admin() then
     raise exception 'admin role required';
@@ -1168,13 +1503,15 @@ begin
     v_count := v_count + 1;
   end loop;
 
+  v_advanced := public.advance_knockout_match(p_match_id);
+
   insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
   values (
     auth.uid(),
     'settlement.match',
     'match',
     p_match_id::text,
-    jsonb_build_object('match_id', p_match_id, 'status', v_match.status, 'settled_bets', v_count)
+    jsonb_build_object('match_id', p_match_id, 'status', v_match.status, 'settled_bets', v_count, 'advanced_slots', v_advanced)
   );
 
   return v_count;

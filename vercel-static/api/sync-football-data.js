@@ -713,7 +713,7 @@ function defaultMarket(match, marketKey, label, selectionKey, selectionLabel, li
 }
 
 async function linkFootballDataBracketMatches(matchesPayload, syncedMatches) {
-  const idByProvider = new Map((syncedMatches || []).map((match) => [match.provider_id, match.id]));
+  const byProvider = new Map((syncedMatches || []).map((match) => [match.provider_id, match]));
   const ordered = [...(matchesPayload || [])]
     .filter((match) => match.id && match.utcDate)
     .sort((left, right) => new Date(left.utcDate).getTime() - new Date(right.utcDate).getTime() || Number(left.id) - Number(right.id));
@@ -725,9 +725,16 @@ async function linkFootballDataBracketMatches(matchesPayload, syncedMatches) {
   let linked = 0;
   for (let index = 72; index < Math.min(104, ordered.length); index += 1) {
     const matchNo = index + 1;
-    const matchId = idByProvider.get(`fd-${ordered[index].id}`);
-    if (!matchId) continue;
-    await patchJson("bracket_matches", [`match_no=eq.${matchNo}`], { match_id: matchId, updated_at: new Date().toISOString() });
+    const synced = byProvider.get(`fd-${ordered[index].id}`);
+    if (!synced?.id) continue;
+    await patchJson("bracket_matches", [`match_no=eq.${matchNo}`], {
+      match_id: synced.id,
+      home_team_id: synced.home_team_id,
+      away_team_id: synced.away_team_id,
+      starts_at: synced.starts_at,
+      is_confirmed: Boolean(synced.home_team_id && synced.away_team_id),
+      updated_at: new Date().toISOString()
+    });
     linked += 1;
   }
   return linked;
