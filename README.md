@@ -37,6 +37,7 @@ Use `vercel-static/` + Supabase + Vercel.
    - `ODDS_API_KEY`
    - `FOOTBALL_DATA_API_TOKEN`
    - `MAX_STATS_FIXTURES` optional, defaults to `12`
+   - `MAX_SQUAD_TEAMS` optional, defaults to `48`
 5. Deploy.
 
 For the full no-install deployment checklist, use `docs/deploy-checklist.md`.
@@ -44,6 +45,8 @@ For the full no-install deployment checklist, use `docs/deploy-checklist.md`.
 For launch QA after deployment, use `docs/launch-smoke-test.md`.
 
 For provider choices, odds coverage, and MVP market rules, use `docs/data-sources-and-markets.md`.
+
+Provider sync can update fixtures/stats, odds, FIFA team ranking metadata, and API-FootBALL squad rosters. FIFA ranking display uses the official FIFA/Coca-Cola Men's World Ranking page (`https://inside.fifa.com/fifa-world-ranking/men`) as the source, while roster import uses API-FootBALL `players/squads` when `API_FOOTBALL_KEY` is configured.
 
 After Vercel is deployed, run the no-install deployment check:
 

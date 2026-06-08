@@ -1962,7 +1962,7 @@ async function syncProviders() {
       "Content-Type": "application/json",
       Authorization: `Bearer ${state.session.access_token}`
     },
-    body: JSON.stringify({ includeOdds: true })
+    body: JSON.stringify({ includeOdds: true, includeRankings: true, includeSquads: true })
   });
   const result = await response.json();
   if (!response.ok) {
@@ -1972,8 +1972,10 @@ async function syncProviders() {
     const fixtureStatus = result.fixtureResult?.status || "unknown";
     const footballDataStatus = result.footballDataResult?.status || "unknown";
     const statsStatus = result.statsResult?.status || "unknown";
+    const rankingStatus = result.rankingResult?.status || "unknown";
+    const squadStatus = result.squadResult?.status || "unknown";
     const oddsStatus = result.oddsResult?.status || "unknown";
-    state.message = `Provider sync finished. API-FOOTBALL: ${fixtureStatus}; football-data.org: ${footballDataStatus}; stats: ${statsStatus}; odds: ${oddsStatus}.`;
+    state.message = `Provider sync finished. API-FOOTBALL: ${fixtureStatus}; football-data.org: ${footballDataStatus}; stats: ${statsStatus}; rankings: ${rankingStatus}; squads: ${squadStatus}; odds: ${oddsStatus}.`;
     state.error = "";
   }
   await loadData();
@@ -2125,13 +2127,22 @@ function teamFlagContent(team) {
 }
 
 function teamLockup(team, large = false) {
+  const rating = teamRatingLabel(team);
   return `
     <div class="team-lockup">
       <div class="flag-orb ${large ? "large" : ""}">${teamFlagContent(team)}</div>
       <strong>${escapeHtml(team?.name || "TBA")}</strong>
-      <small>${escapeHtml(team?.code || "TBA")}</small>
+      <small>${escapeHtml(team?.code || "TBA")}${large ? ` · ${escapeHtml(rating)}` : ""}</small>
     </div>
   `;
+}
+
+function teamRatingLabel(team) {
+  if (!team) return "Rating TBA";
+  if (team.fifa_rank) {
+    return `FIFA #${fmt.format(number(team.fifa_rank))}${team.fifa_points ? ` · ${fmtOne.format(number(team.fifa_points))} pts` : ""}`;
+  }
+  return team.rating_source ? `${team.rating_source} pending` : "Rating TBA";
 }
 
 function scoreStepper(id, label, value) {

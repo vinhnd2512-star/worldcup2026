@@ -86,6 +86,12 @@ const requiredAppTokens = [
 
 const requiredSyncTokens = [
   "markets: \"h2h,totals,draw_no_bet,outrights\"",
+  "FIFA_RANKING_URL",
+  "FIFA_RANKING_SOURCE",
+  "syncFifaRankings",
+  "extractFifaRankingMeta",
+  "syncApiFootballSquads",
+  "\"/players/squads\"",
   "bestOutrightPrices",
   "updatedOutrights",
   "syncApiFootballStats",
@@ -96,7 +102,11 @@ const requiredSyncTokens = [
   "football-data.org",
   "/fixtures/statistics",
   "MAX_STATS_FIXTURES",
+  "MAX_SQUAD_TEAMS",
+  "includeRankings",
+  "includeSquads",
   "match_stats",
+  "team_players",
   "/rest/v1/outright_markets"
 ];
 
@@ -241,6 +251,10 @@ function envShapeValid(key, value) {
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed >= 0 && parsed <= 50;
   }
+  if (key === "MAX_SQUAD_TEAMS") {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 && parsed <= 64;
+  }
   return value.length >= 12;
 }
 
@@ -252,7 +266,7 @@ function reportLocalEnvReadiness() {
   }
 
   const invalid = [];
-  for (const key of [...requiredEnv, "MAX_STATS_FIXTURES"]) {
+  for (const key of [...requiredEnv, "MAX_STATS_FIXTURES", "MAX_SQUAD_TEAMS"]) {
     const value = values.get(key) || "";
     if (!envShapeValid(key, value)) {
       invalid.push(key);

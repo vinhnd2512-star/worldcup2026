@@ -5,11 +5,41 @@ const WORLD_CUP_LEAGUE_ID = 1;
 const WORLD_CUP_SEASON = 2026;
 const FOOTBALL_DATA_WORLD_CUP_CODE = "WC";
 const WORLD_CUP_SPORT_KEY = "soccer_fifa_world_cup";
+const FIFA_RANKING_URL = "https://inside.fifa.com/fifa-world-ranking/men";
+const FIFA_RANKING_SOURCE = "FIFA/Coca-Cola Men's World Ranking";
 const ODDS_MATCH_WINDOW_HOURS = 36;
 const DEFAULT_MAX_STATS_FIXTURES = 12;
+const DEFAULT_MAX_SQUAD_TEAMS = 48;
 const STAT_SYNC_WINDOW_HOURS = 96;
 const LIVE_STATUSES = new Set(["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"]);
 const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
+const FIFA_RANKING_SNAPSHOT = [
+  ["FRA", 1, 1877.32],
+  ["ESP", 2, 1876.40],
+  ["ARG", 3, 1874.81],
+  ["ENG", 4, 1825.97],
+  ["POR", 5, 1763.83],
+  ["BRA", 6, 1761.16],
+  ["NED", 7, 1757.87],
+  ["MAR", 8, 1755.87],
+  ["BEL", 9, 1734.71],
+  ["GER", 10, 1730.37],
+  ["CRO", 11, 1717.07],
+  ["COL", 13, 1693.09],
+  ["SEN", 14, 1688.99],
+  ["MEX", 15, 1681.03],
+  ["USA", 16, 1673.13],
+  ["URU", 17, 1673.07],
+  ["JPN", 18, 1660.43],
+  ["SUI", 19, 1649.40],
+  ["RSA", 60, 1429.73],
+  ["BIH", 65, null],
+  ["CPV", 69, null],
+  ["GHA", 74, null],
+  ["CUW", 82, null],
+  ["HAI", 83, null],
+  ["NZL", 85, null]
+];
 
 async function readJson(request) {
   const chunks = [];
@@ -122,6 +152,19 @@ async function footballData(path, params = {}) {
   return response.json();
 }
 
+async function fifaRankingPage() {
+  const response = await fetch(FIFA_RANKING_URL, {
+    headers: {
+      Accept: "text/html,application/json",
+      "User-Agent": "WorldCup Predict ranking sync (+https://inside.fifa.com/fifa-world-ranking/men)"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`FIFA ranking page failed: ${response.status} ${await response.text()}`);
+  }
+  return response.text();
+}
+
 function normalizeStatus(shortStatus) {
   if (["NS", "TBD"].includes(shortStatus)) return "SCHEDULED";
   if (["FT", "AET", "PEN"].includes(shortStatus)) return shortStatus;
@@ -206,6 +249,49 @@ async function getTeamsByProviderIds(providerIds) {
   return new Map(teams.map((team) => [team.provider_id, team.id]));
 }
 
+async function getTeamsByCodes(codes) {
+  const uniqueCodes = [...new Set(codes.filter(Boolean).map((code) => String(code).toUpperCase()))];
+  if (!uniqueCodes.length) return new Map();
+  const response = await supabaseFetch(
+    `/rest/v1/teams?code=in.(${uniqueCodes.map(encodeURIComponent).join(",")})&select=id,code,provider_id`
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase read teams by code failed: ${response.status} ${await response.text()}`);
+  }
+  const teams = await response.json();
+  return new Map(teams.map((team) => [team.code, team]));
+}
+
+async function upsertProviderTeamsByCode(teams) {
+  const rows = [...teams];
+  const existingByCode = await getTeamsByCodes(rows.map((team) => team.code));
+  const newOrRefreshRows = [];
+  let linkedExisting = 0;
+
+  for (const row of rows) {
+    const existing = existingByCode.get(row.code);
+    if (!existing) {
+      newOrRefreshRows.push(row);
+      continue;
+    }
+    if (existing.provider_id === row.provider_id) {
+      newOrRefreshRows.push(row);
+      continue;
+    }
+
+    await patchJson("teams", [`code=eq.${encodeURIComponent(row.code)}`], {
+      provider_id: row.provider_id,
+      name: row.name,
+      country: row.country,
+      logo_url: row.logo_url
+    });
+    linkedExisting += 1;
+  }
+
+  const upserted = await upsertJson("teams", newOrRefreshRows, "provider_id");
+  return { upserted, linkedExisting };
+}
+
 async function getMatchesForOddsMapping() {
   const response = await supabaseFetch(
     "/rest/v1/matches?select=id,starts_at,status,home_team:teams!matches_home_team_id_fkey(id,code,name),away_team:teams!matches_away_team_id_fkey(id,code,name)&order=starts_at.asc"
@@ -222,6 +308,17 @@ async function getTeamsForOutrightMapping() {
     throw new Error(`Supabase read teams failed: ${response.status} ${await response.text()}`);
   }
   return response.json();
+}
+
+async function getTeamsForSquadSync(limit) {
+  const response = await supabaseFetch(
+    `/rest/v1/teams?select=id,provider_id,code,name&provider_id=not.is.null&order=name.asc&limit=${limit}`
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase read teams for squad sync failed: ${response.status} ${await response.text()}`);
+  }
+  const teams = await response.json();
+  return teams.filter((team) => /^\d+$/.test(String(team.provider_id || "")));
 }
 
 async function getMatchesForStatsSync(maxFixtures) {
@@ -252,6 +349,21 @@ function normalizeTeamName(value) {
     .replace(/\b(fc|cf|sc|the|national|team)\b/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function extractFifaRankingMeta(html) {
+  const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+  if (!nextDataMatch) return {};
+  try {
+    const json = JSON.parse(nextDataMatch[1]);
+    const ranking = json?.props?.pageProps?.pageData?.ranking || {};
+    return {
+      lastUpdateDate: ranking.lastUpdateDate || "2026-04-01T00:00:00.000Z",
+      nextUpdateDate: ranking.nextUpdateDate || null
+    };
+  } catch {
+    return {};
+  }
 }
 
 function hoursBetween(left, right) {
@@ -561,7 +673,7 @@ async function syncApiFootballFixtures() {
     teamsByProvider.set(String(fixture.teams.away.id), teamFromFixtureTeam(fixture.teams.away));
   }
 
-  await upsertJson("teams", [...teamsByProvider.values()], "provider_id");
+  const teamSync = await upsertProviderTeamsByCode(teamsByProvider.values());
   const teamIdMap = await getTeamsByProviderIds([...teamsByProvider.keys()]);
   const matches = fixtures
     .map((fixture) => ({
@@ -587,7 +699,7 @@ async function syncApiFootballFixtures() {
     jobType: "fixtures",
     status: "success",
     requestCount: 1,
-    message: `Synced ${matches.length} fixtures and ${teamsByProvider.size} teams for World Cup 2026.`
+    message: `Synced ${matches.length} fixtures and ${teamsByProvider.size} teams for World Cup 2026; linked ${teamSync.linkedExisting} seeded teams by code.`
   });
 
   return {
@@ -738,6 +850,111 @@ async function linkFootballDataBracketMatches(matchesPayload, syncedMatches) {
     linked += 1;
   }
   return linked;
+}
+
+async function syncFifaRankings() {
+  const html = await fifaRankingPage();
+  const meta = extractFifaRankingMeta(html);
+  const updatedAt = meta.lastUpdateDate || "2026-04-01T00:00:00.000Z";
+  const rows = FIFA_RANKING_SNAPSHOT.map(([code, fifaRank, fifaPoints]) => ({
+    code,
+    fifa_rank: fifaRank,
+    fifa_points: fifaPoints,
+    rating_source: `${FIFA_RANKING_SOURCE} (${FIFA_RANKING_URL})`,
+    rating_updated_at: updatedAt
+  }));
+
+  let updated = 0;
+  for (const row of rows) {
+    const result = await patchJson("teams", [`code=eq.${encodeURIComponent(row.code)}`], {
+      fifa_rank: row.fifa_rank,
+      fifa_points: row.fifa_points,
+      rating_source: row.rating_source,
+      rating_updated_at: row.rating_updated_at
+    });
+    updated += result.length;
+  }
+
+  await recordSyncRun({
+    provider: "fifa",
+    jobType: "rankings",
+    status: "success",
+    requestCount: 1,
+    message: `Applied ${updated}/${rows.length} FIFA ranking rows from ${FIFA_RANKING_URL}; last official update ${updatedAt}.`
+  });
+
+  return {
+    provider: "fifa",
+    status: "success",
+    requests: 1,
+    rankings: updated,
+    source: FIFA_RANKING_URL,
+    lastUpdateDate: updatedAt,
+    nextUpdateDate: meta.nextUpdateDate || null
+  };
+}
+
+async function syncApiFootballSquads(maxTeams = DEFAULT_MAX_SQUAD_TEAMS) {
+  if (!env("API_FOOTBALL_KEY")) {
+    await recordSyncRun({
+      provider: "api-football",
+      jobType: "squads",
+      status: "skipped",
+      requestCount: 0,
+      message: "API_FOOTBALL_KEY is not configured."
+    });
+    return { provider: "api-football", status: "skipped", requests: 0, teams: 0, players: 0 };
+  }
+
+  const teams = await getTeamsForSquadSync(maxTeams);
+  if (!teams.length) {
+    await recordSyncRun({
+      provider: "api-football",
+      jobType: "squads",
+      status: "skipped",
+      requestCount: 0,
+      message: "No teams with numeric API-FOOTBALL provider_id are available for squad sync."
+    });
+    return { provider: "api-football", status: "skipped", requests: 0, teams: 0, players: 0 };
+  }
+
+  const rows = [];
+  let requests = 0;
+  for (const team of teams) {
+    const payload = await apiFootball("/players/squads", { team: team.provider_id });
+    requests += 1;
+    const squad = payload.response?.[0]?.players || [];
+    for (const player of squad) {
+      if (!player?.id || !player.name) continue;
+      rows.push({
+        team_id: team.id,
+        provider_id: `api-football-${player.id}`,
+        name: player.name,
+        position: player.position || null,
+        shirt_number: player.number || null,
+        photo_url: player.photo || null,
+        source: "api-football",
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  await upsertJson("team_players", rows, "provider_id");
+  await recordSyncRun({
+    provider: "api-football",
+    jobType: "squads",
+    status: "success",
+    requestCount: requests,
+    message: `Synced ${rows.length} squad players for ${teams.length} teams from API-FOOTBALL /players/squads.`
+  });
+
+  return {
+    provider: "api-football",
+    status: "success",
+    requests,
+    teams: teams.length,
+    players: rows.length
+  };
 }
 
 async function syncApiFootballStats(maxFixtures = DEFAULT_MAX_STATS_FIXTURES) {
@@ -900,9 +1117,15 @@ export default async function handler(request, response) {
   }
   const includeOdds = body.includeOdds !== false;
   const includeStats = body.includeStats !== false;
+  const includeRankings = body.includeRankings !== false;
+  const includeSquads = body.includeSquads !== false;
   const maxStatsFixtures = Math.max(
     0,
     Math.min(50, Number(body.maxStatsFixtures || env("MAX_STATS_FIXTURES") || DEFAULT_MAX_STATS_FIXTURES))
+  );
+  const maxSquadTeams = Math.max(
+    0,
+    Math.min(64, Number(body.maxSquadTeams || env("MAX_SQUAD_TEAMS") || DEFAULT_MAX_SQUAD_TEAMS))
   );
 
   const fixtureResult = await runProviderJob({
@@ -927,6 +1150,22 @@ export default async function handler(request, response) {
         task: () => syncApiFootballStats(maxStatsFixtures)
       })
     : { provider: "api-football", status: "skipped", requests: 0, matches: 0, stats: 0 };
+  const rankingResult = includeRankings
+    ? await runProviderJob({
+        provider: "fifa",
+        jobType: "rankings",
+        fallback: { rankings: 0 },
+        task: syncFifaRankings
+      })
+    : { provider: "fifa", status: "skipped", requests: 0, rankings: 0 };
+  const squadResult = includeSquads
+    ? await runProviderJob({
+        provider: "api-football",
+        jobType: "squads",
+        fallback: { teams: 0, players: 0 },
+        task: () => syncApiFootballSquads(maxSquadTeams)
+      })
+    : { provider: "api-football", status: "skipped", requests: 0, teams: 0, players: 0 };
   const oddsResult = includeOdds
     ? await runProviderJob({
         provider: "the-odds-api",
@@ -936,7 +1175,7 @@ export default async function handler(request, response) {
       })
     : { provider: "the-odds-api", status: "skipped", requests: 0, events: 0 };
 
-  const results = [fixtureResult, footballDataResult, statsResult, oddsResult];
+  const results = [fixtureResult, footballDataResult, statsResult, rankingResult, squadResult, oddsResult];
   const status = results.some((result) => result.status === "failed") ? "partial" : "ok";
-  return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, oddsResult });
+  return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, rankingResult, squadResult, oddsResult });
 }

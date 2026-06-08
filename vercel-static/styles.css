@@ -985,7 +985,32 @@ select:focus {
 }
 
 .stats-tabs {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
   justify-content: start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(0, 126, 92, 0.22);
+  border-radius: 999px;
+  background: #eaf5ef;
+  box-shadow: 0 10px 24px rgba(0, 126, 92, 0.08);
+}
+
+.stats-tabs button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 18px;
+  color: var(--gold-soft);
+  background: transparent;
+  font-weight: 900;
+}
+
+.stats-tabs button.active {
+  color: #ffffff;
+  background: var(--gold);
+  box-shadow: 0 8px 18px rgba(0, 126, 92, 0.2);
 }
 
 .history-row.upcoming {
@@ -1215,6 +1240,13 @@ select {
   color: rgba(255, 255, 255, 0.82);
 }
 
+.stadium-surface .hero-meta span {
+  border: 1px solid rgba(0, 126, 92, 0.12);
+  color: #063f31;
+  background: rgba(255, 255, 255, 0.94);
+  font-weight: 900;
+}
+
 .flag-orb {
   border-color: #ffffff;
   background: #ffffff;
@@ -1237,8 +1269,9 @@ select {
 }
 
 .filter-pill {
-  color: var(--gold-soft);
+  color: #063f31;
   background: #ffffff;
+  font-weight: 900;
 }
 
 .filter-pill.active,
@@ -1284,7 +1317,6 @@ select {
 }
 
 .match-meta-grid span,
-.hero-meta span,
 .demo-row span,
 .pill {
   background: var(--surface-2);

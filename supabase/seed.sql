@@ -6,7 +6,11 @@ alter table public.teams
   add column if not exists group_slot integer,
   add column if not exists confederation text,
   add column if not exists flag_code text,
-  add column if not exists flag_url text;
+  add column if not exists flag_url text,
+  add column if not exists fifa_rank integer,
+  add column if not exists fifa_points numeric(8, 2),
+  add column if not exists rating_source text,
+  add column if not exists rating_updated_at timestamptz;
 
 -- Remove old demo rows from the earlier MVP seed without touching live provider sync rows.
 delete from public.sync_runs
@@ -138,6 +142,42 @@ set flag_code = flags.flag_code,
     flag_url = flags.flag_url
 from flags
 where t.code = flags.code;
+
+with fifa_rankings(code, fifa_rank, fifa_points) as (
+  values
+    ('FRA', 1, 1877.32),
+    ('ESP', 2, 1876.40),
+    ('ARG', 3, 1874.81),
+    ('ENG', 4, 1825.97),
+    ('POR', 5, 1763.83),
+    ('BRA', 6, 1761.16),
+    ('NED', 7, 1757.87),
+    ('MAR', 8, 1755.87),
+    ('BEL', 9, 1734.71),
+    ('GER', 10, 1730.37),
+    ('CRO', 11, 1717.07),
+    ('COL', 13, 1693.09),
+    ('SEN', 14, 1688.99),
+    ('MEX', 15, 1681.03),
+    ('USA', 16, 1673.13),
+    ('URU', 17, 1673.07),
+    ('JPN', 18, 1660.43),
+    ('SUI', 19, 1649.40),
+    ('RSA', 60, 1429.73),
+    ('BIH', 65, null),
+    ('CPV', 69, null),
+    ('GHA', 74, null),
+    ('CUW', 82, null),
+    ('HAI', 83, null),
+    ('NZL', 85, null)
+)
+update public.teams t
+set fifa_rank = fifa_rankings.fifa_rank,
+    fifa_points = fifa_rankings.fifa_points,
+    rating_source = 'FIFA/Coca-Cola Men''s World Ranking (https://inside.fifa.com/fifa-world-ranking/men)',
+    rating_updated_at = '2026-04-01 11:55:29.435+00'
+from fifa_rankings
+where t.code = fifa_rankings.code;
 
 insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
 values
