@@ -46,7 +46,7 @@ For launch QA after deployment, use `docs/launch-smoke-test.md`.
 
 For provider choices, odds coverage, and MVP market rules, use `docs/data-sources-and-markets.md`.
 
-Provider sync can update fixtures/stats, odds, FIFA team ranking metadata, and API-FootBALL squad rosters. FIFA ranking display uses the official FIFA/Coca-Cola Men's World Ranking page (`https://inside.fifa.com/fifa-world-ranking/men`) as the source, while roster import uses API-FootBALL `players/squads` when `API_FOOTBALL_KEY` is configured.
+Provider sync can update fixtures/stats, odds, FIFA team ranking metadata, and API-FootBALL squad rosters. FIFA ranking display uses FIFA's live ranking API (`https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en`) and merges by `TeamName[].Description`, with `IdCountry` as a fallback to the local team code. Roster import uses API-FootBALL `players/squads` when `API_FOOTBALL_KEY` is configured.
 
 After Vercel is deployed, run the no-install deployment check:
 

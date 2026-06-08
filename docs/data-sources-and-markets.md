@@ -61,7 +61,7 @@ Reference:
 
 Use FIFA rankings as the authoritative team-strength display and keep the source/date on every imported value.
 
-- FIFA/Coca-Cola Men's World Ranking stores team rank and points for `teams.fifa_rank`, `teams.fifa_points`, `teams.rating_source`, and `teams.rating_updated_at`.
+- FIFA/Coca-Cola Men's World Ranking live API stores team rank and points for `teams.fifa_rank`, `teams.fifa_points`, `teams.rating_source`, and `teams.rating_updated_at`. The sync merges by `TeamName[].Description` first, then falls back to `IdCountry` matching `teams.code`.
 - FIFA official World Cup squad lists are the authoritative roster source once squads are confirmed.
 - API-FOOTBALL `players/squads` is the preferred machine-readable roster feed for `team_players` when provider team IDs are available.
 - football-data.org team resources can fill basic squad fields when API-FOOTBALL coverage or quota is unavailable.
@@ -70,6 +70,7 @@ Use FIFA rankings as the authoritative team-strength display and keep the source
 References:
 
 - https://inside.fifa.com/fifa-world-ranking/men
+- https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en
 - https://www.fifa.com/en/articles/fifa-world-cup-2026-squads-confirmed
 - https://www.api-football.com/documentation-v3#operation/get-players-squads
 - https://docs.football-data.org/general/v4/team.html

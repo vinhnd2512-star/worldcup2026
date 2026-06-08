@@ -6,6 +6,7 @@ const WORLD_CUP_SEASON = 2026;
 const FOOTBALL_DATA_WORLD_CUP_CODE = "WC";
 const WORLD_CUP_SPORT_KEY = "soccer_fifa_world_cup";
 const FIFA_RANKING_URL = "https://inside.fifa.com/fifa-world-ranking/men";
+const FIFA_RANKING_API_URL = "https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en";
 const FIFA_RANKING_SOURCE = "FIFA/Coca-Cola Men's World Ranking";
 const ODDS_MATCH_WINDOW_HOURS = 36;
 const DEFAULT_MAX_STATS_FIXTURES = 12;
@@ -13,33 +14,6 @@ const DEFAULT_MAX_SQUAD_TEAMS = 48;
 const STAT_SYNC_WINDOW_HOURS = 96;
 const LIVE_STATUSES = new Set(["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"]);
 const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
-const FIFA_RANKING_SNAPSHOT = [
-  ["FRA", 1, 1877.32],
-  ["ESP", 2, 1876.40],
-  ["ARG", 3, 1874.81],
-  ["ENG", 4, 1825.97],
-  ["POR", 5, 1763.83],
-  ["BRA", 6, 1761.16],
-  ["NED", 7, 1757.87],
-  ["MAR", 8, 1755.87],
-  ["BEL", 9, 1734.71],
-  ["GER", 10, 1730.37],
-  ["CRO", 11, 1717.07],
-  ["COL", 13, 1693.09],
-  ["SEN", 14, 1688.99],
-  ["MEX", 15, 1681.03],
-  ["USA", 16, 1673.13],
-  ["URU", 17, 1673.07],
-  ["JPN", 18, 1660.43],
-  ["SUI", 19, 1649.40],
-  ["RSA", 60, 1429.73],
-  ["BIH", 65, null],
-  ["CPV", 69, null],
-  ["GHA", 74, null],
-  ["CUW", 82, null],
-  ["HAI", 83, null],
-  ["NZL", 85, null]
-];
 
 async function readJson(request) {
   const chunks = [];
@@ -163,6 +137,19 @@ async function fifaRankingPage() {
     throw new Error(`FIFA ranking page failed: ${response.status} ${await response.text()}`);
   }
   return response.text();
+}
+
+async function fifaRankingsLive() {
+  const response = await fetch(FIFA_RANKING_API_URL, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "WorldCup Predict ranking sync (+https://inside.fifa.com/fifa-world-ranking/men)"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`FIFA live ranking API failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json();
 }
 
 function normalizeStatus(shortStatus) {
@@ -310,6 +297,14 @@ async function getTeamsForOutrightMapping() {
   return response.json();
 }
 
+async function getTeamsForRankingSync() {
+  const response = await supabaseFetch("/rest/v1/teams?select=id,code,name,country&order=name.asc");
+  if (!response.ok) {
+    throw new Error(`Supabase read teams for FIFA ranking sync failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json();
+}
+
 async function getTeamsForSquadSync(limit) {
   const response = await supabaseFetch(
     `/rest/v1/teams?select=id,provider_id,code,name&provider_id=not.is.null&order=name.asc&limit=${limit}`
@@ -351,19 +346,29 @@ function normalizeTeamName(value) {
     .trim();
 }
 
-function extractFifaRankingMeta(html) {
-  const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-  if (!nextDataMatch) return {};
-  try {
-    const json = JSON.parse(nextDataMatch[1]);
-    const ranking = json?.props?.pageProps?.pageData?.ranking || {};
-    return {
-      lastUpdateDate: ranking.lastUpdateDate || "2026-04-01T00:00:00.000Z",
-      nextUpdateDate: ranking.nextUpdateDate || null
-    };
-  } catch {
-    return {};
-  }
+function fifaRankingDescription(row) {
+  const names = Array.isArray(row?.TeamName) ? row.TeamName : [];
+  return names.find((item) => item.Locale === "en-GB")?.Description
+    || names.find((item) => String(item.Locale || "").toLowerCase().startsWith("en"))?.Description
+    || names[0]?.Description
+    || "";
+}
+
+function fifaRankingRows(payload) {
+  const results = Array.isArray(payload?.Results) ? payload.Results : [];
+  return results
+    .map((row) => {
+      const description = fifaRankingDescription(row);
+      const rank = Number(row?.Rank);
+      const points = Number(row?.TotalPoints);
+      return {
+        code: String(row?.IdCountry || "").toUpperCase(),
+        description,
+        fifa_rank: Number.isInteger(rank) ? rank : null,
+        fifa_points: Number.isFinite(points) ? Number(points.toFixed(2)) : null
+      };
+    })
+    .filter((row) => row.description && row.fifa_rank && row.fifa_points !== null);
 }
 
 function hoursBetween(left, right) {
@@ -853,24 +858,34 @@ async function linkFootballDataBracketMatches(matchesPayload, syncedMatches) {
 }
 
 async function syncFifaRankings() {
-  const html = await fifaRankingPage();
-  const meta = extractFifaRankingMeta(html);
-  const updatedAt = meta.lastUpdateDate || "2026-04-01T00:00:00.000Z";
-  const rows = FIFA_RANKING_SNAPSHOT.map(([code, fifaRank, fifaPoints]) => ({
-    code,
-    fifa_rank: fifaRank,
-    fifa_points: fifaPoints,
-    rating_source: `${FIFA_RANKING_SOURCE} (${FIFA_RANKING_URL})`,
-    rating_updated_at: updatedAt
-  }));
+  const payload = await fifaRankingsLive();
+  const rows = fifaRankingRows(payload);
+  const teams = await getTeamsForRankingSync();
+  const teamsByCode = new Map(teams.map((team) => [String(team.code || "").toUpperCase(), team]));
+  const teamsByDescription = new Map();
+  for (const team of teams) {
+    for (const value of [team.name, team.country, team.code]) {
+      const key = normalizeTeamName(value);
+      if (key && !teamsByDescription.has(key)) {
+        teamsByDescription.set(key, team);
+      }
+    }
+  }
 
+  const updatedAt = new Date().toISOString();
   let updated = 0;
+  const unmatched = [];
   for (const row of rows) {
-    const result = await patchJson("teams", [`code=eq.${encodeURIComponent(row.code)}`], {
+    const team = teamsByDescription.get(normalizeTeamName(row.description)) || teamsByCode.get(row.code);
+    if (!team) {
+      unmatched.push(`${row.description}${row.code ? ` (${row.code})` : ""}`);
+      continue;
+    }
+    const result = await patchJson("teams", [`id=eq.${team.id}`], {
       fifa_rank: row.fifa_rank,
       fifa_points: row.fifa_points,
-      rating_source: row.rating_source,
-      rating_updated_at: row.rating_updated_at
+      rating_source: `${FIFA_RANKING_SOURCE} live API (${FIFA_RANKING_API_URL})`,
+      rating_updated_at: updatedAt
     });
     updated += result.length;
   }
@@ -880,7 +895,7 @@ async function syncFifaRankings() {
     jobType: "rankings",
     status: "success",
     requestCount: 1,
-    message: `Applied ${updated}/${rows.length} FIFA ranking rows from ${FIFA_RANKING_URL}; last official update ${updatedAt}.`
+    message: `Applied ${updated}/${rows.length} FIFA live ranking rows from ${FIFA_RANKING_API_URL}; unmatched examples: ${unmatched.slice(0, 8).join(", ") || "none"}.`
   });
 
   return {
@@ -888,9 +903,10 @@ async function syncFifaRankings() {
     status: "success",
     requests: 1,
     rankings: updated,
-    source: FIFA_RANKING_URL,
-    lastUpdateDate: updatedAt,
-    nextUpdateDate: meta.nextUpdateDate || null
+    fetched: rows.length,
+    unmatched: unmatched.length,
+    source: FIFA_RANKING_API_URL,
+    updatedAt
   };
 }
 
