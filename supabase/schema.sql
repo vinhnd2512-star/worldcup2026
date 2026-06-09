@@ -45,7 +45,14 @@ create table if not exists public.teams (
   coach_name text,
   world_cup_titles integer not null default 0,
   world_cup_title_years integer[] not null default '{}',
-  profile_updated_at timestamptz
+  profile_updated_at timestamptz,
+  transfermarkt_team_id text,
+  transfermarkt_url text,
+  squad_market_value_eur numeric(14, 2),
+  squad_market_value_label text,
+  squad_value_rank integer,
+  squad_value_updated_at timestamptz,
+  squad_value_source text
 );
 
 alter table public.teams
@@ -63,7 +70,14 @@ alter table public.teams
   add column if not exists coach_name text,
   add column if not exists world_cup_titles integer not null default 0,
   add column if not exists world_cup_title_years integer[] not null default '{}',
-  add column if not exists profile_updated_at timestamptz;
+  add column if not exists profile_updated_at timestamptz,
+  add column if not exists transfermarkt_team_id text,
+  add column if not exists transfermarkt_url text,
+  add column if not exists squad_market_value_eur numeric(14, 2),
+  add column if not exists squad_market_value_label text,
+  add column if not exists squad_value_rank integer,
+  add column if not exists squad_value_updated_at timestamptz,
+  add column if not exists squad_value_source text;
 
 create table if not exists public.team_players (
   id bigint generated always as identity primary key,
@@ -86,6 +100,12 @@ create table if not exists public.team_players (
   position_side integer,
   active_status integer,
   fifa_payload_json jsonb not null default '{}',
+  transfermarkt_player_id text,
+  transfermarkt_url text,
+  market_value_eur numeric(14, 2),
+  market_value_label text,
+  market_value_updated_at timestamptz,
+  market_value_source text,
   source text not null default 'manual',
   updated_at timestamptz not null default now()
 );
@@ -103,7 +123,13 @@ alter table public.team_players
   add column if not exists real_position integer,
   add column if not exists position_side integer,
   add column if not exists active_status integer,
-  add column if not exists fifa_payload_json jsonb not null default '{}';
+  add column if not exists fifa_payload_json jsonb not null default '{}',
+  add column if not exists transfermarkt_player_id text,
+  add column if not exists transfermarkt_url text,
+  add column if not exists market_value_eur numeric(14, 2),
+  add column if not exists market_value_label text,
+  add column if not exists market_value_updated_at timestamptz,
+  add column if not exists market_value_source text;
 
 create table if not exists public.matches (
   id bigint generated always as identity primary key,
@@ -331,6 +357,10 @@ create unique index if not exists teams_fifa_team_id_idx
   on public.teams (fifa_team_id)
   where fifa_team_id is not null;
 
+create unique index if not exists teams_transfermarkt_team_id_idx
+  on public.teams (transfermarkt_team_id)
+  where transfermarkt_team_id is not null;
+
 create index if not exists team_lineups_team_match_idx
   on public.team_lineups (team_id, match_id, updated_at desc);
 
@@ -341,6 +371,14 @@ create index if not exists teams_fifa_rank_idx
 create index if not exists team_players_rating_idx
   on public.team_players (team_id, overall_rating desc)
   where overall_rating is not null;
+
+create unique index if not exists team_players_transfermarkt_player_id_idx
+  on public.team_players (transfermarkt_player_id)
+  where transfermarkt_player_id is not null;
+
+create index if not exists team_players_market_value_idx
+  on public.team_players (team_id, market_value_eur desc)
+  where market_value_eur is not null;
 
 create index if not exists bracket_matches_round_order_idx
   on public.bracket_matches (round_key, display_order);
@@ -383,6 +421,10 @@ create index if not exists bets_market_status_idx
 
 create index if not exists bets_open_match_idx
   on public.bets (match_id, id)
+  where status = 'placed';
+
+create index if not exists bets_open_user_match_market_idx
+  on public.bets (user_id, match_id, market_key, placed_at desc)
   where status = 'placed';
 
 create index if not exists bets_open_tournament_winner_idx
@@ -470,8 +512,16 @@ create policy profiles_admin_update on public.profiles
 drop policy if exists public_read_teams on public.teams;
 create policy public_read_teams on public.teams for select to authenticated using (true);
 
+drop policy if exists admin_write_teams on public.teams;
+create policy admin_write_teams on public.teams
+  for all using (public.is_admin()) with check (public.is_admin());
+
 drop policy if exists public_read_team_players on public.team_players;
 create policy public_read_team_players on public.team_players for select to authenticated using (true);
+
+drop policy if exists admin_write_team_players on public.team_players;
+create policy admin_write_team_players on public.team_players
+  for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists public_read_team_lineups on public.team_lineups;
 create policy public_read_team_lineups on public.team_lineups for select to authenticated using (true);
@@ -668,6 +718,9 @@ declare
   v_match public.matches%rowtype;
   v_market public.match_markets%rowtype;
   v_bet public.bets%rowtype;
+  v_next_stake numeric(12, 2);
+  v_stake_delta numeric(12, 2);
+  v_balance_after numeric(12, 2);
   v_payout numeric(12, 2);
   v_selection_key text;
   v_selection_label text;
@@ -677,6 +730,10 @@ begin
     raise exception 'not authenticated';
   end if;
   if p_stake <= 0 then
+    raise exception 'stake must be positive';
+  end if;
+  v_next_stake := round(p_stake, 2);
+  if v_next_stake <= 0 then
     raise exception 'stake must be positive';
   end if;
 
@@ -723,15 +780,87 @@ begin
   if now() >= coalesce(v_market.closes_at, v_match.starts_at) then
     raise exception 'betting is locked for this match';
   end if;
-  if v_user.wallet_balance < p_stake then
+
+  perform pg_advisory_xact_lock(
+    hashtext(auth.uid()::text),
+    hashtext(p_match_id::text || ':' || v_market.market_key)
+  );
+
+  select * into v_bet
+  from public.bets
+  where user_id = auth.uid()
+    and match_id = p_match_id
+    and market_key = v_market.market_key
+    and status = 'placed'
+  order by placed_at desc
+  limit 1
+  for update;
+
+  if v_bet.id is not null then
+    v_stake_delta := v_next_stake - v_bet.stake;
+    if v_stake_delta > 0 and v_user.wallet_balance < v_stake_delta then
+      raise exception 'insufficient point balance';
+    end if;
+
+    v_balance_after := v_user.wallet_balance - v_stake_delta;
+    if v_stake_delta <> 0 then
+      update public.profiles
+      set wallet_balance = v_balance_after
+      where id = auth.uid();
+
+      insert into public.wallet_ledger (user_id, actor_id, amount, kind, reason, balance_after)
+      values (
+        auth.uid(),
+        auth.uid(),
+        -v_stake_delta,
+        case when v_stake_delta > 0 then 'bet_stake_adjustment' else 'bet_stake_refund' end,
+        'Updated ' || v_market.market_key || ': ' || v_selection_label,
+        v_balance_after
+      );
+    end if;
+
+    v_payout := round(v_next_stake * v_market.odds_multiplier, 2);
+    update public.bets
+    set market_id = v_market.id,
+        market_key = v_market.market_key,
+        selection_key = v_selection_key,
+        selection_label = v_selection_label,
+        stake = v_next_stake,
+        locked_multiplier = v_market.odds_multiplier,
+        potential_payout = v_payout,
+        selection_json = v_selection_json
+    where id = v_bet.id
+    returning * into v_bet;
+
+    insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
+    values (
+      auth.uid(),
+      'bet.update_existing',
+      'bet',
+      v_bet.id::text,
+      jsonb_build_object(
+        'market_key', v_bet.market_key,
+        'selection_key', v_bet.selection_key,
+        'stake', v_bet.stake,
+        'stake_delta', v_stake_delta,
+        'locked_multiplier', v_bet.locked_multiplier,
+        'match_id', v_bet.match_id
+      )
+    );
+
+    return v_bet;
+  end if;
+
+  if v_user.wallet_balance < v_next_stake then
     raise exception 'insufficient point balance';
   end if;
 
-  v_payout := round(p_stake * v_market.odds_multiplier, 2);
+  v_payout := round(v_next_stake * v_market.odds_multiplier, 2);
 
   update public.profiles
-  set wallet_balance = wallet_balance - p_stake
-  where id = auth.uid();
+  set wallet_balance = wallet_balance - v_next_stake
+  where id = auth.uid()
+  returning wallet_balance into v_balance_after;
 
   insert into public.bets (
     user_id, match_id, market_id, market_key, selection_key, selection_label,
@@ -739,7 +868,7 @@ begin
   )
   values (
     auth.uid(), p_match_id, p_market_id, v_market.market_key, v_selection_key, v_selection_label,
-    p_stake, v_market.odds_multiplier, v_payout,
+    v_next_stake, v_market.odds_multiplier, v_payout,
     v_selection_json
   )
   returning * into v_bet;
@@ -748,10 +877,10 @@ begin
   values (
     auth.uid(),
     auth.uid(),
-    -p_stake,
+    -v_next_stake,
     'bet_stake',
     'Placed ' || v_market.market_key || ': ' || v_selection_label,
-    v_user.wallet_balance - p_stake
+    v_balance_after
   );
 
   insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
@@ -933,6 +1062,260 @@ begin
   );
 
   return v_updated;
+end;
+$$;
+
+create or replace function public.admin_import_transfermarkt_values(
+  p_payload jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rows jsonb := '[]'::jsonb;
+  v_row jsonb;
+  v_team_id bigint;
+  v_player_id bigint;
+  v_team_code text;
+  v_team_tm_id text;
+  v_team_url text;
+  v_player_tm_id text;
+  v_player_url text;
+  v_player_name text;
+  v_position text;
+  v_club text;
+  v_team_value_label text;
+  v_player_value_label text;
+  v_source text;
+  v_team_value_text text;
+  v_player_value_text text;
+  v_rank_text text;
+  v_team_value numeric(14, 2);
+  v_player_value numeric(14, 2);
+  v_rank integer;
+  v_updated_at timestamptz := now();
+  v_team_count integer := 0;
+  v_player_count integer := 0;
+  v_error_count integer := 0;
+  v_errors text[] := '{}';
+begin
+  if not public.is_admin() then
+    raise exception 'admin role required';
+  end if;
+
+  if p_payload is null then
+    raise exception 'payload is required';
+  end if;
+
+  if jsonb_typeof(p_payload) = 'array' then
+    v_rows := p_payload;
+  elsif jsonb_typeof(p_payload) = 'object' then
+    if jsonb_typeof(p_payload->'rows') = 'array' then
+      v_rows := v_rows || (p_payload->'rows');
+    end if;
+    if jsonb_typeof(p_payload->'teams') = 'array' then
+      v_rows := v_rows || (p_payload->'teams');
+    end if;
+    if jsonb_typeof(p_payload->'players') = 'array' then
+      v_rows := v_rows || (p_payload->'players');
+    end if;
+    if jsonb_array_length(v_rows) = 0 then
+      v_rows := jsonb_build_array(p_payload);
+    end if;
+  else
+    raise exception 'payload must be a JSON object or array';
+  end if;
+
+  for v_row in select value from jsonb_array_elements(v_rows)
+  loop
+    v_team_code := upper(coalesce(
+      nullif(v_row->>'team_code', ''),
+      nullif(v_row->>'teamCode', ''),
+      nullif(v_row->>'code', '')
+    ));
+    if v_team_code is null then
+      v_error_count := v_error_count + 1;
+      v_errors := array_append(v_errors, 'Missing team_code');
+      continue;
+    end if;
+
+    select id into v_team_id
+    from public.teams
+    where code = v_team_code;
+
+    if v_team_id is null then
+      v_error_count := v_error_count + 1;
+      v_errors := array_append(v_errors, 'Unknown team_code: ' || v_team_code);
+      continue;
+    end if;
+
+    v_team_tm_id := coalesce(
+      nullif(v_row->>'transfermarkt_team_id', ''),
+      nullif(v_row->>'transfermarktTeamId', ''),
+      nullif(v_row->>'team_transfermarkt_id', ''),
+      nullif(v_row->>'teamTransfermarktId', '')
+    );
+    v_team_url := coalesce(
+      nullif(v_row->>'team_transfermarkt_url', ''),
+      nullif(v_row->>'teamTransfermarktUrl', ''),
+      nullif(v_row->>'team_url', ''),
+      nullif(v_row->>'teamUrl', '')
+    );
+    v_team_value_label := coalesce(
+      nullif(v_row->>'squad_market_value_label', ''),
+      nullif(v_row->>'squadMarketValueLabel', ''),
+      nullif(v_row->>'team_market_value_label', ''),
+      nullif(v_row->>'teamMarketValueLabel', '')
+    );
+    v_team_value_text := coalesce(
+      nullif(v_row->>'squad_market_value_eur', ''),
+      nullif(v_row->>'squadMarketValueEur', ''),
+      nullif(v_row->>'team_market_value_eur', ''),
+      nullif(v_row->>'teamMarketValueEur', '')
+    );
+    v_rank_text := coalesce(
+      nullif(v_row->>'squad_value_rank', ''),
+      nullif(v_row->>'squadValueRank', ''),
+      nullif(v_row->>'team_rank', ''),
+      nullif(v_row->>'teamRank', '')
+    );
+    v_source := coalesce(
+      nullif(v_row->>'source', ''),
+      nullif(v_row->>'source_url', ''),
+      nullif(v_row->>'sourceUrl', ''),
+      'transfermarkt-import'
+    );
+    v_team_value := case when v_team_value_text ~ '^[0-9]+(\.[0-9]+)?$' then v_team_value_text::numeric(14, 2) else null end;
+    v_rank := case when v_rank_text ~ '^[0-9]+$' then v_rank_text::integer else null end;
+
+    if v_team_tm_id is not null or v_team_url is not null or v_team_value is not null or v_team_value_label is not null or v_rank is not null then
+      update public.teams
+      set transfermarkt_team_id = coalesce(v_team_tm_id, transfermarkt_team_id),
+          transfermarkt_url = coalesce(v_team_url, transfermarkt_url),
+          squad_market_value_eur = coalesce(v_team_value, squad_market_value_eur),
+          squad_market_value_label = coalesce(v_team_value_label, squad_market_value_label),
+          squad_value_rank = coalesce(v_rank, squad_value_rank),
+          squad_value_updated_at = v_updated_at,
+          squad_value_source = v_source
+      where id = v_team_id;
+      v_team_count := v_team_count + 1;
+    end if;
+
+    v_player_tm_id := coalesce(
+      nullif(v_row->>'transfermarkt_player_id', ''),
+      nullif(v_row->>'transfermarktPlayerId', ''),
+      nullif(v_row->>'player_transfermarkt_id', ''),
+      nullif(v_row->>'playerTransfermarktId', '')
+    );
+    v_player_name := coalesce(
+      nullif(v_row->>'player_name', ''),
+      nullif(v_row->>'playerName', '')
+    );
+    if v_player_name is null and v_player_tm_id is null then
+      continue;
+    end if;
+    if v_player_name is null then
+      v_error_count := v_error_count + 1;
+      v_errors := array_append(v_errors, 'Missing player_name for team ' || v_team_code);
+      continue;
+    end if;
+
+    v_position := coalesce(nullif(v_row->>'position', ''), nullif(v_row->>'player_position', ''));
+    v_club := coalesce(nullif(v_row->>'club', ''), nullif(v_row->>'player_club', ''));
+    v_player_url := coalesce(
+      nullif(v_row->>'player_url', ''),
+      nullif(v_row->>'playerUrl', ''),
+      nullif(v_row->>'transfermarkt_url', ''),
+      nullif(v_row->>'transfermarktUrl', '')
+    );
+    v_player_value_label := coalesce(
+      nullif(v_row->>'market_value_label', ''),
+      nullif(v_row->>'marketValueLabel', ''),
+      nullif(v_row->>'player_market_value_label', ''),
+      nullif(v_row->>'playerMarketValueLabel', '')
+    );
+    v_player_value_text := coalesce(
+      nullif(v_row->>'market_value_eur', ''),
+      nullif(v_row->>'marketValueEur', ''),
+      nullif(v_row->>'player_market_value_eur', ''),
+      nullif(v_row->>'playerMarketValueEur', '')
+    );
+    v_player_value := case when v_player_value_text ~ '^[0-9]+(\.[0-9]+)?$' then v_player_value_text::numeric(14, 2) else null end;
+
+    v_player_id := null;
+    if v_player_tm_id is not null then
+      select id into v_player_id
+      from public.team_players
+      where transfermarkt_player_id = v_player_tm_id;
+    end if;
+    if v_player_id is null then
+      select id into v_player_id
+      from public.team_players
+      where team_id = v_team_id
+        and lower(name) = lower(v_player_name)
+      order by updated_at desc
+      limit 1;
+    end if;
+
+    if v_player_id is null then
+      insert into public.team_players (
+        team_id, provider_id, name, position, club, transfermarkt_player_id,
+        transfermarkt_url, market_value_eur, market_value_label,
+        market_value_updated_at, market_value_source, source, updated_at
+      )
+      values (
+        v_team_id,
+        case when v_player_tm_id is not null then 'tm-' || v_player_tm_id else null end,
+        v_player_name,
+        v_position,
+        v_club,
+        v_player_tm_id,
+        v_player_url,
+        v_player_value,
+        v_player_value_label,
+        v_updated_at,
+        v_source,
+        'transfermarkt_import',
+        v_updated_at
+      );
+    else
+      update public.team_players
+      set name = v_player_name,
+          position = coalesce(v_position, position),
+          club = coalesce(v_club, club),
+          transfermarkt_player_id = coalesce(v_player_tm_id, transfermarkt_player_id),
+          transfermarkt_url = coalesce(v_player_url, transfermarkt_url),
+          market_value_eur = coalesce(v_player_value, market_value_eur),
+          market_value_label = coalesce(v_player_value_label, market_value_label),
+          market_value_updated_at = v_updated_at,
+          market_value_source = v_source,
+          updated_at = v_updated_at
+      where id = v_player_id;
+    end if;
+    v_player_count := v_player_count + 1;
+  end loop;
+
+  insert into public.audit_logs (actor_id, action, entity_type, details_json)
+  values (
+    auth.uid(),
+    'transfermarkt.import',
+    'transfermarkt',
+    jsonb_build_object(
+      'teams', v_team_count,
+      'players', v_player_count,
+      'errors', v_error_count
+    )
+  );
+
+  return jsonb_build_object(
+    'status', case when v_error_count > 0 then 'partial' else 'success' end,
+    'teams', v_team_count,
+    'players', v_player_count,
+    'errors', v_error_count,
+    'messages', to_jsonb(v_errors)
+  );
 end;
 $$;
 

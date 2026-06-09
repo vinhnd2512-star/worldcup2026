@@ -16,6 +16,11 @@ const FIFA_SQUAD_SOURCE = `FIFA squad API (${FIFA_API_BASE_URL}/teams/{id}/squad
 const ODDS_MATCH_WINDOW_HOURS = 36;
 const DEFAULT_MAX_STATS_FIXTURES = 12;
 const DEFAULT_MAX_SQUAD_TEAMS = 48;
+const DEFAULT_MAX_TRANSFERMARKT_TEAMS = 48;
+const TRANSFERMARKT_BASE_URL = "https://www.transfermarkt.com";
+const TRANSFERMARKT_PARTICIPANTS_URL = `${TRANSFERMARKT_BASE_URL}/world-cup/teilnehmer/pokalwettbewerb/FIWC`;
+const TRANSFERMARKT_SOURCE = `${TRANSFERMARKT_PARTICIPANTS_URL} and team squad pages`;
+const TRANSFERMARKT_DELAY_MS = 650;
 const STAT_SYNC_WINDOW_HOURS = 96;
 const LIVE_STATUSES = new Set(["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"]);
 const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
@@ -181,6 +186,191 @@ async function fifaApi(path, params = {}) {
   return response.json();
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function transfermarktFetch(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "WorldCup Predict admin Transfermarkt sync (+private admin-triggered sync)"
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`Transfermarkt fetch failed: ${response.status} ${await response.text()}`);
+    }
+    return response.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function decodeHtml(value) {
+  return String(value || "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&eacute;/g, "e")
+    .replace(/&uuml;/g, "u")
+    .replace(/&ccedil;/g, "c")
+    .replace(/&ntilde;/g, "n")
+    .replace(/&aacute;/g, "a")
+    .replace(/&iacute;/g, "i")
+    .replace(/&oacute;/g, "o")
+    .replace(/&uacute;/g, "u");
+}
+
+function stripHtml(value) {
+  return decodeHtml(String(value || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+function attrValue(tag, name) {
+  const match = String(tag || "").match(new RegExp(`${name}=["']([^"']+)["']`, "i"));
+  return match ? decodeHtml(match[1]) : "";
+}
+
+function absoluteTransfermarktUrl(path) {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${TRANSFERMARKT_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+function parseMarketValueLabel(label) {
+  const text = decodeHtml(label).replace(/\s+/g, "").trim();
+  const match = text.match(/(?:€|EUR)?([0-9]+(?:[.,][0-9]+)?)(bn|m|k)?/i);
+  if (!match) return null;
+  const amount = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(amount)) return null;
+  const suffix = String(match[2] || "").toLowerCase();
+  const multiplier = suffix === "bn" ? 1000000000 : suffix === "m" ? 1000000 : suffix === "k" ? 1000 : 1;
+  return Number((amount * multiplier).toFixed(2));
+}
+
+function marketValueLabels(html) {
+  return [...String(html || "").matchAll(/€\s*[0-9]+(?:[.,][0-9]+)?\s*(?:bn|m|k)?/gi)]
+    .map((match) => decodeHtml(match[0]).replace(/\s+/g, ""));
+}
+
+function transfermarktSquadUrl(teamUrl) {
+  const match = String(teamUrl || "").match(/\/([^/]+)\/(?:startseite|kader)\/verein\/(\d+)/);
+  if (!match) return "";
+  return `${TRANSFERMARKT_BASE_URL}/${match[1]}/kader/verein/${match[2]}/saison_id/2026/sort/marketValueRaw`;
+}
+
+const TRANSFERMARKT_TEAM_ALIASES = {
+  "bosnia herzegovina": "BIH",
+  "cape verde": "CPV",
+  "czech republic": "CZE",
+  "czechia": "CZE",
+  "democratic republic of the congo": "COD",
+  "dr congo": "COD",
+  "congo dr": "COD",
+  "curacao": "CUW",
+  "ivory coast": "CIV",
+  "cote d ivoire": "CIV",
+  "iran": "IRN",
+  "ir iran": "IRN",
+  "south korea": "KOR",
+  "korea republic": "KOR",
+  "turkiye": "TUR",
+  "turkey": "TUR",
+  "united states": "USA",
+  "usa": "USA"
+};
+
+function transfermarktTeamCodeForName(name) {
+  return TRANSFERMARKT_TEAM_ALIASES[normalizeTeamName(name)] || "";
+}
+
+function parseTransfermarktParticipants(html) {
+  const rows = [...String(html || "").matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+  const teams = [];
+  const seenIds = new Set();
+  for (const rowMatch of rows) {
+    const row = rowMatch[1];
+    const linkMatch = row.match(/<a[^>]+href=["']([^"']*\/startseite\/verein\/(\d+)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkMatch || seenIds.has(linkMatch[2])) continue;
+    const linkTag = linkMatch[0];
+    const name = attrValue(linkTag, "title") || stripHtml(linkMatch[3]);
+    if (!name) continue;
+    const valueLabels = marketValueLabels(row);
+    const squadMarketValueLabel = valueLabels[0] || "";
+    teams.push({
+      transfermarkt_team_id: linkMatch[2],
+      transfermarkt_url: absoluteTransfermarktUrl(linkMatch[1]),
+      squad_url: transfermarktSquadUrl(absoluteTransfermarktUrl(linkMatch[1])),
+      name,
+      alias_code: transfermarktTeamCodeForName(name),
+      squad_market_value_label: squadMarketValueLabel,
+      squad_market_value_eur: parseMarketValueLabel(squadMarketValueLabel),
+      squad_value_rank: teams.length + 1
+    });
+    seenIds.add(linkMatch[2]);
+  }
+  return teams;
+}
+
+function textLinesFromHtml(html) {
+  return decodeHtml(String(html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:div|td|tr|span|a)>/gi, "\n")
+    .replace(/<[^>]+>/g, " "))
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function parseTransfermarktSquad(html, team) {
+  const rows = [...String(html || "").matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+  const players = [];
+  const seenIds = new Set();
+  for (const rowMatch of rows) {
+    const row = rowMatch[1];
+    const playerLinks = [...row.matchAll(/<a[^>]+href=["']([^"']*\/profil\/spieler\/(\d+)[^"']*)["']([^>]*)>([\s\S]*?)<\/a>/gi)];
+    let playerLink = null;
+    for (const candidate of playerLinks) {
+      const candidateName = attrValue(candidate[0], "title") || stripHtml(candidate[4]);
+      if (candidateName && !/^\d+$/.test(candidateName)) {
+        playerLink = { href: candidate[1], id: candidate[2], name: candidateName };
+        break;
+      }
+    }
+    if (!playerLink || seenIds.has(playerLink.id)) continue;
+    const valueLabels = marketValueLabels(row);
+    const marketValueLabel = valueLabels[valueLabels.length - 1] || "";
+    const lines = textLinesFromHtml(row);
+    const nameIndex = lines.findIndex((line) => normalizeTeamName(line) === normalizeTeamName(playerLink.name));
+    const position = nameIndex >= 0 ? lines.slice(nameIndex + 1).find((line) => !/^\d+$/.test(line) && !/^€/.test(line)) : "";
+    const clubImage = [...row.matchAll(/<img[^>]+(?:title|alt)=["']([^"']+)["'][^>]*>/gi)]
+      .map((match) => decodeHtml(match[1]))
+      .find((title) => title && normalizeTeamName(title) !== normalizeTeamName(team.name) && normalizeTeamName(title) !== normalizeTeamName(playerLink.name));
+    players.push({
+      team_id: team.id,
+      provider_id: `tm-${playerLink.id}`,
+      transfermarkt_player_id: playerLink.id,
+      transfermarkt_url: absoluteTransfermarktUrl(playerLink.href),
+      name: playerLink.name,
+      position: position || null,
+      club: clubImage || null,
+      market_value_label: marketValueLabel || null,
+      market_value_eur: parseMarketValueLabel(marketValueLabel),
+      market_value_updated_at: new Date().toISOString(),
+      market_value_source: TRANSFERMARKT_SOURCE,
+      source: "transfermarkt",
+      updated_at: new Date().toISOString()
+    });
+    seenIds.add(playerLink.id);
+  }
+  return players;
+}
+
 function normalizeStatus(shortStatus) {
   if (["NS", "TBD"].includes(shortStatus)) return "SCHEDULED";
   if (["FT", "AET", "PEN"].includes(shortStatus)) return shortStatus;
@@ -322,6 +512,32 @@ async function getTeamsForOutrightMapping() {
   const response = await supabaseFetch("/rest/v1/teams?select=id,code,name&order=name.asc");
   if (!response.ok) {
     throw new Error(`Supabase read teams failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json();
+}
+
+async function getTeamsForTransfermarktSync(limit, teamCode = "") {
+  const filters = [
+    "select=id,code,name,country,transfermarkt_team_id",
+    "order=name.asc",
+    `limit=${limit}`
+  ];
+  if (teamCode) filters.splice(1, 0, `code=eq.${encodeURIComponent(teamCode)}`);
+  const response = await supabaseFetch(`/rest/v1/teams?${filters.join("&")}`);
+  if (!response.ok) {
+    throw new Error(`Supabase read teams for Transfermarkt sync failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json();
+}
+
+async function getExistingPlayersForTeams(teamIds) {
+  const ids = [...new Set(teamIds.filter(Boolean))];
+  if (!ids.length) return [];
+  const response = await supabaseFetch(
+    `/rest/v1/team_players?team_id=in.(${ids.join(",")})&select=id,team_id,name,transfermarkt_player_id`
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase read team_players for Transfermarkt merge failed: ${response.status} ${await response.text()}`);
   }
   return response.json();
 }
@@ -1179,6 +1395,141 @@ async function syncFifaSquads(maxTeams = DEFAULT_MAX_SQUAD_TEAMS, teamCode = "")
   };
 }
 
+function matchTransfermarktTeam(localTeam, transfermarktTeams, maps) {
+  if (localTeam.transfermarkt_team_id && maps.byId.has(String(localTeam.transfermarkt_team_id))) {
+    return maps.byId.get(String(localTeam.transfermarkt_team_id));
+  }
+  if (maps.byCode.has(String(localTeam.code || "").toUpperCase())) {
+    return maps.byCode.get(String(localTeam.code || "").toUpperCase());
+  }
+  return maps.byName.get(normalizeTeamName(localTeam.name))
+    || maps.byName.get(normalizeTeamName(localTeam.country))
+    || transfermarktTeams.find((team) => normalizeTeamName(team.name) === normalizeTeamName(localTeam.name))
+    || null;
+}
+
+function transfermarktTeamMaps(teams) {
+  const byId = new Map();
+  const byCode = new Map();
+  const byName = new Map();
+  for (const team of teams) {
+    byId.set(String(team.transfermarkt_team_id), team);
+    if (team.alias_code) byCode.set(team.alias_code, team);
+    const nameKey = normalizeTeamName(team.name);
+    if (nameKey && !byName.has(nameKey)) byName.set(nameKey, team);
+  }
+  return { byId, byCode, byName };
+}
+
+async function syncTransfermarktValues(maxTeams = DEFAULT_MAX_TRANSFERMARKT_TEAMS, teamCode = "") {
+  const localTeams = await getTeamsForTransfermarktSync(maxTeams, teamCode);
+  if (!localTeams.length) {
+    await recordSyncRun({
+      provider: "transfermarkt",
+      jobType: "market-values",
+      status: "skipped",
+      requestCount: 0,
+      message: teamCode ? `No Supabase team found for ${teamCode}.` : "No Supabase teams are available for Transfermarkt sync."
+    });
+    return { provider: "transfermarkt", status: "skipped", requests: 0, teams: 0, players: 0, errors: 0 };
+  }
+
+  const participantsHtml = await transfermarktFetch(TRANSFERMARKT_PARTICIPANTS_URL);
+  let requests = 1;
+  const transfermarktTeams = parseTransfermarktParticipants(participantsHtml);
+  if (!transfermarktTeams.length) {
+    throw new Error("Transfermarkt participants parser returned no teams.");
+  }
+
+  const maps = transfermarktTeamMaps(transfermarktTeams);
+  const matchedTeams = [];
+  const unmatched = [];
+  const updatedAt = new Date().toISOString();
+  for (const localTeam of localTeams) {
+    const transfermarktTeam = matchTransfermarktTeam(localTeam, transfermarktTeams, maps);
+    if (!transfermarktTeam) {
+      unmatched.push(`${localTeam.name} (${localTeam.code})`);
+      continue;
+    }
+    matchedTeams.push({ localTeam, transfermarktTeam });
+    await patchJson("teams", [`id=eq.${localTeam.id}`], {
+      transfermarkt_team_id: transfermarktTeam.transfermarkt_team_id,
+      transfermarkt_url: transfermarktTeam.transfermarkt_url,
+      squad_market_value_eur: transfermarktTeam.squad_market_value_eur,
+      squad_market_value_label: transfermarktTeam.squad_market_value_label,
+      squad_value_rank: transfermarktTeam.squad_value_rank,
+      squad_value_updated_at: updatedAt,
+      squad_value_source: TRANSFERMARKT_SOURCE
+    });
+  }
+
+  const parsedPlayers = [];
+  const errors = [];
+  for (const { localTeam, transfermarktTeam } of matchedTeams) {
+    if (!transfermarktTeam.squad_url) continue;
+    if (requests > 1) await sleep(TRANSFERMARKT_DELAY_MS);
+    try {
+      const squadHtml = await transfermarktFetch(transfermarktTeam.squad_url);
+      requests += 1;
+      parsedPlayers.push(...parseTransfermarktSquad(squadHtml, {
+        id: localTeam.id,
+        code: localTeam.code,
+        name: transfermarktTeam.name
+      }));
+    } catch (error) {
+      errors.push(`${localTeam.code}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const existingPlayers = await getExistingPlayersForTeams(matchedTeams.map(({ localTeam }) => localTeam.id));
+  const byTransfermarktId = new Map();
+  const byTeamName = new Map();
+  for (const player of existingPlayers) {
+    if (player.transfermarkt_player_id) byTransfermarktId.set(String(player.transfermarkt_player_id), player);
+    byTeamName.set(`${player.team_id}:${normalizeTeamName(player.name)}`, player);
+  }
+
+  const insertRows = [];
+  let updatedPlayers = 0;
+  for (const player of parsedPlayers) {
+    const existing = byTransfermarktId.get(String(player.transfermarkt_player_id))
+      || byTeamName.get(`${player.team_id}:${normalizeTeamName(player.name)}`);
+    if (!existing) {
+      insertRows.push(player);
+      byTransfermarktId.set(String(player.transfermarkt_player_id), player);
+      byTeamName.set(`${player.team_id}:${normalizeTeamName(player.name)}`, player);
+      continue;
+    }
+    const { provider_id: _providerId, team_id: _teamId, source: _source, ...patch } = player;
+    await patchJson("team_players", [`id=eq.${existing.id}`], patch);
+    updatedPlayers += 1;
+  }
+  const insertedPlayers = await upsertJson("team_players", insertRows, "provider_id");
+
+  const status = errors.length || unmatched.length ? "partial" : "success";
+  await recordSyncRun({
+    provider: "transfermarkt",
+    jobType: "market-values",
+    status,
+    requestCount: requests,
+    message: `Updated ${matchedTeams.length}/${localTeams.length} teams and ${updatedPlayers + insertedPlayers.length} players from ${TRANSFERMARKT_SOURCE}; unmatched: ${unmatched.slice(0, 8).join(", ") || "none"}; errors: ${errors.slice(0, 5).join(" | ") || "none"}.`
+  });
+
+  return {
+    provider: "transfermarkt",
+    status,
+    requests,
+    teams: matchedTeams.length,
+    fetchedTeams: transfermarktTeams.length,
+    players: updatedPlayers + insertedPlayers.length,
+    insertedPlayers: insertedPlayers.length,
+    updatedPlayers,
+    unmatched: unmatched.length,
+    errors: errors.length,
+    source: TRANSFERMARKT_SOURCE
+  };
+}
+
 async function syncApiFootballStats(maxFixtures = DEFAULT_MAX_STATS_FIXTURES) {
   if (!env("API_FOOTBALL_KEY")) {
     await recordSyncRun({
@@ -1343,6 +1694,7 @@ export default async function handler(request, response) {
   const includeRankings = body.includeRankings !== false;
   const includeSquads = body.includeSquads !== false;
   const includeFifaProfiles = body.includeFifaProfiles !== false;
+  const includeTransfermarkt = body.includeTransfermarkt === true;
   const fifaTeamCode = String(body.fifaTeamCode || "").trim().toUpperCase();
   const maxStatsFixtures = Math.max(
     0,
@@ -1351,6 +1703,10 @@ export default async function handler(request, response) {
   const maxSquadTeams = Math.max(
     0,
     Math.min(64, Number(body.maxSquadTeams || env("MAX_SQUAD_TEAMS") || DEFAULT_MAX_SQUAD_TEAMS))
+  );
+  const maxTransfermarktTeams = Math.max(
+    0,
+    Math.min(64, Number(body.maxTransfermarktTeams || env("MAX_TRANSFERMARKT_TEAMS") || DEFAULT_MAX_TRANSFERMARKT_TEAMS))
   );
 
   const fixtureResult = includeFixtures
@@ -1401,6 +1757,14 @@ export default async function handler(request, response) {
         task: () => syncFifaSquads(maxSquadTeams, fifaTeamCode)
       })
     : { provider: "fifa", status: "skipped", requests: 0, teams: 0, players: 0 };
+  const transfermarktResult = includeTransfermarkt
+    ? await runProviderJob({
+        provider: "transfermarkt",
+        jobType: "market-values",
+        fallback: { teams: 0, players: 0, errors: 0 },
+        task: () => syncTransfermarktValues(maxTransfermarktTeams, fifaTeamCode)
+      })
+    : { provider: "transfermarkt", status: "skipped", requests: 0, teams: 0, players: 0, errors: 0 };
   const oddsResult = includeOdds
     ? await runProviderJob({
         provider: "the-odds-api",
@@ -1410,7 +1774,7 @@ export default async function handler(request, response) {
       })
     : { provider: "the-odds-api", status: "skipped", requests: 0, events: 0 };
 
-  const results = [fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, oddsResult];
-  const status = results.some((result) => result.status === "failed") ? "partial" : "ok";
-  return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, oddsResult });
+  const results = [fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult];
+  const status = results.some((result) => result.status === "failed" || result.status === "partial") ? "partial" : "ok";
+  return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult });
 }

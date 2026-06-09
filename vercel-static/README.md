@@ -17,6 +17,7 @@ This is the preferred free MVP format: static HTML/CSS/JS + Supabase + small Ver
    - `ODDS_API_KEY`
    - `FOOTBALL_DATA_API_TOKEN`
    - `MAX_STATS_FIXTURES` optional, defaults to `12`
+   - `MAX_TRANSFERMARKT_TEAMS` optional, defaults to `48`
 6. Deploy.
 
 No `npm install` is required for this folder. The browser loads Supabase from CDN.
@@ -33,7 +34,7 @@ The admin create-user, reset-password, health-check, and provider-sync functions
 
 ## Provider Sync
 
-`/api/sync-football-data` syncs World Cup 2026 fixtures from API-FOOTBALL (`league=1`, `season=2026`) into Supabase teams/matches, and falls back to football-data.org (`competition=WC`, `season=2026`) when API-FOOTBALL is unavailable on the current plan. It also syncs live/recent match statistics into `match_stats` for corners/cards settlement when API-FOOTBALL fixture IDs are available. It maps The Odds API 1X2 and total-goals odds into `match_markets`, plus tournament-winner outrights into `outright_markets`, when provider names match confidently. The function can be triggered from the Admin tab or by Vercel Cron.
+`/api/sync-football-data` syncs World Cup 2026 fixtures from API-FOOTBALL (`league=1`, `season=2026`) into Supabase teams/matches, and falls back to football-data.org (`competition=WC`, `season=2026`) when API-FOOTBALL is unavailable on the current plan. It also syncs live/recent match statistics into `match_stats` for corners/cards settlement when API-FOOTBALL fixture IDs are available. It maps The Odds API 1X2 and total-goals odds into `match_markets`, plus tournament-winner outrights into `outright_markets`, when provider names match confidently. Admins can trigger a separate best-effort Transfermarkt market-value crawl from the Admin UI; if it is blocked or incomplete, paste normalized CSV/JSON into the Transfermarkt import form. The function can be triggered from the Admin tab or by Vercel Cron.
 
 For cron/manual server calls, send:
 

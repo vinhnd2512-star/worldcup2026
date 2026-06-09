@@ -30,6 +30,8 @@ const state = {
   selectedMatchId: null,
   selectedTeamId: null,
   selectedRoleGroup: "",
+  lastPredictionBetId: null,
+  isSubmittingBet: false,
   predictionStatsTab: "upcoming",
   matchFilter: "upcoming",
   matchSearch: "",
@@ -393,6 +395,7 @@ function renderApp() {
 }
 
 function renderActiveView() {
+  if (state.active === "predictionSuccess") return renderPredictionSuccess();
   if (state.active === "teamProfile") return renderTeamProfile();
   if (state.active === "detail") return renderDetail();
   if (state.active === "groups") return renderGroups();
@@ -858,6 +861,66 @@ function positionSortValue(position) {
   return 4;
 }
 
+function eurValueText(value, label = "") {
+  if (label) return label;
+  const numeric = number(value);
+  if (!numeric) return "Value TBA";
+  if (numeric >= 1000000000) return `€${fmtOne.format(numeric / 1000000000)}bn`;
+  if (numeric >= 1000000) return `€${fmtOne.format(numeric / 1000000)}m`;
+  if (numeric >= 1000) return `€${fmtOne.format(numeric / 1000)}k`;
+  return `€${fmt.format(numeric)}`;
+}
+
+function topMarketPlayersForTeam(teamId, limit = 5) {
+  return state.teamPlayers
+    .filter((player) => player.team_id === teamId && number(player.market_value_eur) > 0)
+    .sort((left, right) => number(right.market_value_eur) - number(left.market_value_eur) || String(left.name || "").localeCompare(String(right.name || "")))
+    .slice(0, limit);
+}
+
+function teamStrengthScore(team) {
+  if (!team) return 0;
+  const value = number(team.squad_market_value_eur);
+  const valueScore = value > 0 ? Math.log10(value / 1000000 + 1) * 18 : 0;
+  const rankScore = team.fifa_rank ? Math.max(0, 110 - number(team.fifa_rank)) * 0.55 : 0;
+  const squadRankScore = team.squad_value_rank ? Math.max(0, 58 - number(team.squad_value_rank)) * 0.45 : 0;
+  return valueScore + rankScore + squadRankScore;
+}
+
+function matchValueForecast(match) {
+  const homeScore = teamStrengthScore(match?.home_team);
+  const awayScore = teamStrengthScore(match?.away_team);
+  if (!homeScore && !awayScore) return null;
+  const total = homeScore + awayScore || 1;
+  const homePct = Math.round((homeScore / total) * 100);
+  const awayPct = 100 - homePct;
+  return { homePct, awayPct };
+}
+
+function renderMatchValueForecast(match) {
+  const forecast = matchValueForecast(match);
+  if (!forecast) {
+    return `
+      <section class="glass-card value-forecast">
+        <div><h2>Squad value edge</h2><p>Transfermarkt values are not synced yet.</p></div>
+      </section>
+    `;
+  }
+  return `
+    <section class="glass-card value-forecast">
+      <div>
+        <h2>Squad value edge</h2>
+        <p>${escapeHtml(match.home_team.name)} ${forecast.homePct}% · ${escapeHtml(match.away_team.name)} ${forecast.awayPct}%</p>
+      </div>
+      <div class="forecast-bars">
+        <span>${eurValueText(match.home_team.squad_market_value_eur, match.home_team.squad_market_value_label)}</span>
+        <div class="forecast-meter"><div style="width:${forecast.homePct}%"></div></div>
+        <span>${eurValueText(match.away_team.squad_market_value_eur, match.away_team.squad_market_value_label)}</span>
+      </div>
+    </section>
+  `;
+}
+
 function playerPositionGroup(player) {
   const text = String(player.position || "").toLowerCase();
   if (/goal|keeper|gk/.test(text)) return "GK";
@@ -911,6 +974,9 @@ function renderTeamProfile() {
   const team = state.teams.find((item) => item.id === state.selectedTeamId) || state.teams[0];
   if (!team) return `<section class="glass-card panel"><h2>No team selected</h2><p>Run supabase/seed.sql first.</p></section>`;
   const players = teamPlayersFor(team.id);
+  const topMarketPlayers = topMarketPlayersForTeam(team.id);
+  const squadValue = eurValueText(team.squad_market_value_eur, team.squad_market_value_label);
+  const squadValueRank = team.squad_value_rank ? `#${fmt.format(number(team.squad_value_rank))}` : "Rank TBA";
   const ranking = team.fifa_rank
     ? `FIFA #${fmt.format(number(team.fifa_rank))}${team.fifa_points ? ` · ${fmtOne.format(number(team.fifa_points))} pts` : ""}`
     : "FIFA ranking TBA";
@@ -932,6 +998,7 @@ function renderTeamProfile() {
         <div class="team-profile-actions">
           ${state.profile?.role === "admin" ? `
             <button class="ghost-button" data-refresh-all-fifa-teams>Cập nhật tất cả đội bóng</button>
+            <button class="ghost-button" data-refresh-transfermarkt-team="${escapeHtml(team.code)}">Sync Transfermarkt</button>
             <button class="primary-button" data-refresh-fifa-team="${escapeHtml(team.code)}">Cập nhật FIFA</button>
           ` : ""}
           <span class="pill">${escapeHtml(ranking)}</span>
@@ -941,7 +1008,9 @@ function renderTeamProfile() {
         ${profileMetric("Coach", team.coach_name || "TBA")}
         ${profileMetric("World Cup history", titleCopy)}
         ${profileMetric("Squad", `${fmt.format(players.length)} players`)}
-        ${profileMetric("FIFA team ID", team.fifa_team_id || "Not synced")}
+        ${profileMetric("Squad value", squadValue)}
+        ${profileMetric("Value rank", squadValueRank)}
+        ${profileMetric("Transfermarkt ID", team.transfermarkt_team_id || "Not synced")}
       </section>
       <section class="team-sheet-grid">
         <article class="glass-card panel">
@@ -956,6 +1025,20 @@ function renderTeamProfile() {
           <p>${escapeHtml(team.name)} đang ở ${escapeHtml(team.group_name ? formatGroupName(team.group_name) : "World Cup 2026")} với ${escapeHtml(ranking)}.</p>
           <p><b>Huấn luyện viên:</b> ${escapeHtml(team.coach_name || "TBA")}</p>
           <p><b>Lịch sử vô địch:</b> ${escapeHtml(titleCopy)}</p>
+          <p><b>Squad value:</b> ${escapeHtml(squadValue)}${team.squad_value_updated_at ? ` · ${escapeHtml(dateText(team.squad_value_updated_at))}` : ""}</p>
+        </article>
+      </section>
+      <section class="glass-card panel">
+        <div class="section-heading"><h2>Top 5 market values</h2><span>${escapeHtml(squadValue)}</span></div>
+        <div class="top-value-list">
+          ${topMarketPlayers.map(renderTopMarketPlayer).join("") || `<p class="empty-copy">Transfermarkt values are not synced yet.</p>`}
+        </div>
+      </section>
+      <section class="team-sheet-grid">
+        <article class="glass-card panel">
+          <div class="section-heading"><h2>Value ranking</h2><span>${escapeHtml(squadValueRank)}</span></div>
+          <p>Squad value: <b>${escapeHtml(squadValue)}</b></p>
+          <p>FIFA rank: <b>${escapeHtml(ranking)}</b></p>
         </article>
       </section>
       <section class="glass-card roster-panel">
@@ -973,6 +1056,17 @@ function renderTeamProfile() {
         }
       </section>
     </div>
+  `;
+}
+
+function renderTopMarketPlayer(player, index) {
+  return `
+    <article class="top-value-player">
+      <span>#${index + 1}</span>
+      <strong>${escapeHtml(player.name)}</strong>
+      <small>${escapeHtml(player.position || "Position TBA")} · ${escapeHtml(player.club || "Club TBA")}</small>
+      <b>${escapeHtml(eurValueText(player.market_value_eur, player.market_value_label))}</b>
+    </article>
   `;
 }
 
@@ -1119,6 +1213,7 @@ function renderRosterPanel(team) {
 
 function renderPlayerCard(player) {
   const rating = player.overall_rating ? `OVR ${fmt.format(number(player.overall_rating))}` : (player.rating_source ? "Rating pending" : "OVR TBA");
+  const marketValue = number(player.market_value_eur) ? eurValueText(player.market_value_eur, player.market_value_label) : "";
   const club = player.club || player.source || "Club TBA";
   const bio = [
     player.shirt_number ? `#${fmt.format(player.shirt_number)}` : "No number",
@@ -1131,7 +1226,7 @@ function renderPlayerCard(player) {
       <strong>${escapeHtml(player.name)}</strong>
       <span>${escapeHtml(player.position || "Position TBA")}</span>
       <small>${escapeHtml(bio)} · ${escapeHtml(club)}</small>
-      <b>${escapeHtml(rating)}</b>
+      <b>${escapeHtml(marketValue || rating)}</b>
     </article>
   `;
 }
@@ -1155,6 +1250,7 @@ function renderDetail() {
         </div>
         ${teamLockup(match.away_team, true)}
       </section>
+      ${renderMatchValueForecast(match)}
       <section class="detail-grid">
         <form class="glass-card panel" id="score-bet-form">
           <div class="section-heading"><h2>Dự đoán tỷ số</h2><span>Lock: ${dateText(match.starts_at)}</span></div>
@@ -1164,7 +1260,7 @@ function renderDetail() {
             ${scoreStepper("away-score", match.away_team.name, 1)}
           </div>
           <label>Điểm cược<input id="stake" type="number" min="10" step="10" value="100"></label>
-          <p><button class="primary-button wide">Xác nhận dự đoán · x${fmtOne.format(multiplier)}</button></p>
+          <p><button class="primary-button wide" ${state.isSubmittingBet ? "disabled" : ""}>Xác nhận dự đoán · x${fmtOne.format(multiplier)}</button></p>
         </form>
         <section class="glass-card panel">
           <h2>Points at stake</h2>
@@ -1186,7 +1282,7 @@ function renderDetail() {
 
 function renderMarketButton(market) {
   return `
-    <button class="market-button" data-market="${market.id}">
+    <button class="market-button" data-market="${market.id}" ${state.isSubmittingBet ? "disabled" : ""}>
       <span>${escapeHtml(market.label)}</span>
       <strong>${escapeHtml(market.selection_label)}</strong>
       <small>x${fmtOne.format(number(market.odds_multiplier))} · ${escapeHtml(oddsFreshnessLabel(market))}</small>
@@ -1196,7 +1292,7 @@ function renderMarketButton(market) {
 
 function renderOutrightButton(market) {
   return `
-    <button class="outright-button" data-outright="${market.id}">
+    <button class="outright-button" data-outright="${market.id}" ${state.isSubmittingBet ? "disabled" : ""}>
       <span class="outright-label">
         <span>${escapeHtml(market.selection_label)}</span>
         <small>${escapeHtml(oddsFreshnessLabel(market))}</small>
@@ -1387,6 +1483,47 @@ function renderLeaderboard() {
   `;
 }
 
+function renderPredictionSuccess() {
+  const bet = state.bets.find((item) => item.id === state.lastPredictionBetId) || state.bets[0];
+  if (!bet) {
+    return `
+      <section class="glass-card panel">
+        <h1>Prediction saved</h1>
+        <p>Your wallet has been refreshed.</p>
+        <button class="primary-button" data-success-continue>Continue predicting</button>
+      </section>
+    `;
+  }
+  const match = matchForBet(bet);
+  const title = match ? `${match.home_team.name} vs ${match.away_team.name}` : bet.market_key;
+  const remaining = number(state.profile?.wallet_balance);
+  return `
+    <div class="stack prediction-success-page">
+      <section class="success-hero stadium-surface">
+        <span class="pill">Prediction saved</span>
+        <h1>Prediction successful</h1>
+        <p>${escapeHtml(title)} · ${escapeHtml(bet.selection_label)}</p>
+      </section>
+      <section class="prediction-success-grid">
+        ${profileMetric("Wallet left", `${fmt.format(remaining)} pts`)}
+        ${profileMetric("Stake", `${fmt.format(number(bet.stake))} pts`)}
+        ${profileMetric("Potential payout", `${fmt.format(number(bet.potential_payout))} pts`)}
+        ${profileMetric("Multiplier", `x${fmtOne.format(number(bet.locked_multiplier))}`)}
+      </section>
+      <article class="glass-card panel prediction-success-card">
+        <div>
+          <h2>${escapeHtml(title)}</h2>
+          <p>${escapeHtml(bet.market_key)} · ${escapeHtml(bet.selection_label)} · ${dateText(bet.placed_at)}</p>
+        </div>
+        <div class="success-actions">
+          <button class="primary-button" data-success-continue>Continue predicting</button>
+          <button class="ghost-button" data-success-history>Prediction history</button>
+        </div>
+      </article>
+    </div>
+  `;
+}
+
 function renderPredictionStats() {
   const upcoming = state.bets.filter((bet) => bet.status === "placed");
   const upcomingMatchCount = new Set(upcoming.map((bet) => bet.match_id).filter(Boolean)).size;
@@ -1453,7 +1590,7 @@ function renderUpcomingBetRow(bet) {
                   : `<label>Selection<input value="${escapeHtml(bet.selection_label)}" disabled></label>`
               }
               <label>Stake<input name="stake" type="number" min="1" step="1" value="${number(bet.stake)}"></label>
-              <button class="primary-button compact-button">Cập nhật</button>
+              <button class="primary-button compact-button" ${state.isSubmittingBet ? "disabled" : ""}>Cập nhật</button>
             </form>`
           : `<div class="locked-copy"><small>Không thể sửa</small><b>${match ? escapeHtml(match.status) : "Outright"}</b></div>`
       }
@@ -1519,6 +1656,7 @@ function renderAdmin() {
   const report = state.report || {};
   const marketOptions = adminMarketOptions();
   const outrightOptions = adminOutrightOptions();
+  const transfermarktRun = state.syncRuns.find((run) => run.provider === "transfermarkt");
   return `
     <div class="stack">
       <div class="section-heading">
@@ -1530,6 +1668,7 @@ function renderAdmin() {
           <button class="ghost-button" id="export-audit-button">Export audit</button>
           <button class="ghost-button" id="export-reports-button">Export reports</button>
           <button class="ghost-button" id="provider-sync-button">Sync providers</button>
+          <button class="ghost-button" id="transfermarkt-sync-button">Sync Transfermarkt</button>
           <button class="primary-button" id="refresh-button">Refresh</button>
         </div>
       </div>
@@ -1567,6 +1706,12 @@ function renderAdmin() {
           <label>Số điểm<input id="topup-amount" type="number" value="500"></label>
           <label>Lý do<input id="topup-reason" value="Admin top-up"></label>
           <button class="primary-button">Cập nhật điểm</button>
+        </form>
+        <form class="glass-card form-card form-grid transfermarkt-import-form" id="transfermarkt-import-form">
+          <h2>Transfermarkt import</h2>
+          <p><small>${transfermarktRun ? `${escapeHtml(transfermarktRun.status)} · ${escapeHtml(transfermarktRun.message || "")}` : "No Transfermarkt sync yet."}</small></p>
+          <textarea id="transfermarkt-import-text" rows="8" placeholder="Paste JSON rows or CSV with team_code, player_name, market_value_eur..."></textarea>
+          <button class="primary-button">Import values</button>
         </form>
         <form class="glass-card form-card form-grid" id="result-form">
           <h2>Kết quả & settle</h2>
@@ -1868,6 +2013,23 @@ function bindShellEvents() {
     });
   });
 
+  document.querySelector("[data-success-continue]")?.addEventListener("click", () => {
+    const bet = state.bets.find((item) => item.id === state.lastPredictionBetId);
+    if (bet?.match_id) state.selectedMatchId = bet.match_id;
+    state.active = bet?.match_id ? "detail" : "matches";
+    state.message = "";
+    state.error = "";
+    renderApp();
+  });
+
+  document.querySelector("[data-success-history]")?.addEventListener("click", () => {
+    state.active = "predictionStats";
+    state.predictionStatsTab = "history";
+    state.message = "";
+    state.error = "";
+    renderApp();
+  });
+
   document.querySelectorAll("[data-team-roster]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedTeamId = Number(button.dataset.teamRoster);
@@ -1889,6 +2051,9 @@ function bindShellEvents() {
 
   document.querySelectorAll("[data-refresh-fifa-team]").forEach((button) => {
     button.addEventListener("click", () => refreshFifaTeam(button.dataset.refreshFifaTeam));
+  });
+  document.querySelectorAll("[data-refresh-transfermarkt-team]").forEach((button) => {
+    button.addEventListener("click", () => syncTransfermarktValues(button.dataset.refreshTransfermarktTeam));
   });
   document.querySelector("[data-refresh-all-fifa-teams]")?.addEventListener("click", refreshAllFifaTeams);
   document.querySelectorAll("[data-role-filter]").forEach((button) => {
@@ -1953,6 +2118,8 @@ function bindShellEvents() {
   document.getElementById("tournament-winner-form")?.addEventListener("submit", settleTournamentWinner);
   document.getElementById("refresh-button")?.addEventListener("click", () => loadData());
   document.getElementById("provider-sync-button")?.addEventListener("click", syncProviders);
+  document.getElementById("transfermarkt-sync-button")?.addEventListener("click", () => syncTransfermarktValues());
+  document.getElementById("transfermarkt-import-form")?.addEventListener("submit", importTransfermarktValues);
   document.getElementById("export-leaderboard-button")?.addEventListener("click", exportLeaderboardCsv);
   document.getElementById("export-bets-button")?.addEventListener("click", exportBetsCsv);
   document.getElementById("export-ledger-button")?.addEventListener("click", exportLedgerCsv);
@@ -2001,6 +2168,7 @@ function hydrateOutrightControlForm() {
 
 async function updateBet(event) {
   event.preventDefault();
+  if (state.isSubmittingBet) return;
   const form = event.currentTarget;
   const bet = state.bets.find((item) => item.id === Number(form.dataset.updateBet));
   if (!bet) return;
@@ -2024,21 +2192,29 @@ async function updateBet(event) {
     ? `${selectionJson.home_score}-${selectionJson.away_score}`
     : market.selection_key;
 
-  const { error } = await state.client.rpc("update_bet", {
-    p_bet_id: bet.id,
-    p_market_id: market.id,
-    p_selection_key: selectionKey,
-    p_stake: stake,
-    p_selection_json: selectionJson
-  });
-  if (error) {
-    state.error = error.message;
+  state.isSubmittingBet = true;
+  try {
+    const { data, error } = await state.client.rpc("update_bet", {
+      p_bet_id: bet.id,
+      p_market_id: market.id,
+      p_selection_key: selectionKey,
+      p_stake: stake,
+      p_selection_json: selectionJson
+    });
+    if (error) {
+      state.error = error.message;
+      state.message = "";
+    } else {
+      state.message = "Đã cập nhật dự đoán trước giờ khóa cược.";
+      state.error = "";
+      state.lastPredictionBetId = data?.id || bet.id;
+      state.active = "predictionSuccess";
+    }
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
     state.message = "";
-  } else {
-    state.message = "Đã cập nhật dự đoán trước giờ khóa cược.";
-    state.error = "";
-    state.active = "predictionStats";
-    state.predictionStatsTab = "upcoming";
+  } finally {
+    state.isSubmittingBet = false;
   }
   await loadData();
 }
@@ -2067,6 +2243,7 @@ async function placeScoreBet(event) {
 }
 
 async function placeMarketBet(marketId) {
+  if (state.isSubmittingBet) return;
   const match = selectedMatch();
   const market = match.match_markets.find((item) => item.id === marketId);
   const stake = Number(prompt("Điểm cược", "100") || 0);
@@ -2082,35 +2259,53 @@ async function placeMarketBet(marketId) {
 }
 
 async function placeOutrightBet(marketId) {
+  if (state.isSubmittingBet) return;
   const market = state.outrightMarkets.find((item) => item.id === marketId);
   const stake = Number(prompt("Điểm cược", "100") || 0);
   if (!market || !stake) return;
-  const { error } = await state.client.rpc("place_outright_bet", {
-    p_outright_market_id: market.id,
-    p_stake: stake
-  });
-  if (error) {
-    state.error = error.message;
+  state.isSubmittingBet = true;
+  try {
+    const { data, error } = await state.client.rpc("place_outright_bet", {
+      p_outright_market_id: market.id,
+      p_stake: stake
+    });
+    if (error) {
+      state.error = error.message;
+      state.message = "";
+    } else {
+      state.message = `Đã đặt kèo vô địch: ${market.selection_label}.`;
+      state.error = "";
+      state.lastPredictionBetId = data?.id || null;
+      state.active = "predictionSuccess";
+    }
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
     state.message = "";
-  } else {
-    state.message = `Đã đặt kèo vô địch: ${market.selection_label}.`;
-    state.error = "";
-    state.active = "predictionStats";
-    state.predictionStatsTab = "upcoming";
+  } finally {
+    state.isSubmittingBet = false;
   }
   await loadData();
 }
 
 async function placeBet(payload) {
-  const { error } = await state.client.rpc("place_bet", payload);
-  if (error) {
-    state.error = error.message;
+  if (state.isSubmittingBet) return;
+  state.isSubmittingBet = true;
+  try {
+    const { data, error } = await state.client.rpc("place_bet", payload);
+    if (error) {
+      state.error = error.message;
+      state.message = "";
+    } else {
+      state.message = "Đã ghi nhận dự đoán và trừ điểm cược.";
+      state.error = "";
+      state.lastPredictionBetId = data?.id || null;
+      state.active = "predictionSuccess";
+    }
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
     state.message = "";
-  } else {
-    state.message = "Đã ghi nhận dự đoán và trừ điểm cược.";
-    state.error = "";
-    state.active = "predictionStats";
-    state.predictionStatsTab = "upcoming";
+  } finally {
+    state.isSubmittingBet = false;
   }
   await loadData();
 }
@@ -2312,6 +2507,65 @@ async function syncProviders() {
   await loadData();
 }
 
+async function syncTransfermarktValues(teamCode = "") {
+  const maxInput = teamCode ? "1" : (prompt("Max Transfermarkt teams", "48") || "48");
+  const maxTransfermarktTeams = Math.max(1, Math.min(64, Number(maxInput) || 48));
+  const response = await fetch("/api/sync-football-data", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${state.session.access_token}`
+    },
+    body: JSON.stringify({
+      includeFixtures: false,
+      includeOdds: false,
+      includeStats: false,
+      includeRankings: false,
+      includeFifaProfiles: false,
+      includeSquads: false,
+      includeTransfermarkt: true,
+      fifaTeamCode: teamCode,
+      maxTransfermarktTeams
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    state.error = result.error || "Transfermarkt sync failed";
+    state.message = "";
+  } else {
+    const tm = result.transfermarktResult || {};
+    state.message = `Transfermarkt sync ${tm.status || "unknown"}: ${fmt.format(tm.teams || 0)} teams; ${fmt.format(tm.players || 0)} players; ${fmt.format(tm.errors || 0)} errors.`;
+    state.error = tm.error || "";
+  }
+  await loadData();
+}
+
+async function importTransfermarktValues(event) {
+  event.preventDefault();
+  const raw = document.getElementById("transfermarkt-import-text").value.trim();
+  if (!raw) return;
+  let rows;
+  try {
+    rows = parseTransfermarktImport(raw);
+  } catch (error) {
+    state.error = error.message || String(error);
+    state.message = "";
+    renderApp();
+    return;
+  }
+  const { data, error } = await state.client.rpc("admin_import_transfermarkt_values", {
+    p_payload: { rows }
+  });
+  if (error) {
+    state.error = error.message;
+    state.message = "";
+  } else {
+    state.message = `Imported Transfermarkt values: ${fmt.format(data?.teams || 0)} teams; ${fmt.format(data?.players || 0)} players; ${fmt.format(data?.errors || 0)} errors.`;
+    state.error = "";
+  }
+  await loadData();
+}
+
 async function refreshFifaTeam(teamCode) {
   const response = await fetch("/api/sync-football-data", {
     method: "POST",
@@ -2486,6 +2740,90 @@ function exportReportsCsv() {
     roi: row.roi
   }));
   downloadCsv("worldcup-admin-reports.csv", [...userRows, ...marketRows]);
+}
+
+function parseTransfermarktImport(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+  if (text.startsWith("{") || text.startsWith("[")) {
+    const payload = JSON.parse(text);
+    let rows;
+    if (Array.isArray(payload)) {
+      rows = payload;
+    } else if (Array.isArray(payload.rows)) {
+      rows = payload.rows;
+    } else if (Array.isArray(payload.teams) || Array.isArray(payload.players)) {
+      rows = [...(payload.teams || []), ...(payload.players || [])];
+    } else {
+      rows = [payload];
+    }
+    return rows.map(normalizeTransfermarktImportRow);
+  }
+  return parseCsvRows(text).map(normalizeTransfermarktImportRow);
+}
+
+function parseCsvRows(text) {
+  const lines = String(text || "").split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0]).map((header) => header.trim());
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line);
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+  });
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      values.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  values.push(current.trim());
+  return values;
+}
+
+function normalizeTransfermarktImportRow(row) {
+  const next = { ...row };
+  normalizeMarketValueFields(next, "team_market_value_eur", "team_market_value_label");
+  normalizeMarketValueFields(next, "squad_market_value_eur", "squad_market_value_label");
+  normalizeMarketValueFields(next, "market_value_eur", "market_value_label");
+  normalizeMarketValueFields(next, "player_market_value_eur", "player_market_value_label");
+  return next;
+}
+
+function normalizeMarketValueFields(row, valueKey, labelKey) {
+  const raw = row[valueKey];
+  if (raw === undefined || raw === null || raw === "") return;
+  const text = String(raw).trim();
+  const parsed = marketValueLabelToEur(text);
+  if (parsed && !/^[0-9]+(\.[0-9]+)?$/.test(text)) {
+    row[labelKey] ||= text;
+    row[valueKey] = parsed;
+  }
+}
+
+function marketValueLabelToEur(label) {
+  const text = String(label || "").replace(/\s+/g, "").trim();
+  const match = text.match(/(?:€|EUR)?([0-9]+(?:[.,][0-9]+)?)(bn|m|k)?/i);
+  if (!match) return null;
+  const amount = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(amount)) return null;
+  const suffix = String(match[2] || "").toLowerCase();
+  const multiplier = suffix === "bn" ? 1000000000 : suffix === "m" ? 1000000 : suffix === "k" ? 1000 : 1;
+  return Number((amount * multiplier).toFixed(2));
 }
 
 function selectedMatch() {

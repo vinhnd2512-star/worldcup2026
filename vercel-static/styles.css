@@ -42,6 +42,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 h1,
 h2,
 h3,
@@ -984,6 +989,61 @@ select:focus {
   gap: 14px;
 }
 
+.prediction-success-page {
+  max-width: 980px;
+}
+
+.success-hero {
+  min-height: 260px;
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  padding: 34px;
+}
+
+.prediction-success-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.prediction-success-card,
+.value-forecast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.success-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.forecast-bars {
+  min-width: min(420px, 100%);
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.forecast-meter {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.forecast-meter div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--gold), var(--green));
+}
+
 .stats-tabs {
   display: inline-flex;
   width: fit-content;
@@ -1049,6 +1109,43 @@ select:focus {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+}
+
+.top-value-list {
+  display: grid;
+  gap: 10px;
+}
+
+.top-value-player {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) minmax(120px, 0.8fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.top-value-player span,
+.top-value-player small {
+  color: var(--muted);
+}
+
+.top-value-player b {
+  color: var(--gold);
+}
+
+.transfermarkt-import-form textarea {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .health-grid {
@@ -1918,6 +2015,7 @@ select {
   .market-grid,
   .metric-grid,
   .prediction-metrics,
+  .prediction-success-grid,
   .health-grid,
   .groups-grid,
   .roster-grid {
@@ -1983,6 +2081,7 @@ select {
   .market-grid,
   .metric-grid,
   .prediction-metrics,
+  .prediction-success-grid,
   .health-grid,
   .groups-grid,
   .roster-grid,
@@ -2127,9 +2226,20 @@ select {
 
   .history-row,
   .history-row.upcoming,
-  .user-row {
+  .user-row,
+  .top-value-player {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .prediction-success-card,
+  .value-forecast {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .forecast-bars {
+    grid-template-columns: 1fr;
   }
 
   .update-bet-form {

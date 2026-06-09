@@ -38,6 +38,7 @@ Use `vercel-static/` + Supabase + Vercel.
    - `FOOTBALL_DATA_API_TOKEN`
    - `MAX_STATS_FIXTURES` optional, defaults to `12`
    - `MAX_SQUAD_TEAMS` optional, defaults to `48`
+   - `MAX_TRANSFERMARKT_TEAMS` optional, defaults to `48`
 5. Deploy.
 
 For the full no-install deployment checklist, use `docs/deploy-checklist.md`.
@@ -46,7 +47,7 @@ For launch QA after deployment, use `docs/launch-smoke-test.md`.
 
 For provider choices, odds coverage, and MVP market rules, use `docs/data-sources-and-markets.md`.
 
-Provider sync can update fixtures/stats, odds, FIFA team ranking metadata, FIFA team profile IDs, and FIFA squad rosters. FIFA ranking display uses FIFA's live ranking API (`https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en`) and merges by `TeamName[].Description`, with `IdCountry` as a fallback to the local team code. Roster import discovers `teams.fifa_team_id` from FIFA competition teams, then imports player details from `https://api.fifa.com/api/v3/teams/{fifa_team_id}/squad?idCompetition=17&idSeason=285023&language=en`.
+Provider sync can update fixtures/stats, odds, FIFA team ranking metadata, FIFA team profile IDs, and FIFA squad rosters. FIFA ranking display uses FIFA's live ranking API (`https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en`) and merges by `TeamName[].Description`, with `IdCountry` as a fallback to the local team code. Roster import discovers `teams.fifa_team_id` from FIFA competition teams, then imports player details from `https://api.fifa.com/api/v3/teams/{fifa_team_id}/squad?idCompetition=17&idSeason=285023&language=en`. Admins can trigger a best-effort Transfermarkt market-value sync separately; if Transfermarkt blocks or changes layout, use the Admin Transfermarkt import form with normalized CSV/JSON.
 
 After Vercel is deployed, run the no-install deployment check:
 
