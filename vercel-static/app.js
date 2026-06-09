@@ -98,7 +98,7 @@ const flagImages = {
 const navItems = [
   ["matches", "Matches"],
   ["groups", "Groups"],
-  ["detail", "Predict"],
+  ["detail", "Dự đoán"],
   ["bracket", "Bracket"],
   ["leaderboard", "Rankings"],
   ["predictionStats", "Thống kê dự đoán"]
@@ -368,7 +368,7 @@ function renderApp() {
         <nav class="nav-stack">
           ${items.map(([key, label]) => `<button class="nav-button ${state.active === key ? "active" : ""}" data-tab="${key}">${label}</button>`).join("")}
         </nav>
-        <button class="primary-button wide" data-tab="detail">Place Prediction</button>
+        <button class="primary-button wide" data-tab="detail">Dự đoán</button>
         <button class="ghost-button" id="logout-button">Logout</button>
       </aside>
       <main class="workspace">
@@ -467,7 +467,7 @@ function renderFixtureTable(matches) {
     <section class="fixture-table glass-card">
       <div class="section-heading">
         <h2>Tất cả cặp trận</h2>
-        <span>${fmt.format(matches.length)} trận để predict</span>
+        <span>${fmt.format(matches.length)} trận để dự đoán</span>
       </div>
       <div class="fixture-head">
         <span>Trận</span>
@@ -501,7 +501,7 @@ function renderFixtureRow(match) {
         <small>${escapeHtml(matchLocation(match))}</small>
       </div>
       <span class="fixture-market-count">${fmt.format(openMarkets)} open</span>
-      <button class="compact-button primary-button" data-match="${match.id}">Predict</button>
+      <button class="compact-button primary-button" data-match="${match.id}">Dự đoán</button>
     </article>
   `;
 }
@@ -897,27 +897,125 @@ function matchValueForecast(match) {
   return { homePct, awayPct };
 }
 
+function teamRankingText(team) {
+  const rank = team?.fifa_rank ? `FIFA #${fmt.format(number(team.fifa_rank))}` : "FIFA chưa cập nhật";
+  const points = team?.fifa_points ? fmtOne.format(number(team.fifa_points)) : "chưa có";
+  return `Xếp hạng: ${rank} - Điểm ratings: ${points}`;
+}
+
+function canPredictMatch(match) {
+  if (!match || !["SCHEDULED", "NS", "TBD"].includes(match.status)) return false;
+  return (match.match_markets || []).some((market) => {
+    const closeTime = new Date(market.closes_at || match.starts_at).getTime();
+    return market.is_open !== false && Number.isFinite(closeTime) && closeTime > Date.now();
+  });
+}
+
+function upcomingGroupMatchesByGroup() {
+  const groups = new Map();
+  state.matches
+    .filter((match) => match.group_name && canPredictMatch(match))
+    .sort((left, right) => {
+      const groupCompare = String(left.group_name).localeCompare(String(right.group_name), "en", { numeric: true });
+      if (groupCompare) return groupCompare;
+      return new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime();
+    })
+    .forEach((match) => {
+      const key = match.group_name || "Knockout";
+      groups.set(key, [...(groups.get(key) || []), match]);
+    });
+  return [...groups.entries()];
+}
+
 function renderMatchValueForecast(match) {
   const forecast = matchValueForecast(match);
-  if (!forecast) {
-    return `
-      <section class="glass-card value-forecast">
-        <div><h2>Squad value edge</h2><p>Transfermarkt values are not synced yet.</p></div>
-      </section>
-    `;
-  }
+  const homePct = forecast?.homePct ?? 50;
+  const awayPct = forecast?.awayPct ?? 50;
+  const leader = homePct === awayPct ? "even" : homePct > awayPct ? "home" : "away";
   return `
-    <section class="glass-card value-forecast">
-      <div>
-        <h2>Squad value edge</h2>
-        <p>${escapeHtml(match.home_team.name)} ${forecast.homePct}% · ${escapeHtml(match.away_team.name)} ${forecast.awayPct}%</p>
+    <section class="glass-card value-forecast ${leader}-lean">
+      <div class="forecast-heading">
+        <div>
+          <h2>Đánh giá trận đấu</h2>
+          <p>${forecast ? "Dựa trên FIFA rank, điểm rating và định giá đội hình." : "Chưa đủ dữ liệu FIFA/Transfermarkt, tạm cân bằng 50/50."}</p>
+        </div>
+        <span class="pill">${escapeHtml(scheduleLabel(match))}</span>
       </div>
-      <div class="forecast-bars">
-        <span>${eurValueText(match.home_team.squad_market_value_eur, match.home_team.squad_market_value_label)}</span>
-        <div class="forecast-meter"><div style="width:${forecast.homePct}%"></div></div>
-        <span>${eurValueText(match.away_team.squad_market_value_eur, match.away_team.squad_market_value_label)}</span>
+      <div class="forecast-team-grid">
+        ${renderForecastTeamPanel(match.home_team, homePct)}
+        ${renderForecastTeamPanel(match.away_team, awayPct)}
+      </div>
+      <div class="win-rate-block">
+        <div class="win-rate-labels">
+          <span>${escapeHtml(match.home_team.name)} ${homePct}%</span>
+          <span>${escapeHtml(match.away_team.name)} ${awayPct}%</span>
+        </div>
+        <div class="forecast-meter win-rate-meter">
+          <div class="home-rate" style="width:${homePct}%"></div>
+        </div>
+      </div>
+      ${renderUpcomingGroupMatches()}
+    </section>
+  `;
+}
+
+function renderForecastTeamPanel(team, pct) {
+  return `
+    <article class="forecast-team-panel">
+      <div class="forecast-team-title">
+        <span class="fixture-flag">${teamFlagContent(team)}</span>
+        <h3>${escapeHtml(team?.name || "TBA")}</h3>
+      </div>
+      <p>${escapeHtml(teamRankingText(team))}</p>
+      <p>Giá trị đội hình: <strong>${escapeHtml(eurValueText(team?.squad_market_value_eur, team?.squad_market_value_label))}</strong></p>
+      <p>Tỷ lệ thắng: <strong>${fmt.format(pct)}%</strong></p>
+    </article>
+  `;
+}
+
+function renderUpcomingGroupMatches() {
+  const groups = upcomingGroupMatchesByGroup();
+  return `
+    <section class="upcoming-groups-panel">
+      <div class="section-heading">
+        <h2>Sắp diễn ra</h2>
+        <span>${fmt.format(groups.reduce((sum, [, matches]) => sum + matches.length, 0))} trận</span>
+      </div>
+      <div class="upcoming-groups-grid">
+        ${groups.map(([groupName, matches]) => renderUpcomingGroupBlock(groupName, matches)).join("") || `<p class="empty-copy">Chưa có trận vòng bảng đang mở dự đoán.</p>`}
       </div>
     </section>
+  `;
+}
+
+function renderUpcomingGroupBlock(groupName, matches) {
+  return `
+    <article class="upcoming-group-block">
+      <div class="upcoming-group-title">
+        <span class="group-badge">${escapeHtml(formatGroupName(groupName))}</span>
+        <small>${fmt.format(matches.length)} trận</small>
+      </div>
+      <div class="upcoming-match-list">
+        ${matches.map(renderUpcomingGroupMatch).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderUpcomingGroupMatch(match) {
+  const selected = Number(match.id) === Number(state.selectedMatchId);
+  const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  return `
+    <button class="upcoming-group-match ${selected ? "selected" : ""}" type="button" data-match="${match.id}">
+      <span>
+        <strong>${escapeHtml(match.home_team?.code || "TBA")} vs ${escapeHtml(match.away_team?.code || "TBA")}</strong>
+        <small>${escapeHtml(match.home_team?.name || "TBA")} - ${escapeHtml(match.away_team?.name || "TBA")}</small>
+      </span>
+      <span>
+        <time>${dateText(match.starts_at)}</time>
+        <small>${fmt.format(openMarkets)} kèo</small>
+      </span>
+    </button>
   `;
 }
 
@@ -1404,7 +1502,7 @@ function renderBracketMatch(match) {
   const homeTeam = linked ? match.match.home_team : match.home_team;
   const awayTeam = linked ? match.match.away_team : match.away_team;
   const location = linked ? matchLocation(match.match) : `${match.venue}${match.city ? ` · ${match.city}` : ""}`;
-  const statusLabel = linked ? "Predict open" : match.is_confirmed ? "Confirmed" : "Pending";
+  const statusLabel = linked ? "Dự đoán mở" : match.is_confirmed ? "Confirmed" : "Pending";
   const content = `
     <div class="bracket-match-top">
       <span>Match ${fmt.format(match.match_no)}</span>
@@ -1488,9 +1586,9 @@ function renderPredictionSuccess() {
   if (!bet) {
     return `
       <section class="glass-card panel">
-        <h1>Prediction saved</h1>
-        <p>Your wallet has been refreshed.</p>
-        <button class="primary-button" data-success-continue>Continue predicting</button>
+        <h1>Đã lưu dự đoán</h1>
+        <p>Ví điểm đã được cập nhật.</p>
+        <button class="primary-button" data-success-continue>Tiếp tục dự đoán</button>
       </section>
     `;
   }
@@ -1500,15 +1598,15 @@ function renderPredictionSuccess() {
   return `
     <div class="stack prediction-success-page">
       <section class="success-hero stadium-surface">
-        <span class="pill">Prediction saved</span>
-        <h1>Prediction successful</h1>
+        <span class="pill">Đã lưu dự đoán</span>
+        <h1>Dự đoán thành công</h1>
         <p>${escapeHtml(title)} · ${escapeHtml(bet.selection_label)}</p>
       </section>
       <section class="prediction-success-grid">
-        ${profileMetric("Wallet left", `${fmt.format(remaining)} pts`)}
-        ${profileMetric("Stake", `${fmt.format(number(bet.stake))} pts`)}
-        ${profileMetric("Potential payout", `${fmt.format(number(bet.potential_payout))} pts`)}
-        ${profileMetric("Multiplier", `x${fmtOne.format(number(bet.locked_multiplier))}`)}
+        ${profileMetric("Điểm còn lại", `${fmt.format(remaining)} pts`)}
+        ${profileMetric("Điểm cược", `${fmt.format(number(bet.stake))} pts`)}
+        ${profileMetric("Payout dự kiến", `${fmt.format(number(bet.potential_payout))} pts`)}
+        ${profileMetric("Hệ số", `x${fmtOne.format(number(bet.locked_multiplier))}`)}
       </section>
       <article class="glass-card panel prediction-success-card">
         <div>
@@ -1516,8 +1614,8 @@ function renderPredictionSuccess() {
           <p>${escapeHtml(bet.market_key)} · ${escapeHtml(bet.selection_label)} · ${dateText(bet.placed_at)}</p>
         </div>
         <div class="success-actions">
-          <button class="primary-button" data-success-continue>Continue predicting</button>
-          <button class="ghost-button" data-success-history>Prediction history</button>
+          <button class="primary-button" data-success-continue>Tiếp tục dự đoán</button>
+          <button class="ghost-button" data-success-history>Xem lịch sử dự đoán</button>
         </div>
       </article>
     </div>
