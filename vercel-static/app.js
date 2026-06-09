@@ -30,6 +30,10 @@ const state = {
   selectedMatchId: null,
   selectedTeamId: null,
   selectedRoleGroup: "",
+  betModalMatchId: null,
+  betModalMarketGroup: "basic",
+  goldenBootSearch: "",
+  winnerSearch: "",
   lastPredictionBetId: null,
   isSubmittingBet: false,
   predictionStatsTab: "upcoming",
@@ -96,12 +100,13 @@ const flagImages = {
 };
 
 const navItems = [
-  ["matches", "Matches"],
+  ["matches", "Lịch thi đấu"],
   ["groups", "Groups"],
   ["detail", "Dự đoán"],
   ["bracket", "Bracket"],
-  ["leaderboard", "Rankings"],
-  ["predictionStats", "Thống kê dự đoán"]
+  ["leaderboard", "Bảng xếp hạng"],
+  ["predictionStats", "Thống kê dự đoán"],
+  ["guide", "Hướng dẫn"]
 ];
 
 const fmt = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
@@ -402,6 +407,7 @@ function renderActiveView() {
   if (state.active === "bracket") return renderBracket();
   if (state.active === "leaderboard") return renderLeaderboard();
   if (state.active === "predictionStats") return renderPredictionStats();
+  if (state.active === "guide") return renderGuide();
   if (state.active === "history") return renderHistory();
   if (state.active === "admin" && state.profile.role === "admin") return renderAdmin();
   return renderMatches();
@@ -416,7 +422,7 @@ function renderMatches() {
   }
   const visibleMatches = filteredMatches.filter((match) => match.id !== featured.id);
   const summaryMatches = visibleMatches.slice(0, 6);
-  const odd = featured.match_markets.find((market) => market.market_key === "correct_score")?.odds_multiplier || 2.45;
+  const odd = featured.match_markets.find((market) => market.market_key === "correct_score")?.odds_multiplier || 6.00;
   return `
     <div class="dashboard-grid">
       <div class="stack">
@@ -435,7 +441,7 @@ function renderMatches() {
             <span>${escapeHtml(matchLocation(featured))}</span>
             <span>x${fmtOne.format(number(odd))} pts</span>
           </div>
-          <p><button class="primary-button" data-match="${featured.id}">Dự đoán ngay</button></p>
+          <p><button class="primary-button" data-open-bet-modal="${featured.id}">Dự đoán ngay</button></p>
         </section>
         <div class="section-heading"><h2>Lịch thi đấu</h2><span>${fmt.format(filteredMatches.length)} trận</span></div>
         ${renderFixtureTable(filteredMatches)}
@@ -448,14 +454,12 @@ function renderMatches() {
           ${state.leaderboard.slice(0, 5).map(renderLeaderRow).join("")}
         </section>
         <section class="glass-card panel">
-          <div class="section-heading"><h2>MVP Markets</h2><span>Free-first</span></div>
-          <p>Correct score · 1X2 · draw_no_bet · Over/Under · BTTS · Góc/Thẻ nội bộ · Vô địch giải.</p>
+          <div class="section-heading"><h2>Dự đoán Vua phá lưới</h2><span>${fmt.format(openOutrightMarkets("golden_boot").length)} lựa chọn</span></div>
+          ${renderOutrightSearchCard("golden_boot")}
         </section>
         <section class="glass-card panel">
-          <div class="section-heading"><h2>Vô địch giải</h2><span>${state.outrightMarkets.length} lựa chọn</span></div>
-          <div class="outright-list">
-            ${state.outrightMarkets.filter((market) => market.is_open).slice(0, 8).map(renderOutrightButton).join("") || "<p>Chưa có kèo vô địch.</p>"}
-          </div>
+          <div class="section-heading"><h2>Vô địch giải</h2><span>${fmt.format(openOutrightMarkets("tournament_winner").length)} đội</span></div>
+          ${renderOutrightSearchCard("tournament_winner")}
         </section>
       </aside>
     </div>
@@ -501,7 +505,7 @@ function renderFixtureRow(match) {
         <small>${escapeHtml(matchLocation(match))}</small>
       </div>
       <span class="fixture-market-count">${fmt.format(openMarkets)} open</span>
-      <button class="compact-button primary-button" data-match="${match.id}">Dự đoán</button>
+      <button class="compact-button primary-button" data-open-bet-modal="${match.id}">Dự đoán</button>
     </article>
   `;
 }
@@ -536,7 +540,7 @@ function renderMatchCard(match) {
         <span>x${fmtOne.format(number(odd))}</span>
       </div>
       <div class="consensus"><div style="width:58%"></div></div>
-      <p><button class="ghost-button wide" data-match="${match.id}">Dự đoán ngay</button></p>
+      <p><button class="ghost-button wide" data-open-bet-modal="${match.id}">Dự đoán ngay</button></p>
     </article>
   `;
 }
@@ -556,7 +560,7 @@ function renderScheduleFilters() {
     <section class="schedule-toolbar glass-card">
       <div>
         <h2>Lịch & bảng đấu</h2>
-        <p>Xem theo ngày, bảng hoặc vòng knockout. Bấm trận để vào trang cược.</p>
+        <p>Xem theo ngày, bảng hoặc vòng knockout. Bấm trận để mở cửa sổ cược.</p>
       </div>
       <label class="search-field">
         Search
@@ -606,7 +610,7 @@ function renderReminderPanel(reminders) {
       <div class="reminder-list">
         ${reminders.slice(0, 6).map((reminder) => `
           <article class="reminder-item">
-            <button data-match="${reminder.match.id}">
+            <button data-open-bet-modal="${reminder.match.id}">
               <strong>${escapeHtml(matchTitle(reminder.match))}</strong>
               <span>${escapeHtml(reminder.label)} · lock ${dateText(reminder.closesAt)}</span>
             </button>
@@ -683,6 +687,7 @@ function dismissReminder(id) {
 
 function localDateKey(date) {
   return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
@@ -1006,7 +1011,7 @@ function renderUpcomingGroupMatch(match) {
   const selected = Number(match.id) === Number(state.selectedMatchId);
   const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
   return `
-    <button class="upcoming-group-match ${selected ? "selected" : ""}" type="button" data-match="${match.id}">
+    <button class="upcoming-group-match ${selected ? "selected" : ""}" type="button" data-open-bet-modal="${match.id}">
       <span>
         <strong>${escapeHtml(match.home_team?.code || "TBA")} vs ${escapeHtml(match.away_team?.code || "TBA")}</strong>
         <small>${escapeHtml(match.home_team?.name || "TBA")} - ${escapeHtml(match.away_team?.name || "TBA")}</small>
@@ -1330,52 +1335,189 @@ function renderPlayerCard(player) {
 }
 
 function renderDetail() {
-  const match = selectedMatch();
-  if (!match) return `<section class="glass-card panel"><h2>Không có trận để dự đoán</h2></section>`;
-  const scoreMarket = match.match_markets.find((market) => market.market_key === "correct_score") || match.match_markets[0];
-  if (!scoreMarket) {
-    return `<section class="glass-card panel"><h2>Chưa có kèo cho trận này</h2><p>Admin hãy chạy Sync providers hoặc tạo market trước khi người chơi đặt cược.</p></section>`;
-  }
-  const multiplier = number(scoreMarket?.odds_multiplier || 1);
+  const matches = filteredScheduleMatches()
+    .filter((match) => canPredictMatch(match))
+    .sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime());
   return `
-    <div class="stack">
-      <section class="score-hero stadium-surface">
-        ${teamLockup(match.home_team, true)}
-        <div class="score-center">
-          <span class="pill">${escapeHtml(match.status)}</span>
-          <div class="score-display">${match.home_score ?? "?"} : ${match.away_score ?? "?"}</div>
-          <span class="muted">${escapeHtml(match.stage)}</span>
+    <div class="stack prediction-schedule-page">
+      <div class="section-heading">
+        <div>
+          <h1>Dự đoán</h1>
+          <p>Chọn trận theo ngày, giờ và bảng; cửa sổ cược sẽ mở ngay trên lịch.</p>
         </div>
-        ${teamLockup(match.away_team, true)}
-      </section>
-      ${renderMatchValueForecast(match)}
-      <section class="detail-grid">
-        <form class="glass-card panel" id="score-bet-form">
-          <div class="section-heading"><h2>Dự đoán tỷ số</h2><span>Lock: ${dateText(match.starts_at)}</span></div>
-          <div class="score-picker">
-            ${scoreStepper("home-score", match.home_team.name, 2)}
-            <span class="vs-text">-</span>
-            ${scoreStepper("away-score", match.away_team.name, 1)}
+        <span>${fmt.format(matches.length)} trận mở cược</span>
+      </div>
+      ${renderScheduleFilters()}
+      ${matches.length ? renderMatchValueForecast(state.matches.find((match) => match.id === state.selectedMatchId) || matches[0]) : ""}
+      ${renderPredictionSchedule(matches)}
+      ${state.betModalMatchId ? renderBetModal() : ""}
+    </div>
+  `;
+}
+
+function renderPredictionSchedule(matches) {
+  const groups = groupMatchesByVnDate(matches);
+  return `
+    <section class="glass-card prediction-schedule">
+      <div class="section-heading">
+        <h2>Lịch cược</h2>
+        <span>Asia/Ho_Chi_Minh</span>
+      </div>
+      ${groups.map(([dateKey, dayMatches]) => renderPredictionDayGroup(dateKey, dayMatches)).join("") || `<p class="empty-copy">Không có trận đang mở cược trong bộ lọc này.</p>`}
+    </section>
+  `;
+}
+
+function groupMatchesByVnDate(matches) {
+  const groups = new Map();
+  matches.forEach((match) => {
+    const key = vnDateKey(match.starts_at);
+    groups.set(key, [...(groups.get(key) || []), match]);
+  });
+  return [...groups.entries()];
+}
+
+function renderPredictionDayGroup(dateKey, matches) {
+  return `
+    <section class="prediction-day-group">
+      <div class="prediction-day-heading">
+        <h3>${escapeHtml(dateHeadingText(dateKey))}</h3>
+        <span>${fmt.format(matches.length)} trận</span>
+      </div>
+      <div class="prediction-match-list">
+        ${matches.map(renderPredictionMatchRow).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPredictionMatchRow(match) {
+  const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  return `
+    <button class="prediction-match-row" type="button" data-open-bet-modal="${match.id}">
+      <time>${timeText(match.starts_at)}</time>
+      <span class="group-badge">${escapeHtml(match.group_name ? formatGroupName(match.group_name) : "Knockout")}</span>
+      <span class="prediction-pair">
+        <strong>${escapeHtml(match.home_team?.name || "TBA")}</strong>
+        <b>VS</b>
+        <strong>${escapeHtml(match.away_team?.name || "TBA")}</strong>
+      </span>
+      <span>${escapeHtml(matchLocation(match))}</span>
+      <span>${fmt.format(openMarkets)} kèo</span>
+    </button>
+  `;
+}
+
+function renderBetModal() {
+  const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
+  if (!match) return "";
+  const allOpenMarkets = (match.match_markets || []).filter((market) => market.is_open);
+  const basicMarkets = allOpenMarkets.filter((market) => isBasicMarket(market.market_key));
+  const advancedMarkets = allOpenMarkets.filter((market) => !isBasicMarket(market.market_key));
+  const activeMarkets = state.betModalMarketGroup === "advanced" ? advancedMarkets : basicMarkets;
+  const scoreMarket = basicMarkets.find((market) => market.market_key === "correct_score");
+  return `
+    <div class="modal-backdrop" data-close-bet-modal>
+      <section class="bet-modal glass-card" role="dialog" aria-modal="true" aria-label="Đặt cược ${escapeHtml(matchTitle(match))}" data-modal-panel>
+        <div class="modal-head">
+          <div>
+            <span class="pill">${escapeHtml(scheduleLabel(match))}</span>
+            <h2>${escapeHtml(matchTitle(match))}</h2>
+            <p>${dateText(match.starts_at)} · ${escapeHtml(matchLocation(match))}</p>
           </div>
-          <label>Điểm cược<input id="stake" type="number" min="10" step="10" value="100"></label>
-          <p><button class="primary-button wide" ${state.isSubmittingBet ? "disabled" : ""}>Xác nhận dự đoán · x${fmtOne.format(multiplier)}</button></p>
-        </form>
-        <section class="glass-card panel">
-          <h2>Points at stake</h2>
-          <p>Hệ số nhân <strong class="score-value">x${fmtOne.format(multiplier)}</strong></p>
-          <p><small>${escapeHtml(oddsFreshnessLabel(scoreMarket))}</small></p>
-          <p>Điểm cược sẽ bị trừ ngay khi đặt. Nếu thắng, ví sẽ nhận stake × multiplier.</p>
-          <div class="meter"><div style="width:${Math.min(100, multiplier * 28)}%"></div></div>
-        </section>
-      </section>
-      <section class="glass-card panel">
-        <div class="section-heading"><h2>Chọn kèo khác</h2><span>90 phút chính thức</span></div>
-        <div class="market-grid">
-          ${match.match_markets.filter((market) => market.market_key !== "correct_score").map(renderMarketButton).join("")}
+          <button class="icon-button" type="button" data-close-bet-modal aria-label="Đóng">×</button>
+        </div>
+        ${renderModalMatchForecast(match)}
+        <div class="bet-modal-toolbar">
+          <label>Điểm cược<input id="bet-modal-stake" type="number" min="10" step="10" value="100"></label>
+          <div class="segmented-control">
+            <button type="button" class="${state.betModalMarketGroup === "basic" ? "active" : ""}" data-bet-modal-tab="basic">Cơ bản</button>
+            <button type="button" class="${state.betModalMarketGroup === "advanced" ? "active" : ""}" data-bet-modal-tab="advanced">Nâng cao</button>
+          </div>
+        </div>
+        <div class="modal-market-stack">
+          ${state.betModalMarketGroup === "basic" && scoreMarket ? renderModalScoreMarket(match, scoreMarket) : ""}
+          ${renderModalMarketSections(activeMarkets.filter((market) => market.market_key !== "correct_score"))}
         </div>
       </section>
     </div>
   `;
+}
+
+function renderModalScoreMarket(match, market) {
+  return `
+    <form class="modal-market-card" id="modal-score-bet-form">
+      <div class="section-heading">
+        <h3>Dự đoán tỷ số</h3>
+        <span>x${fmtOne.format(number(market.odds_multiplier))}</span>
+      </div>
+      <div class="score-picker compact">
+        ${scoreStepper("modal-home-score", match.home_team.name, 1)}
+        <span class="vs-text">-</span>
+        ${scoreStepper("modal-away-score", match.away_team.name, 0)}
+      </div>
+      <button class="primary-button wide" ${state.isSubmittingBet ? "disabled" : ""}>Đặt tỷ số chính xác</button>
+    </form>
+  `;
+}
+
+function renderModalMatchForecast(match) {
+  const forecast = matchValueForecast(match);
+  const homePct = forecast?.homePct ?? 50;
+  const awayPct = forecast?.awayPct ?? 50;
+  const leader = homePct === awayPct ? "even" : homePct > awayPct ? "home" : "away";
+  return `
+    <section class="modal-forecast value-forecast ${leader}-lean">
+      <div class="forecast-heading">
+        <div>
+          <h3>Đánh giá trận đấu</h3>
+          <p>${forecast ? "Dựa trên FIFA rank, điểm rating và giá trị đội hình." : "Chưa đủ dữ liệu, tạm cân bằng 50/50."}</p>
+        </div>
+      </div>
+      <div class="forecast-team-grid">
+        ${renderForecastTeamPanel(match.home_team, homePct)}
+        ${renderForecastTeamPanel(match.away_team, awayPct)}
+      </div>
+      <div class="win-rate-block">
+        <div class="win-rate-labels">
+          <span>${escapeHtml(match.home_team.name)} ${homePct}%</span>
+          <span>${escapeHtml(match.away_team.name)} ${awayPct}%</span>
+        </div>
+        <div class="forecast-meter win-rate-meter">
+          <div class="home-rate" style="width:${homePct}%"></div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderModalMarketSections(markets) {
+  if (!markets.length) return `<p class="empty-copy">Chưa có kèo trong nhóm này.</p>`;
+  const groups = new Map();
+  markets.forEach((market) => {
+    groups.set(market.label, [...(groups.get(market.label) || []), market]);
+  });
+  return [...groups.entries()].map(([label, items]) => `
+    <section class="modal-market-card">
+      <div class="section-heading"><h3>${escapeHtml(label)}</h3><span>${fmt.format(items.length)} lựa chọn</span></div>
+      <div class="market-grid compact">
+        ${items.map(renderModalMarketButton).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function renderModalMarketButton(market) {
+  return `
+    <button class="market-button" data-modal-market="${market.id}" ${state.isSubmittingBet ? "disabled" : ""}>
+      <strong>${escapeHtml(market.selection_label)}</strong>
+      <small>x${fmtOne.format(number(market.odds_multiplier))} · ${escapeHtml(oddsFreshnessLabel(market))}</small>
+    </button>
+  `;
+}
+
+function isBasicMarket(key) {
+  return ["match_result", "draw_no_bet", "correct_score"].includes(key);
 }
 
 function renderMarketButton(market) {
@@ -1400,9 +1542,84 @@ function renderOutrightButton(market) {
   `;
 }
 
+function renderOutrightSearchCard(marketKey) {
+  const isGoldenBoot = marketKey === "golden_boot";
+  const searchKey = isGoldenBoot ? "goldenBootSearch" : "winnerSearch";
+  const inputId = isGoldenBoot ? "golden-boot-search" : "winner-search";
+  const selectId = isGoldenBoot ? "golden-boot-select" : "winner-select";
+  const stakeId = isGoldenBoot ? "golden-boot-stake" : "winner-stake";
+  const formId = isGoldenBoot ? "golden-boot-form" : "winner-form";
+  const markets = openOutrightMarkets(marketKey);
+  const query = state[searchKey].trim().toLowerCase();
+  const filtered = markets.filter((market) => outrightSearchText(market).includes(query)).slice(0, 80);
+  const emptyCopy = isGoldenBoot
+    ? "Chưa có danh sách cầu thủ. Admin cần sync/import team_players trước."
+    : "Chưa có kèo vô địch.";
+
+  if (!markets.length) return `<p class="empty-copy">${emptyCopy}</p>`;
+
+  return `
+    <form class="outright-search-card" id="${formId}" data-outright-key="${marketKey}">
+      <label class="search-field">
+        Search
+        <input id="${inputId}" value="${escapeHtml(state[searchKey])}" placeholder="${isGoldenBoot ? "Tên cầu thủ, đội, CLB..." : "Tên đội, mã đội..."}">
+      </label>
+      <label>
+        ${isGoldenBoot ? "Cầu thủ" : "Đội tuyển"}
+        <select id="${selectId}" required>
+          ${filtered.map((market) => `<option value="${market.id}">${escapeHtml(outrightOptionLabel(market, isGoldenBoot))}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        Điểm cược
+        <input id="${stakeId}" type="number" min="10" step="10" value="100">
+      </label>
+      <button class="primary-button wide" ${filtered.length ? "" : "disabled"}>${isGoldenBoot ? "Đặt Vua phá lưới" : "Đặt vô địch"}</button>
+    </form>
+  `;
+}
+
+function openOutrightMarkets(marketKey) {
+  const markets = state.outrightMarkets.filter((market) => market.market_key === marketKey && market.is_open);
+  if (marketKey === "tournament_winner") {
+    return markets.sort((a, b) => {
+      const teamA = teamByCode(a.selection_key);
+      const teamB = teamByCode(b.selection_key);
+      return number(teamA?.fifa_rank || 999) - number(teamB?.fifa_rank || 999)
+        || number(a.odds_multiplier) - number(b.odds_multiplier)
+        || a.selection_label.localeCompare(b.selection_label);
+    });
+  }
+  return markets.sort((a, b) => number(a.odds_multiplier) - number(b.odds_multiplier) || a.selection_label.localeCompare(b.selection_label));
+}
+
+function outrightOptionLabel(market, isGoldenBoot) {
+  const extra = marketExtra(market);
+  const teamCode = extra.team_code || (!isGoldenBoot ? market.selection_key : "");
+  const detail = isGoldenBoot
+    ? [teamCode, extra.position, extra.club].filter(Boolean).join(" · ")
+    : `FIFA #${teamByCode(market.selection_key)?.fifa_rank || "?"}`;
+  return `${market.selection_label}${detail ? ` · ${detail}` : ""} · x${fmtOne.format(number(market.odds_multiplier))}`;
+}
+
+function outrightSearchText(market) {
+  const extra = marketExtra(market);
+  return [
+    market.selection_key,
+    market.selection_label,
+    extra.team_code,
+    extra.position,
+    extra.club
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function marketExtra(market) {
+  return typeof market?.extra_json === "string" ? safeJson(market.extra_json) : (market?.extra_json || {});
+}
+
 function oddsFreshnessLabel(market) {
   if (!market) return "internal fixed odds";
-  const extra = typeof market.extra_json === "string" ? safeJson(market.extra_json) : (market.extra_json || {});
+  const extra = marketExtra(market);
   const source = market.source === "odds-api" ? "The Odds API" : market.source || "internal";
   const bookmaker = extra.bookmaker ? ` · ${extra.bookmaker}` : "";
   const updated = extra.updated_at ? ` · updated ${dateText(extra.updated_at)}` : "";
@@ -1553,29 +1770,73 @@ function matchWinner(match) {
 function renderLeaderboard() {
   return `
     <div class="stack">
-      <div class="section-heading"><div><h1>Bảng Xếp Hạng</h1><p>Dựa trên net points từ các cược đã settle.</p></div></div>
+      <div class="section-heading"><div><h1>Bảng xếp hạng</h1><p>Thống kê theo cược đã đặt, ví hiện tại và lãi/lỗ đã settle.</p></div></div>
       <section class="podium">
         ${state.leaderboard.slice(0, 3).map((row) => `
           <article class="podium-card">
             <div class="avatar">${initials(row.display_name)}</div>
             <span>#${row.rank}</span>
             <h2>${escapeHtml(row.display_name)}</h2>
-            <strong class="score-value">${fmt.format(number(row.score))}</strong>
-            <small>${row.accuracy}% Accuracy</small>
+            <strong class="score-value">${fmt.format(number(row.wallet_balance))} pts</strong>
+            <small>${fmt.format(number(row.total_bets))} cược · ${fmtOne.format(number(row.accuracy))}% đúng</small>
           </article>
         `).join("")}
       </section>
       <section class="glass-card table-card">
-        <div class="table-row table-head"><span>Hạng</span><span>Người chơi</span><span>Đúng</span><span>Bonus</span><span>Điểm</span></div>
+        <div class="table-row table-head leaderboard-row">
+          <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền cược</span><span>Số tiền hiện tại</span><span>Lãi/Lỗ</span><span>% Lãi/Lỗ</span>
+        </div>
         ${state.leaderboard.map((row) => `
-          <div class="table-row">
+          <div class="table-row leaderboard-row">
             <strong>#${row.rank}</strong>
             <span>${escapeHtml(row.display_name)}</span>
-            <span>${row.accuracy}%</span>
-            <span>${fmt.format(number(row.bonus_points))}</span>
-            <b class="score-value">${fmt.format(number(row.score))}</b>
+            <span>${fmt.format(number(row.total_bets ?? row.settled_bets))}</span>
+            <span>${fmtOne.format(number(row.accuracy))}%</span>
+            <span>${fmt.format(number(row.total_staked))} pts</span>
+            <span>${fmt.format(number(row.wallet_balance))} pts</span>
+            <b class="${number(row.profit_loss ?? row.score) >= 0 ? "success" : "error"}">${number(row.profit_loss ?? row.score) >= 0 ? "+" : ""}${fmt.format(number(row.profit_loss ?? row.score))} pts</b>
+            <span>${fmtOne.format(number(row.profit_loss_pct ?? row.roi))}%</span>
           </div>
         `).join("")}
+      </section>
+    </div>
+  `;
+}
+
+function renderGuide() {
+  return `
+    <div class="stack guide-page">
+      <div class="section-heading">
+        <div>
+          <h1>Hướng dẫn</h1>
+          <p>Luồng chơi nhanh cho người mới tham gia league dự đoán World Cup.</p>
+        </div>
+      </div>
+      <section class="guide-grid">
+        <article class="glass-card panel">
+          <h2>1. Chọn trận</h2>
+          <p>Vào sheet Dự đoán, lọc theo ngày hoặc bảng, rồi bấm một trận để mở cửa sổ cược ngay trên lịch.</p>
+        </article>
+        <article class="glass-card panel">
+          <h2>2. Chọn loại cược</h2>
+          <p>Nhóm Cơ bản gồm 1X2, Draw no bet và tỷ số chính xác. Nhóm Nâng cao gồm tổng bàn, BTTS, góc, thẻ và các market admin mở thêm.</p>
+        </article>
+        <article class="glass-card panel">
+          <h2>3. Điểm và payout</h2>
+          <p>Điểm cược bị trừ khỏi ví khi đặt. Nếu đúng, ví nhận stake nhân với hệ số đang khóa tại thời điểm cược.</p>
+        </article>
+        <article class="glass-card panel">
+          <h2>4. Odds mạnh/yếu</h2>
+          <p>Đội được đánh giá mạnh hơn có hệ số thấp hơn; đội yếu hơn có hệ số cao hơn. Admin có thể cập nhật odds trước giờ khóa.</p>
+        </article>
+        <article class="glass-card panel">
+          <h2>5. Kèo dài hạn</h2>
+          <p>Ở Lịch thi đấu, dùng dropdown/search để cược Vua phá lưới hoặc đội vô địch giải.</p>
+        </article>
+        <article class="glass-card panel">
+          <h2>6. Theo dõi kết quả</h2>
+          <p>Xem lịch sử trong Thống kê dự đoán và xem thứ hạng, ví hiện tại, lãi/lỗ tại Bảng xếp hạng.</p>
+        </article>
       </section>
     </div>
   `;
@@ -1844,7 +2105,7 @@ function renderAdmin() {
         </form>
         <form class="glass-card form-card form-grid" id="tournament-winner-form">
           <h2>Settle vô địch</h2>
-          <label>Đội vô địch<select id="winner-key">${state.outrightMarkets.map((market) => `<option value="${market.selection_key}">${escapeHtml(market.selection_label)}</option>`).join("")}</select></label>
+          <label>Đội vô địch<select id="winner-key">${state.outrightMarkets.filter((market) => market.market_key === "tournament_winner").map((market) => `<option value="${market.selection_key}">${escapeHtml(market.selection_label)}</option>`).join("")}</select></label>
           <button class="primary-button">Settle outright</button>
         </form>
       </section>
@@ -2097,6 +2358,32 @@ function bindShellEvents() {
     });
   });
 
+  document.querySelectorAll("[data-open-bet-modal]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const matchId = Number(button.dataset.openBetModal);
+      state.selectedMatchId = matchId;
+      state.betModalMatchId = matchId;
+      state.betModalMarketGroup = "basic";
+      state.active = "detail";
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll("[data-close-bet-modal]").forEach((target) => {
+    target.addEventListener("click", (event) => {
+      if (event.target.closest("[data-modal-panel]") && !event.target.closest(".icon-button")) return;
+      state.betModalMatchId = null;
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll("[data-bet-modal-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.betModalMarketGroup = button.dataset.betModalTab;
+      renderApp();
+    });
+  });
+
   document.querySelectorAll("[data-match-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       state.matchFilter = button.dataset.matchFilter;
@@ -2191,15 +2478,31 @@ function bindShellEvents() {
   });
 
   document.getElementById("score-bet-form")?.addEventListener("submit", placeScoreBet);
+  document.getElementById("modal-score-bet-form")?.addEventListener("submit", placeModalScoreBet);
   document.querySelectorAll(".update-bet-form").forEach((form) => {
     form.addEventListener("submit", updateBet);
   });
   document.querySelectorAll("[data-market]").forEach((button) => {
     button.addEventListener("click", () => placeMarketBet(Number(button.dataset.market)));
   });
+  document.querySelectorAll("[data-modal-market]").forEach((button) => {
+    button.addEventListener("click", () => placeModalMarketBet(Number(button.dataset.modalMarket)));
+  });
   document.querySelectorAll("[data-outright]").forEach((button) => {
     button.addEventListener("click", () => placeOutrightBet(Number(button.dataset.outright)));
   });
+  document.getElementById("golden-boot-search")?.addEventListener("input", (event) => {
+    state.goldenBootSearch = event.target.value;
+    renderApp();
+    document.getElementById("golden-boot-search")?.focus();
+  });
+  document.getElementById("winner-search")?.addEventListener("input", (event) => {
+    state.winnerSearch = event.target.value;
+    renderApp();
+    document.getElementById("winner-search")?.focus();
+  });
+  document.getElementById("golden-boot-form")?.addEventListener("submit", (event) => placeSelectedOutrightBet(event, "golden_boot"));
+  document.getElementById("winner-form")?.addEventListener("submit", (event) => placeSelectedOutrightBet(event, "tournament_winner"));
   document.getElementById("create-user-form")?.addEventListener("submit", createUser);
   document.getElementById("admin-filter-form")?.addEventListener("submit", applyAdminReportFilters);
   document.getElementById("clear-admin-filters")?.addEventListener("click", clearAdminReportFilters);
@@ -2340,6 +2643,29 @@ async function placeScoreBet(event) {
   });
 }
 
+async function placeModalScoreBet(event) {
+  event.preventDefault();
+  const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
+  const market = match?.match_markets.find((item) => item.market_key === "correct_score");
+  if (!match || !market) {
+    state.error = "Trận này chưa có kèo tỷ số.";
+    state.message = "";
+    renderApp();
+    return;
+  }
+  const homeScore = Number(document.getElementById("modal-home-score").value);
+  const awayScore = Number(document.getElementById("modal-away-score").value);
+  const stake = Number(document.getElementById("bet-modal-stake")?.value || 0);
+  await placeBet({
+    p_match_id: match.id,
+    p_market_id: market.id,
+    p_selection_key: `${homeScore}-${awayScore}`,
+    p_selection_label: `${homeScore} - ${awayScore}`,
+    p_stake: stake,
+    p_selection_json: { home_score: homeScore, away_score: awayScore }
+  });
+}
+
 async function placeMarketBet(marketId) {
   if (state.isSubmittingBet) return;
   const match = selectedMatch();
@@ -2356,10 +2682,43 @@ async function placeMarketBet(marketId) {
   });
 }
 
+async function placeModalMarketBet(marketId) {
+  if (state.isSubmittingBet) return;
+  const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
+  const market = match?.match_markets.find((item) => item.id === marketId);
+  const stake = Number(document.getElementById("bet-modal-stake")?.value || 0);
+  if (!match || !market || !stake) return;
+  await placeBet({
+    p_match_id: match.id,
+    p_market_id: market.id,
+    p_selection_key: market.selection_key,
+    p_selection_label: market.selection_label,
+    p_stake: stake,
+    p_selection_json: { line: market.line }
+  });
+}
+
 async function placeOutrightBet(marketId) {
   if (state.isSubmittingBet) return;
   const market = state.outrightMarkets.find((item) => item.id === marketId);
   const stake = Number(prompt("Điểm cược", "100") || 0);
+  if (!market || !stake) return;
+  await submitOutrightBet(market.id, stake);
+}
+
+async function placeSelectedOutrightBet(event, marketKey) {
+  event.preventDefault();
+  if (state.isSubmittingBet) return;
+  const selectId = marketKey === "golden_boot" ? "golden-boot-select" : "winner-select";
+  const stakeId = marketKey === "golden_boot" ? "golden-boot-stake" : "winner-stake";
+  const marketId = Number(document.getElementById(selectId)?.value || 0);
+  const stake = Number(document.getElementById(stakeId)?.value || 0);
+  if (!marketId || !stake) return;
+  await submitOutrightBet(marketId, stake);
+}
+
+async function submitOutrightBet(marketId, stake) {
+  const market = state.outrightMarkets.find((item) => item.id === marketId);
   if (!market || !stake) return;
   state.isSubmittingBet = true;
   try {
@@ -2371,9 +2730,11 @@ async function placeOutrightBet(marketId) {
       state.error = error.message;
       state.message = "";
     } else {
-      state.message = `Đã đặt kèo vô địch: ${market.selection_label}.`;
+      const marketName = market.market_key === "golden_boot" ? "Vua phá lưới" : "vô địch";
+      state.message = `Đã đặt kèo ${marketName}: ${market.selection_label}.`;
       state.error = "";
       state.lastPredictionBetId = data?.id || null;
+      state.betModalMatchId = null;
       state.active = "predictionSuccess";
     }
   } catch (error) {
@@ -2397,6 +2758,7 @@ async function placeBet(payload) {
       state.message = "Đã ghi nhận dự đoán và trừ điểm cược.";
       state.error = "";
       state.lastPredictionBetId = data?.id || null;
+      state.betModalMatchId = null;
       state.active = "predictionSuccess";
     }
   } catch (error) {
@@ -2743,17 +3105,15 @@ async function voidBet(betId) {
 
 function exportLeaderboardCsv() {
   const rows = state.leaderboard.map((row) => ({
-    rank: row.rank,
-    username: row.username,
-    display_name: row.display_name,
-    score: row.score,
-    net_points: row.net_points,
-    bonus_points: row.bonus_points,
-    settled_bets: row.settled_bets,
-    won_bets: row.won_bets,
-    correct_score_count: row.correct_score_count,
-    accuracy: row.accuracy,
-    roi: row.roi
+    "Hạng": row.rank,
+    "Người chơi": row.display_name,
+    "Username": row.username,
+    "Số trận cược": row.total_bets ?? row.settled_bets,
+    "Tỷ lệ đúng": row.accuracy,
+    "Số tiền cược": row.total_staked,
+    "Số tiền hiện tại": row.wallet_balance,
+    "Lãi/Lỗ": row.profit_loss ?? row.score,
+    "% Lãi/Lỗ": row.profit_loss_pct ?? row.roi
   }));
   downloadCsv("worldcup-rankings.csv", rows);
 }
@@ -2928,13 +3288,17 @@ function selectedMatch() {
   return state.matches.find((match) => match.id === state.selectedMatchId) || state.matches[0];
 }
 
+function teamByCode(code) {
+  return state.teams.find((team) => team.code === code);
+}
+
 function renderLeaderRow(row) {
   return `
     <div class="leader-row">
       <span>#${row.rank}</span>
       <div class="avatar small">${initials(row.display_name)}</div>
-      <div><strong>${escapeHtml(row.display_name)}</strong><small>${row.accuracy}% Accuracy</small></div>
-      <b>${fmt.format(number(row.score))}</b>
+      <div><strong>${escapeHtml(row.display_name)}</strong><small>${fmtOne.format(number(row.accuracy))}% đúng · ${fmt.format(number(row.total_bets ?? row.settled_bets))} cược</small></div>
+      <b>${fmt.format(number(row.wallet_balance))}</b>
     </div>
   `;
 }
@@ -3057,8 +3421,37 @@ function number(value) {
 
 function dateText(value) {
   return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
     month: "short",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function vnDateKey(value) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(value));
+}
+
+function dateHeadingText(dateKey) {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "UTC",
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+function timeText(value) {
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
@@ -3067,6 +3460,7 @@ function dateText(value) {
 function dateOnlyText(value) {
   if (!value) return "-";
   return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
     month: "short",
     day: "2-digit",
     year: "numeric"

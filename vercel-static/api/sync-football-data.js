@@ -1105,16 +1105,26 @@ async function syncFootballDataFixtures() {
 }
 
 async function ensureDefaultMarketsForMatches(matches) {
+  const teams = await fetchTeamsForDefaultMarkets(matches);
   const rows = [];
   for (const match of matches || []) {
     if (!match.id || !match.starts_at) continue;
+    const homeTeam = teams.get(Number(match.home_team_id)) || {};
+    const awayTeam = teams.get(Number(match.away_team_id)) || {};
+    const homeStrength = teamStrengthScore(homeTeam);
+    const awayStrength = teamStrengthScore(awayTeam);
+    const homeWinOdds = teamWinMultiplier(homeStrength, awayStrength, 1.35, 4.50);
+    const awayWinOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
+    const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
+    const homeDnbOdds = teamWinMultiplier(homeStrength, awayStrength, 1.15, 3.20);
+    const awayDnbOdds = teamWinMultiplier(awayStrength, homeStrength, 1.15, 3.20);
     rows.push(
-      defaultMarket(match, "correct_score", "Dự đoán tỷ số", "exact", "Tỷ số chính xác", null, 2.45, "internal"),
-      defaultMarket(match, "match_result", "Kết quả 1X2", "home", "Đội nhà thắng", null, 1.85, "internal"),
-      defaultMarket(match, "match_result", "Kết quả 1X2", "draw", "Hòa", null, 3.10, "internal"),
-      defaultMarket(match, "match_result", "Kết quả 1X2", "away", "Đội khách thắng", null, 2.05, "internal"),
-      defaultMarket(match, "draw_no_bet", "Draw no bet", "home", "Home DNB", null, 1.65, "internal"),
-      defaultMarket(match, "draw_no_bet", "Draw no bet", "away", "Away DNB", null, 1.75, "internal"),
+      defaultMarket(match, "correct_score", "Dự đoán tỷ số", "exact", "Tỷ số chính xác", null, 6.00, "internal"),
+      defaultMarket(match, "match_result", "Kết quả 1X2", "home", `${homeTeam.name || "Đội nhà"} thắng`, null, homeWinOdds, "internal"),
+      defaultMarket(match, "match_result", "Kết quả 1X2", "draw", "Hòa", null, drawOdds, "internal"),
+      defaultMarket(match, "match_result", "Kết quả 1X2", "away", `${awayTeam.name || "Đội khách"} thắng`, null, awayWinOdds, "internal"),
+      defaultMarket(match, "draw_no_bet", "Draw no bet", "home", `${homeTeam.name || "Đội nhà"} DNB`, null, homeDnbOdds, "internal"),
+      defaultMarket(match, "draw_no_bet", "Draw no bet", "away", `${awayTeam.name || "Đội khách"} DNB`, null, awayDnbOdds, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", 2.5, 1.92, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", 2.5, 1.88, "internal"),
       defaultMarket(match, "btts", "Hai đội cùng ghi bàn", "yes", "Có", null, 1.95, "internal"),
@@ -1126,6 +1136,51 @@ async function ensureDefaultMarketsForMatches(matches) {
     );
   }
   return upsertJsonMinimal("match_markets", rows, "match_id,market_key,selection_key,line_key");
+}
+
+async function fetchTeamsForDefaultMarkets(matches) {
+  const ids = [...new Set((matches || [])
+    .flatMap((match) => [match.home_team_id, match.away_team_id])
+    .filter(Boolean)
+    .map(Number))];
+  if (!ids.length) return new Map();
+  const response = await supabaseFetch(`/rest/v1/teams?id=in.(${ids.join(",")})&select=id,code,name,fifa_rank,squad_market_value_eur,squad_value_rank`);
+  if (!response.ok) {
+    throw new Error(`Supabase fetch teams for markets failed: ${response.status} ${await response.text()}`);
+  }
+  const rows = await response.json();
+  return new Map((rows || []).map((team) => [Number(team.id), team]));
+}
+
+async function ensureGoldenBootMarkets() {
+  const response = await supabaseFetch("/rest/v1/rpc/ensure_golden_boot_markets", {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  if (!response.ok) {
+    throw new Error(`Supabase ensure golden_boot markets failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json();
+}
+
+function teamStrengthScore(team) {
+  const fifaRank = Number(team?.fifa_rank || 0);
+  const marketValue = Number(team?.squad_market_value_eur || 0);
+  const valueRank = Number(team?.squad_value_rank || 0);
+  const rankScore = fifaRank > 0 ? Math.max(0, 110 - fifaRank) * 0.55 : 28;
+  const valueScore = marketValue > 0 ? Math.log((marketValue / 1000000) + 1) * 7 : 0;
+  const squadRankScore = valueRank > 0 ? Math.max(0, 58 - valueRank) * 0.45 : 0;
+  return Number((rankScore + valueScore + squadRankScore).toFixed(4));
+}
+
+function teamWinMultiplier(teamStrength, opponentStrength, floor, ceiling) {
+  const sum = Number(teamStrength || 0) + Number(opponentStrength || 0);
+  const share = sum <= 0 ? 0.5 : Number(teamStrength || 0) / sum;
+  return roundOdds(Math.max(floor, Math.min(ceiling, 1.25 + (1 - share) * 3.2)));
+}
+
+function roundOdds(value) {
+  return Number(Number(value).toFixed(2));
 }
 
 function defaultMarket(match, marketKey, label, selectionKey, selectionLabel, line, oddsMultiplier, source) {
@@ -1377,12 +1432,13 @@ async function syncFifaSquads(maxTeams = DEFAULT_MAX_SQUAD_TEAMS, teamCode = "")
   }
 
   await upsertJson("team_players", rows, "provider_id");
+  const goldenBootMarkets = await ensureGoldenBootMarkets();
   await recordSyncRun({
     provider: "fifa",
     jobType: "squads",
     status: "success",
     requestCount: requests,
-    message: `Synced ${rows.length} squad players for ${teams.length} teams from ${FIFA_SQUAD_SOURCE}.`
+    message: `Synced ${rows.length} squad players for ${teams.length} teams from ${FIFA_SQUAD_SOURCE}; golden boot markets: ${goldenBootMarkets}.`
   });
 
   return {
@@ -1391,6 +1447,7 @@ async function syncFifaSquads(maxTeams = DEFAULT_MAX_SQUAD_TEAMS, teamCode = "")
     requests,
     teams: teams.length,
     players: rows.length,
+    goldenBootMarkets,
     source: FIFA_SQUAD_SOURCE
   };
 }
@@ -1505,6 +1562,7 @@ async function syncTransfermarktValues(maxTeams = DEFAULT_MAX_TRANSFERMARKT_TEAM
     updatedPlayers += 1;
   }
   const insertedPlayers = await upsertJson("team_players", insertRows, "provider_id");
+  const goldenBootMarkets = await ensureGoldenBootMarkets();
 
   const status = errors.length || unmatched.length ? "partial" : "success";
   await recordSyncRun({
@@ -1512,7 +1570,7 @@ async function syncTransfermarktValues(maxTeams = DEFAULT_MAX_TRANSFERMARKT_TEAM
     jobType: "market-values",
     status,
     requestCount: requests,
-    message: `Updated ${matchedTeams.length}/${localTeams.length} teams and ${updatedPlayers + insertedPlayers.length} players from ${TRANSFERMARKT_SOURCE}; unmatched: ${unmatched.slice(0, 8).join(", ") || "none"}; errors: ${errors.slice(0, 5).join(" | ") || "none"}.`
+    message: `Updated ${matchedTeams.length}/${localTeams.length} teams and ${updatedPlayers + insertedPlayers.length} players from ${TRANSFERMARKT_SOURCE}; golden boot markets: ${goldenBootMarkets}; unmatched: ${unmatched.slice(0, 8).join(", ") || "none"}; errors: ${errors.slice(0, 5).join(" | ") || "none"}.`
   });
 
   return {
@@ -1524,6 +1582,7 @@ async function syncTransfermarktValues(maxTeams = DEFAULT_MAX_TRANSFERMARKT_TEAM
     players: updatedPlayers + insertedPlayers.length,
     insertedPlayers: insertedPlayers.length,
     updatedPlayers,
+    goldenBootMarkets,
     unmatched: unmatched.length,
     errors: errors.length,
     source: TRANSFERMARKT_SOURCE

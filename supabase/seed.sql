@@ -36,7 +36,7 @@ where provider = 'api-football'
 
 delete from public.outright_markets
 where source = 'internal'
-  and market_key = 'tournament_winner';
+  and market_key in ('tournament_winner', 'golden_boot');
 
 delete from public.matches
 where provider_id like 'seed-%';
@@ -237,14 +237,15 @@ where t.code = world_cup_history.code;
 
 insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
 values
-  ('correct_score', 'Dự đoán tỷ số', 'score', 'correct_score', false, 2.45, 1),
+  ('correct_score', 'Dự đoán tỷ số', 'score', 'correct_score', false, 6.00, 1),
   ('match_result', 'Kết quả 1X2', 'single', 'match_result', false, 1.80, 2),
   ('draw_no_bet', 'Draw no bet', 'single', 'draw_no_bet', false, 1.65, 3),
   ('total_goals', 'Tổng bàn thắng', 'line', 'total_goals', false, 1.90, 4),
   ('btts', 'Hai đội cùng ghi bàn', 'single', 'btts', false, 1.95, 5),
   ('corners_total', 'Tổng phạt góc', 'line', 'corners_total', true, 1.90, 6),
   ('cards_total', 'Tổng thẻ', 'line', 'cards_total', true, 1.90, 7),
-  ('tournament_winner', 'Vô địch giải', 'outright', 'tournament_winner', false, 4.00, 8)
+  ('tournament_winner', 'Vô địch giải', 'outright', 'tournament_winner', false, 4.00, 8),
+  ('golden_boot', 'Dự đoán Vua phá lưới', 'outright', 'golden_boot', false, 12.00, 9)
 on conflict (key) do update
 set name = excluded.name,
     market_type = excluded.market_type,
@@ -342,14 +343,21 @@ set stage = excluded.stage,
 insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
 select m.id, x.market_key, x.label, x.selection_key, x.selection_label, x.line, x.odds_multiplier, x.source, m.starts_at
 from public.matches m
-cross join (
+join public.teams ht on ht.id = m.home_team_id
+join public.teams at on at.id = m.away_team_id
+cross join lateral (
+  select
+    public.team_strength_score(ht.fifa_rank, ht.squad_market_value_eur, ht.squad_value_rank) as home_strength,
+    public.team_strength_score(at.fifa_rank, at.squad_market_value_eur, at.squad_value_rank) as away_strength
+) as s
+cross join lateral (
   values
-    ('correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null::numeric, 2.45, 'internal'),
-    ('match_result', 'Kết quả 1X2', 'home', 'Đội nhà thắng', null::numeric, 1.85, 'internal'),
-    ('match_result', 'Kết quả 1X2', 'draw', 'Hòa', null::numeric, 3.10, 'internal'),
-    ('match_result', 'Kết quả 1X2', 'away', 'Đội khách thắng', null::numeric, 2.05, 'internal'),
-    ('draw_no_bet', 'Draw no bet', 'home', 'Home DNB', null::numeric, 1.65, 'internal'),
-    ('draw_no_bet', 'Draw no bet', 'away', 'Away DNB', null::numeric, 1.75, 'internal'),
+    ('correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null::numeric, 6.00, 'internal'),
+    ('match_result', 'Kết quả 1X2', 'home', ht.name || ' thắng', null::numeric, public.team_win_multiplier(s.home_strength, s.away_strength, 1.35, 4.50), 'internal'),
+    ('match_result', 'Kết quả 1X2', 'draw', 'Hòa', null::numeric, round(greatest(2.70, least(3.80, 2.95 + abs(s.home_strength - s.away_strength) / 45))::numeric, 2), 'internal'),
+    ('match_result', 'Kết quả 1X2', 'away', at.name || ' thắng', null::numeric, public.team_win_multiplier(s.away_strength, s.home_strength, 1.35, 4.50), 'internal'),
+    ('draw_no_bet', 'Draw no bet', 'home', ht.name || ' DNB', null::numeric, public.team_win_multiplier(s.home_strength, s.away_strength, 1.15, 3.20), 'internal'),
+    ('draw_no_bet', 'Draw no bet', 'away', at.name || ' DNB', null::numeric, public.team_win_multiplier(s.away_strength, s.home_strength, 1.15, 3.20), 'internal'),
     ('total_goals', 'Tổng bàn thắng 2.5', 'over', 'Tài 2.5', 2.5::numeric, 1.92, 'internal'),
     ('total_goals', 'Tổng bàn thắng 2.5', 'under', 'Xỉu 2.5', 2.5::numeric, 1.88, 'internal'),
     ('btts', 'Hai đội cùng ghi bàn', 'yes', 'Có', null::numeric, 1.95, 'internal'),
@@ -365,7 +373,8 @@ set label = excluded.label,
     selection_label = excluded.selection_label,
     odds_multiplier = excluded.odds_multiplier,
     source = excluded.source,
-    closes_at = excluded.closes_at;
+    closes_at = excluded.closes_at
+where public.match_markets.source = 'internal';
 
 insert into public.outright_markets (market_key, label, selection_key, selection_label, odds_multiplier, source, closes_at)
 select
@@ -373,28 +382,64 @@ select
   'Vô địch World Cup 2026',
   t.code,
   t.name,
-  case t.code
-    when 'BRA' then 5.50
-    when 'ARG' then 6.00
-    when 'FRA' then 6.50
-    when 'ENG' then 7.50
-    when 'ESP' then 8.00
-    when 'GER' then 9.00
-    when 'POR' then 9.00
-    when 'NED' then 11.00
-    when 'BEL' then 14.00
-    when 'URU' then 18.00
-    else 25.00
-  end,
+  round(greatest(4.00, least(45.00, 3.50 + t.strength_rank * 0.70))::numeric, 2),
   'internal',
   '2026-06-11 19:00:00+00'::timestamptz
-from public.teams t
+from (
+  select
+    teams.*,
+    row_number() over (
+      order by
+        teams.fifa_rank asc nulls last,
+        public.team_strength_score(teams.fifa_rank, teams.squad_market_value_eur, teams.squad_value_rank) desc,
+        teams.name
+    ) as strength_rank
+  from public.teams
+  where teams.provider_id like 'fifa-2026-team-%'
+) t
+on conflict (market_key, selection_key) do update
+set selection_label = excluded.selection_label,
+    odds_multiplier = excluded.odds_multiplier,
+    source = excluded.source,
+    closes_at = excluded.closes_at
+where public.outright_markets.source = 'internal';
+
+insert into public.outright_markets (market_key, label, selection_key, selection_label, odds_multiplier, source, closes_at, extra_json)
+select
+  'golden_boot',
+  'Dự đoán Vua phá lưới',
+  'player:' || p.id::text,
+  p.name || ' (' || t.code || ')',
+  round(greatest(6.00, least(80.00, 5.25 + p.player_rank * 0.85))::numeric, 2),
+  'internal',
+  '2026-06-11 19:00:00+00'::timestamptz,
+  jsonb_build_object(
+    'player_id', p.id,
+    'team_id', p.team_id,
+    'team_code', t.code,
+    'position', p.position,
+    'club', p.club
+  )
+from (
+  select
+    team_players.*,
+    row_number() over (
+      order by
+        coalesce(team_players.market_value_eur, 0) desc,
+        coalesce(team_players.overall_rating, 0) desc,
+        team_players.name
+    ) as player_rank
+  from public.team_players
+) p
+join public.teams t on t.id = p.team_id
 where t.provider_id like 'fifa-2026-team-%'
 on conflict (market_key, selection_key) do update
 set selection_label = excluded.selection_label,
     odds_multiplier = excluded.odds_multiplier,
     source = excluded.source,
-    closes_at = excluded.closes_at;
+    closes_at = excluded.closes_at,
+    extra_json = excluded.extra_json
+where public.outright_markets.source = 'internal';
 
 insert into public.sync_runs (provider, job_type, status, finished_at, request_count, message)
 values ('fifa', 'seed', 'success', now(), 0, 'Seeded FIFA World Cup 2026 group teams, fixtures, and default internal markets.')

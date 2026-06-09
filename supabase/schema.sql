@@ -600,37 +600,89 @@ create policy admin_manage_sync_runs on public.sync_runs
 drop policy if exists admin_read_audit_logs on public.audit_logs;
 create policy admin_read_audit_logs on public.audit_logs for select using (public.is_admin());
 
+create or replace function public.team_strength_score(
+  p_fifa_rank integer,
+  p_squad_market_value_eur numeric,
+  p_squad_value_rank integer default null
+)
+returns numeric
+language sql
+immutable
+as $$
+  select round((
+    case
+      when p_fifa_rank is null then 28
+      else greatest(0, 110 - p_fifa_rank) * 0.55
+    end
+    + case
+      when coalesce(p_squad_market_value_eur, 0) <= 0 then 0
+      else ln((p_squad_market_value_eur / 1000000) + 1) * 7
+    end
+    + case
+      when p_squad_value_rank is null then 0
+      else greatest(0, 58 - p_squad_value_rank) * 0.45
+    end
+  )::numeric, 4);
+$$;
+
+create or replace function public.team_win_multiplier(
+  p_team_strength numeric,
+  p_opponent_strength numeric,
+  p_floor numeric default 1.35,
+  p_ceiling numeric default 4.50
+)
+returns numeric
+language sql
+immutable
+as $$
+  select round(greatest(p_floor, least(p_ceiling,
+    1.25 + (
+      1 - case
+        when coalesce(p_team_strength, 0) + coalesce(p_opponent_strength, 0) <= 0 then 0.5
+        else coalesce(p_team_strength, 0) / (coalesce(p_team_strength, 0) + coalesce(p_opponent_strength, 0))
+      end
+    ) * 3.2
+  ))::numeric, 2);
+$$;
+
 create or replace view public.leaderboard as
 with user_scores as (
   select
     p.id as user_id,
     p.username,
     p.display_name,
+    p.wallet_balance,
+    count(b.id)::integer as total_bets,
     coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.points_delta + b.prediction_bonus else 0 end), 0)::numeric(12,2) as score,
     coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.points_delta else 0 end), 0)::numeric(12,2) as net_points,
     coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.prediction_bonus else 0 end), 0)::numeric(12,2) as bonus_points,
     count(b.id) filter (where b.status in ('won', 'lost', 'refunded'))::integer as settled_bets,
     count(b.id) filter (where b.status = 'won')::integer as won_bets,
     count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
-    coalesce(sum(b.stake) filter (where b.status in ('won', 'lost')), 0)::numeric(12,2) as total_staked
+    coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked
   from public.profiles p
   left join public.bets b on b.user_id = p.id
   where p.role = 'player'
-  group by p.id, p.username, p.display_name
+  group by p.id, p.username, p.display_name, p.wallet_balance
 )
 select
   rank() over (order by score desc, won_bets desc) as rank,
   user_id,
   username,
   display_name,
+  wallet_balance,
+  total_bets,
   score,
   net_points,
   bonus_points,
+  score as profit_loss,
   settled_bets,
   won_bets,
   correct_score_count,
+  total_staked,
   case when settled_bets = 0 then 0 else round((won_bets::numeric / settled_bets::numeric) * 100, 1) end as accuracy,
-  case when total_staked = 0 then 0 else round((score / total_staked) * 100, 1) end as roi
+  case when total_staked = 0 then 0 else round((score / total_staked) * 100, 1) end as roi,
+  case when total_staked = 0 then 0 else round((score / total_staked) * 100, 1) end as profit_loss_pct
 from user_scores;
 
 create or replace view public.admin_report as
@@ -1065,6 +1117,66 @@ begin
 end;
 $$;
 
+create or replace function public.ensure_golden_boot_markets()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer := 0;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_admin() then
+    raise exception 'admin role required';
+  end if;
+
+  insert into public.outright_markets (
+    market_key, label, selection_key, selection_label, odds_multiplier, source, closes_at, extra_json
+  )
+  select
+    'golden_boot',
+    'Dự đoán Vua phá lưới',
+    'player:' || ranked.id::text,
+    ranked.name || ' (' || ranked.team_code || ')',
+    round(greatest(6.00, least(80.00, 5.25 + ranked.player_rank * 0.85))::numeric, 2),
+    'internal',
+    coalesce(
+      (select min(starts_at) from public.matches where status in ('SCHEDULED', 'NS', 'TBD')),
+      '2026-06-11 19:00:00+00'::timestamptz
+    ),
+    jsonb_build_object(
+      'player_id', ranked.id,
+      'team_id', ranked.team_id,
+      'team_code', ranked.team_code,
+      'position', ranked.position,
+      'club', ranked.club
+    )
+  from (
+    select
+      p.*,
+      t.code as team_code,
+      row_number() over (
+        order by
+          coalesce(p.market_value_eur, 0) desc,
+          coalesce(p.overall_rating, 0) desc,
+          p.name
+      ) as player_rank
+    from public.team_players p
+    join public.teams t on t.id = p.team_id
+    where t.provider_id like 'fifa-2026-team-%'
+  ) ranked
+  on conflict (market_key, selection_key) do update
+  set selection_label = excluded.selection_label,
+      odds_multiplier = excluded.odds_multiplier,
+      closes_at = excluded.closes_at,
+      extra_json = excluded.extra_json
+  where public.outright_markets.source = 'internal';
+
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
 create or replace function public.admin_import_transfermarkt_values(
   p_payload jsonb
 )
@@ -1098,6 +1210,7 @@ declare
   v_updated_at timestamptz := now();
   v_team_count integer := 0;
   v_player_count integer := 0;
+  v_golden_boot_count integer := 0;
   v_error_count integer := 0;
   v_errors text[] := '{}';
 begin
@@ -1297,6 +1410,10 @@ begin
     v_player_count := v_player_count + 1;
   end loop;
 
+  if v_player_count > 0 then
+    v_golden_boot_count := public.ensure_golden_boot_markets();
+  end if;
+
   insert into public.audit_logs (actor_id, action, entity_type, details_json)
   values (
     auth.uid(),
@@ -1305,6 +1422,7 @@ begin
     jsonb_build_object(
       'teams', v_team_count,
       'players', v_player_count,
+      'golden_boot_markets', v_golden_boot_count,
       'errors', v_error_count
     )
   );
@@ -1313,6 +1431,7 @@ begin
     'status', case when v_error_count > 0 then 'partial' else 'success' end,
     'teams', v_team_count,
     'players', v_player_count,
+    'golden_boot_markets', v_golden_boot_count,
     'errors', v_error_count,
     'messages', to_jsonb(v_errors)
   );
@@ -1714,6 +1833,15 @@ set search_path = public
 as $$
 declare
   v_match public.matches%rowtype;
+  v_home public.teams%rowtype;
+  v_away public.teams%rowtype;
+  v_home_strength numeric;
+  v_away_strength numeric;
+  v_home_win_odds numeric;
+  v_away_win_odds numeric;
+  v_draw_odds numeric;
+  v_home_dnb_odds numeric;
+  v_away_dnb_odds numeric;
   v_count integer := 0;
 begin
   if not public.is_admin() then
@@ -1725,14 +1853,24 @@ begin
     raise exception 'match not found';
   end if;
 
+  select * into v_home from public.teams where id = v_match.home_team_id;
+  select * into v_away from public.teams where id = v_match.away_team_id;
+  v_home_strength := public.team_strength_score(v_home.fifa_rank, v_home.squad_market_value_eur, v_home.squad_value_rank);
+  v_away_strength := public.team_strength_score(v_away.fifa_rank, v_away.squad_market_value_eur, v_away.squad_value_rank);
+  v_home_win_odds := public.team_win_multiplier(v_home_strength, v_away_strength, 1.35, 4.50);
+  v_away_win_odds := public.team_win_multiplier(v_away_strength, v_home_strength, 1.35, 4.50);
+  v_draw_odds := round(greatest(2.70, least(3.80, 2.95 + abs(v_home_strength - v_away_strength) / 45))::numeric, 2);
+  v_home_dnb_odds := public.team_win_multiplier(v_home_strength, v_away_strength, 1.15, 3.20);
+  v_away_dnb_odds := public.team_win_multiplier(v_away_strength, v_home_strength, 1.15, 3.20);
+
   insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
   values
-    (v_match.id, 'correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null, 2.45, 'internal', v_match.starts_at),
-    (v_match.id, 'match_result', 'Kết quả 1X2', 'home', 'Đội nhà thắng', null, 1.85, 'internal', v_match.starts_at),
-    (v_match.id, 'match_result', 'Kết quả 1X2', 'draw', 'Hòa', null, 3.10, 'internal', v_match.starts_at),
-    (v_match.id, 'match_result', 'Kết quả 1X2', 'away', 'Đội khách thắng', null, 2.05, 'internal', v_match.starts_at),
-    (v_match.id, 'draw_no_bet', 'Draw no bet', 'home', 'Home DNB', null, 1.65, 'internal', v_match.starts_at),
-    (v_match.id, 'draw_no_bet', 'Draw no bet', 'away', 'Away DNB', null, 1.75, 'internal', v_match.starts_at),
+    (v_match.id, 'correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null, 6.00, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2', 'home', coalesce(v_home.name, 'Đội nhà') || ' thắng', null, v_home_win_odds, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2', 'draw', 'Hòa', null, v_draw_odds, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2', 'away', coalesce(v_away.name, 'Đội khách') || ' thắng', null, v_away_win_odds, 'internal', v_match.starts_at),
+    (v_match.id, 'draw_no_bet', 'Draw no bet', 'home', coalesce(v_home.name, 'Đội nhà') || ' DNB', null, v_home_dnb_odds, 'internal', v_match.starts_at),
+    (v_match.id, 'draw_no_bet', 'Draw no bet', 'away', coalesce(v_away.name, 'Đội khách') || ' DNB', null, v_away_dnb_odds, 'internal', v_match.starts_at),
     (v_match.id, 'total_goals', 'Tổng bàn thắng 2.5', 'over', 'Tài 2.5', 2.5, 1.92, 'internal', v_match.starts_at),
     (v_match.id, 'total_goals', 'Tổng bàn thắng 2.5', 'under', 'Xỉu 2.5', 2.5, 1.88, 'internal', v_match.starts_at),
     (v_match.id, 'btts', 'Hai đội cùng ghi bàn', 'yes', 'Có', null, 1.95, 'internal', v_match.starts_at),
@@ -1741,7 +1879,12 @@ begin
     (v_match.id, 'corners_total', 'Tổng phạt góc 8.5', 'under', 'Xỉu góc 8.5', 8.5, 1.90, 'internal', v_match.starts_at),
     (v_match.id, 'cards_total', 'Tổng thẻ 3.5', 'over', 'Tài thẻ 3.5', 3.5, 1.90, 'internal', v_match.starts_at),
     (v_match.id, 'cards_total', 'Tổng thẻ 3.5', 'under', 'Xỉu thẻ 3.5', 3.5, 1.90, 'internal', v_match.starts_at)
-  on conflict (match_id, market_key, selection_key, line_key) do nothing;
+  on conflict (match_id, market_key, selection_key, line_key) do update
+  set label = excluded.label,
+      selection_label = excluded.selection_label,
+      odds_multiplier = excluded.odds_multiplier,
+      closes_at = excluded.closes_at
+  where public.match_markets.source = 'internal';
 
   get diagnostics v_count = row_count;
   return v_count;
