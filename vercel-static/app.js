@@ -33,6 +33,7 @@ const state = {
   betModalMatchId: null,
   betModalMarketGroup: "basic",
   betModalDraft: {},
+  confirmRebetMatchId: null,
   goldenBootSearch: "",
   winnerSearch: "",
   lastPredictionBetId: null,
@@ -40,6 +41,10 @@ const state = {
   predictionStatsTab: "upcoming",
   matchFilter: "upcoming",
   matchSearch: "",
+  matchSearchPanelOpen: false,
+  matchSearchQuery: "",
+  selectedCalendarDate: "",
+  calendarMonth: "",
   message: "",
   error: ""
 };
@@ -547,7 +552,8 @@ function renderMatchCard(match) {
   `;
 }
 
-function renderScheduleFilters() {
+function renderScheduleFilters(options = {}) {
+  const includeSearchPanel = options.includeSearchPanel === true;
   const base = [
     ["upcoming", "Upcoming"],
     ["today", "Today"],
@@ -564,10 +570,14 @@ function renderScheduleFilters() {
         <h2>Lịch & bảng đấu</h2>
         <p>Xem theo ngày, bảng hoặc vòng knockout. Bấm trận để mở cửa sổ cược.</p>
       </div>
-      <label class="search-field">
-        Search
-        <input id="match-search" value="${escapeHtml(state.matchSearch)}" placeholder="Group A, Mexico, match 1...">
-      </label>
+      ${
+        includeSearchPanel
+          ? renderPredictionMatchSearchPanel()
+          : `<label class="search-field">
+              Search
+              <input id="match-search" value="${escapeHtml(state.matchSearch)}" placeholder="Group A, Mexico, match 1...">
+            </label>`
+      }
       <div class="filter-scroll">
         ${filters.map(([key, label]) => `<button class="filter-pill ${state.matchFilter === key ? "active" : ""}" data-match-filter="${escapeHtml(key)}">${escapeHtml(label)}</button>`).join("")}
       </div>
@@ -575,33 +585,172 @@ function renderScheduleFilters() {
   `;
 }
 
-function filteredScheduleMatches() {
+function filteredScheduleMatches(options = {}) {
   const now = new Date();
   const todayKey = localDateKey(now);
-  const search = state.matchSearch.trim().toLowerCase();
+  const useSearch = options.useSearch !== false;
+  const selectedDate = options.dateKey || "";
+  const search = searchNormalize(state.matchSearch);
   return state.matches.filter((match) => {
     let matchesFilter = false;
-    if (state.matchFilter === "all") matchesFilter = true;
+    if (selectedDate) matchesFilter = vnDateKey(match.starts_at) === selectedDate;
+    else if (state.matchFilter === "all") matchesFilter = true;
     else if (state.matchFilter === "today") matchesFilter = localDateKey(new Date(match.starts_at)) === todayKey;
     else if (state.matchFilter === "knockout") matchesFilter = isKnockoutMatch(match);
     else if (state.matchFilter?.startsWith("group:")) matchesFilter = match.group_name === state.matchFilter.slice(6);
     else matchesFilter = new Date(match.starts_at).getTime() >= now.getTime() && match.status === "SCHEDULED";
     if (!matchesFilter) return false;
-    if (!search) return true;
-    const haystack = [
-      fixtureNumber(match),
-      match.stage,
-      match.group_name,
-      formatGroupName(match.group_name),
-      match.home_team?.name,
-      match.home_team?.code,
-      match.away_team?.name,
-      match.away_team?.code,
-      match.venue,
-      match.city
-    ].join(" ").toLowerCase();
-    return haystack.includes(search);
+    if (!useSearch || !search) return true;
+    return searchNormalize(matchSearchText(match)).includes(search);
   });
+}
+
+function renderPredictionMatchSearchPanel() {
+  const open = state.matchSearchPanelOpen;
+  const resultCount = filteredGroupTeamMatches(state.matchSearchQuery).length;
+  return `
+    <section class="match-search-panel ${open ? "open" : ""}">
+      <button class="match-search-toggle" type="button" data-match-search-toggle>
+        <span>
+          <strong>Tìm theo bảng / đội</strong>
+          <small>${open ? "Nhập bảng, tên đội hoặc mã đội để mở danh sách phụ." : "Option phụ, lịch ngày vẫn là luồng chính."}</small>
+        </span>
+        <b>${open ? "Đóng" : "Mở"}</b>
+      </button>
+      ${
+        open
+          ? `<div class="match-search-body">
+              <label class="search-field">
+                Search
+                <input id="group-team-search" value="${escapeHtml(state.matchSearchQuery)}" placeholder="Bảng A, Group A, MEX, Mexico...">
+              </label>
+              <div class="match-search-meta">${state.matchSearchQuery ? `${fmt.format(resultCount)} trận phù hợp` : "Gõ bảng hoặc đội để xem trận liên quan."}</div>
+              <div class="match-search-results" id="match-search-results">
+                ${renderMatchSearchResults()}
+              </div>
+            </div>`
+          : ""
+      }
+    </section>
+  `;
+}
+
+function matchSearchText(match) {
+  return [
+    fixtureNumber(match),
+    match.stage,
+    match.group_name,
+    formatGroupName(match.group_name),
+    match.home_team?.name,
+    match.home_team?.code,
+    match.away_team?.name,
+    match.away_team?.code,
+    match.venue,
+    match.city
+  ].filter(Boolean).join(" ");
+}
+
+function filteredGroupTeamMatches(query) {
+  const normalized = searchNormalize(query);
+  if (!normalized) return [];
+  const openMatches = predictionOpenMatches();
+  const exactGroup = matchingGroupForQuery(normalized);
+  const matches = exactGroup
+    ? openMatches.filter((match) => match.group_name === exactGroup)
+    : openMatches.filter((match) => searchNormalize(matchSearchText(match)).includes(normalized));
+  return matches.sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime());
+}
+
+function matchingGroupForQuery(normalizedQuery) {
+  const compactQuery = normalizedQuery.replace(/\s+/g, "");
+  const groups = [...new Set(state.matches.map((match) => match.group_name).filter(Boolean))];
+  return groups.find((groupName) => {
+    const groupCode = groupCodeFromName(groupName);
+    const variants = [
+      groupName,
+      formatGroupName(groupName),
+      groupCode,
+      groupCode ? `Group ${groupCode}` : "",
+      groupCode ? `Bang ${groupCode}` : "",
+      groupCode ? `Bảng ${groupCode}` : ""
+    ]
+      .filter(Boolean)
+      .map(searchNormalize);
+    return variants.some((variant) => variant === normalizedQuery || variant.replace(/\s+/g, "") === compactQuery);
+  }) || null;
+}
+
+function groupCodeFromName(groupName) {
+  const formatted = searchNormalize(formatGroupName(groupName));
+  const raw = searchNormalize(groupName);
+  const formattedMatch = formatted.match(/(?:group|bang)\s*([a-z0-9]+)/);
+  const rawMatch = raw.match(/(?:group|bang)\s*([a-z0-9]+)/);
+  if (formattedMatch?.[1]) return formattedMatch[1].toUpperCase();
+  if (rawMatch?.[1]) return rawMatch[1].toUpperCase();
+  if (/^[a-z0-9]{1,2}$/.test(raw)) return raw.toUpperCase();
+  return "";
+}
+
+function renderMatchSearchResults() {
+  if (!searchNormalize(state.matchSearchQuery)) {
+    return `<p class="empty-copy">Search theo bảng hoặc đội là option phụ; lịch cược theo ngày vẫn nằm bên dưới.</p>`;
+  }
+  const matches = filteredGroupTeamMatches(state.matchSearchQuery);
+  if (!matches.length) {
+    return `<p class="empty-copy">Không tìm thấy trận đang mở cược cho từ khóa này.</p>`;
+  }
+  return groupMatchesByGroup(matches).map(([groupName, groupMatches]) => `
+    <section class="match-search-group">
+      <div class="match-search-group-head">
+        <strong>${escapeHtml(groupName ? formatGroupName(groupName) : "Knockout")}</strong>
+        <span>${fmt.format(groupMatches.length)} trận</span>
+      </div>
+      <div class="prediction-match-list">
+        ${groupMatches.map(renderMatchSearchRow).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function groupMatchesByGroup(matches) {
+  const groups = new Map();
+  matches.forEach((match) => {
+    const key = match.group_name || match.stage || "Knockout";
+    groups.set(key, [...(groups.get(key) || []), match]);
+  });
+  return [...groups.entries()]
+    .map(([groupName, groupMatches]) => [
+      groupName,
+      groupMatches.sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime())
+    ])
+    .sort(([leftGroup, leftMatches], [rightGroup, rightMatches]) => {
+      const leftDate = new Date(leftMatches[0]?.starts_at || 0).getTime();
+      const rightDate = new Date(rightMatches[0]?.starts_at || 0).getTime();
+      return String(leftGroup).localeCompare(String(rightGroup), "en", { numeric: true }) || leftDate - rightDate;
+    });
+}
+
+function renderMatchSearchRow(match) {
+  const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  const betSummary = matchBetSummary(match);
+  const urgency = matchUrgency(match);
+  return `
+    <button class="prediction-match-row search-match-row ${betSummary.hasBets ? "has-open-bet" : ""} ${urgency.className}" type="button" data-open-bet-modal="${match.id}">
+      <time>${dateText(match.starts_at)}</time>
+      <span class="group-badge">${escapeHtml(match.group_name ? formatGroupName(match.group_name) : "Knockout")}</span>
+      <span class="prediction-pair">
+        <strong>${escapeHtml(match.home_team?.name || "TBA")}</strong>
+        <b>VS</b>
+        <strong>${escapeHtml(match.away_team?.name || "TBA")}</strong>
+      </span>
+      <span>${escapeHtml(matchLocation(match))}</span>
+      <span class="prediction-status-stack">
+        ${urgency.badgeHtml}
+        ${betSummary.badgeHtml}
+        <small>${fmt.format(openMarkets)} kèo</small>
+      </span>
+    </button>
+  `;
 }
 
 function renderReminderPanel(reminders) {
@@ -1285,7 +1434,8 @@ function renderPlayerCard(player) {
 }
 
 function renderDetail() {
-  const matches = filteredScheduleMatches()
+  const selectedDate = state.selectedCalendarDate;
+  const matches = filteredScheduleMatches({ useSearch: false, dateKey: selectedDate })
     .filter((match) => canPredictMatch(match))
     .sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime());
   return `
@@ -1297,9 +1447,17 @@ function renderDetail() {
         </div>
         <span>${fmt.format(matches.length)} trận mở cược</span>
       </div>
-      ${renderScheduleFilters()}
+      ${renderScheduleFilters({ includeSearchPanel: true })}
       ${matches.length ? renderMatchValueForecast(state.matches.find((match) => match.id === state.selectedMatchId) || matches[0]) : ""}
-      ${renderPredictionSchedule(matches)}
+      <div class="prediction-layout">
+        <div class="prediction-main-column">
+          ${renderPredictionSchedule(matches)}
+        </div>
+        <aside class="prediction-side-column">
+          ${renderPredictionMiniCalendar()}
+        </aside>
+      </div>
+      ${state.confirmRebetMatchId ? renderRebetConfirmModal() : ""}
       ${state.betModalMatchId ? renderBetModal() : ""}
     </div>
   `;
@@ -1307,15 +1465,179 @@ function renderDetail() {
 
 function renderPredictionSchedule(matches) {
   const groups = groupMatchesByVnDate(matches);
+  const selectedDate = state.selectedCalendarDate;
   return `
     <section class="glass-card prediction-schedule">
       <div class="section-heading">
-        <h2>Lịch cược</h2>
+        <div>
+          <h2>Lịch cược</h2>
+          ${selectedDate ? `<p>Đang xem ${escapeHtml(dateHeadingText(selectedDate))}</p>` : ""}
+        </div>
         <span>Asia/Ho_Chi_Minh</span>
       </div>
+      ${selectedDate ? `<button class="ghost-button compact-button calendar-clear-button" type="button" data-calendar-clear>Bỏ lọc ngày</button>` : ""}
       ${groups.map(([dateKey, dayMatches]) => renderPredictionDayGroup(dateKey, dayMatches)).join("") || `<p class="empty-copy">Không có trận đang mở cược trong bộ lọc này.</p>`}
     </section>
   `;
+}
+
+function renderPredictionMiniCalendar() {
+  const monthKey = activeCalendarMonth();
+  const density = calendarDaysWithMatchDensity(monthKey);
+  const selectedDate = state.selectedCalendarDate;
+  const selectedMatches = selectedDate
+    ? predictionOpenMatches().filter((match) => vnDateKey(match.starts_at) === selectedDate)
+    : [];
+  return `
+    <section class="glass-card prediction-calendar">
+      <div class="calendar-head">
+        <div>
+          <h2>Lịch tháng</h2>
+          <span>${escapeHtml(calendarMonthLabel(monthKey))}</span>
+        </div>
+        <div class="calendar-nav">
+          <button class="icon-button" type="button" data-calendar-month="-1" aria-label="Tháng trước">‹</button>
+          <button class="icon-button" type="button" data-calendar-month="1" aria-label="Tháng sau">›</button>
+        </div>
+      </div>
+      <div class="calendar-weekdays">
+        ${["T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((day) => `<span>${day}</span>`).join("")}
+      </div>
+      <div class="calendar-grid">
+        ${calendarCells(monthKey, density, selectedDate).join("")}
+      </div>
+      <div class="calendar-legend">
+        <span><i class="density-low"></i>Ít</span>
+        <span><i class="density-medium"></i>Vừa</span>
+        <span><i class="density-high"></i>Nhiều</span>
+      </div>
+      ${
+        selectedDate
+          ? `<div class="calendar-day-preview">
+              <div>
+                <strong>${escapeHtml(dateHeadingText(selectedDate))}</strong>
+                <span>${fmt.format(selectedMatches.length)} trận mở cược</span>
+              </div>
+              ${selectedMatches.slice(0, 4).map((match) => `
+                <button type="button" data-open-bet-modal="${match.id}">
+                  <span>${escapeHtml(matchTitle(match))}</span>
+                  <small>${timeText(match.starts_at)}</small>
+                </button>
+              `).join("")}
+              <button class="ghost-button compact-button" type="button" data-calendar-clear>Bỏ chọn ngày</button>
+            </div>`
+          : `<p class="empty-copy">Ngày có nhiều trận sẽ được tô đậm hơn. Bấm vào ngày để lọc Lịch cược.</p>`
+      }
+    </section>
+  `;
+}
+
+function predictionOpenMatches() {
+  return state.matches
+    .filter((match) => canPredictMatch(match))
+    .sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime());
+}
+
+function activeCalendarMonth() {
+  if (state.selectedCalendarDate) {
+    state.calendarMonth = monthKeyFromDateKey(state.selectedCalendarDate);
+    return state.calendarMonth;
+  }
+  const fallback = calendarMonthForOpenMatches();
+  const openMonths = openCalendarMonths();
+  if (!state.calendarMonth || (openMonths.length && !openMonths.includes(state.calendarMonth))) {
+    state.calendarMonth = fallback;
+  }
+  return state.calendarMonth;
+}
+
+function calendarMonthForOpenMatches() {
+  const matches = predictionOpenMatches();
+  if (!matches.length) return monthKeyFromDate(new Date());
+  const now = Date.now();
+  const upcoming = matches.find((match) => new Date(match.starts_at).getTime() >= now) || matches[0];
+  return monthKeyFromDate(upcoming.starts_at);
+}
+
+function openCalendarMonths() {
+  return [...new Set(predictionOpenMatches().map((match) => monthKeyFromDate(match.starts_at)))]
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function adjacentCalendarMonth(currentMonth, direction) {
+  const months = openCalendarMonths();
+  const currentIndex = months.indexOf(currentMonth);
+  if (currentIndex >= 0) {
+    const nextIndex = currentIndex + direction;
+    if (months[nextIndex]) return months[nextIndex];
+  }
+  return addMonthsToMonthKey(currentMonth, direction);
+}
+
+function calendarDaysWithMatchDensity(monthKey) {
+  const days = new Map();
+  predictionOpenMatches().forEach((match) => {
+    const dateKey = vnDateKey(match.starts_at);
+    if (!dateKey.startsWith(monthKey)) return;
+    const current = days.get(dateKey) || { count: 0, matches: [] };
+    current.count += 1;
+    current.matches.push(match);
+    days.set(dateKey, current);
+  });
+  return days;
+}
+
+function calendarCells(monthKey, density, selectedDate) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const firstDay = new Date(Date.UTC(year, month - 1, 1));
+  const offset = (firstDay.getUTCDay() + 6) % 7;
+  const dayCount = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const cells = Array.from({ length: offset }, () => `<span class="calendar-day empty"></span>`);
+  for (let day = 1; day <= dayCount; day += 1) {
+    const dateKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const info = density.get(dateKey);
+    const count = info?.count || 0;
+    const densityClass = calendarDensityClass(count);
+    const selectedClass = selectedDate === dateKey ? "selected" : "";
+    const label = count ? `${fmt.format(count)} trận` : "Không có trận mở cược";
+    cells.push(`
+      <button class="calendar-day ${densityClass} ${selectedClass}" type="button" data-calendar-date="${dateKey}" ${count ? "" : "disabled"} aria-label="${escapeHtml(`${day}: ${label}`)}">
+        <span>${day}</span>
+        ${count ? `<small>${count}</small>` : ""}
+      </button>
+    `);
+  }
+  return cells;
+}
+
+function calendarDensityClass(count) {
+  if (count >= 4) return "density-high";
+  if (count >= 2) return "density-medium";
+  if (count >= 1) return "density-low";
+  return "";
+}
+
+function monthKeyFromDate(value) {
+  return vnDateKey(value).slice(0, 7);
+}
+
+function monthKeyFromDateKey(dateKey) {
+  return String(dateKey || "").slice(0, 7) || monthKeyFromDate(new Date());
+}
+
+function addMonthsToMonthKey(monthKey, delta) {
+  const [year, month] = String(monthKey || monthKeyFromDate(new Date())).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function calendarMonthLabel(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "UTC",
+    month: "long",
+    year: "numeric"
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
 function groupMatchesByVnDate(matches) {
@@ -1343,8 +1665,10 @@ function renderPredictionDayGroup(dateKey, matches) {
 
 function renderPredictionMatchRow(match) {
   const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  const betSummary = matchBetSummary(match);
+  const urgency = matchUrgency(match);
   return `
-    <button class="prediction-match-row" type="button" data-open-bet-modal="${match.id}">
+    <button class="prediction-match-row ${betSummary.hasBets ? "has-open-bet" : ""} ${urgency.className}" type="button" data-open-bet-modal="${match.id}">
       <time>${timeText(match.starts_at)}</time>
       <span class="group-badge">${escapeHtml(match.group_name ? formatGroupName(match.group_name) : "Knockout")}</span>
       <span class="prediction-pair">
@@ -1353,8 +1677,118 @@ function renderPredictionMatchRow(match) {
         <strong>${escapeHtml(match.away_team?.name || "TBA")}</strong>
       </span>
       <span>${escapeHtml(matchLocation(match))}</span>
-      <span>${fmt.format(openMarkets)} kèo</span>
+      <span class="prediction-status-stack">
+        ${urgency.badgeHtml}
+        ${betSummary.badgeHtml}
+        <small>${fmt.format(openMarkets)} kèo</small>
+      </span>
     </button>
+  `;
+}
+
+function userOpenBetsForMatch(match) {
+  if (!match) return [];
+  return state.bets
+    .filter((bet) => bet.status === "placed" && Number(bet.match_id) === Number(match.id))
+    .sort((left, right) => String(left.market_key || "").localeCompare(String(right.market_key || ""), "vi"));
+}
+
+function matchBetSummary(match) {
+  const bets = userOpenBetsForMatch(match);
+  if (!bets.length) {
+    return { hasBets: false, bets, correctScoreBet: null, label: "", badgeHtml: "" };
+  }
+  const correctScoreBet = bets.find((bet) => bet.market_key === "correct_score") || null;
+  const label = correctScoreBet
+    ? `Đã cược tỷ số: ${scoreLabelFromBet(correctScoreBet)}`
+    : `Đã cược ${fmt.format(bets.length)} mục`;
+  return {
+    hasBets: true,
+    bets,
+    correctScoreBet,
+    label,
+    badgeHtml: `<span class="bet-status-badge">${escapeHtml(label)}</span>`
+  };
+}
+
+function scoreLabelFromBet(bet) {
+  const json = bet?.selection_json || {};
+  if (json.home_score !== undefined && json.away_score !== undefined) {
+    return `${number(json.home_score)} - ${number(json.away_score)}`;
+  }
+  const parsed = String(bet?.selection_key || "").match(/^(\d+)-(\d+)$/);
+  if (parsed) return `${Number(parsed[1])} - ${Number(parsed[2])}`;
+  return bet?.selection_label || "-";
+}
+
+function shouldConfirmRebet(match) {
+  return userOpenBetsForMatch(match).length > 0;
+}
+
+function matchCloseTime(match) {
+  const now = Date.now();
+  const closeTimes = (match?.match_markets || [])
+    .filter((market) => market.is_open !== false)
+    .map((market) => new Date(market.closes_at || match.starts_at))
+    .filter((date) => Number.isFinite(date.getTime()) && date.getTime() > now)
+    .sort((left, right) => left.getTime() - right.getTime());
+  return closeTimes[0] || null;
+}
+
+function matchUrgency(match) {
+  const closeTime = matchCloseTime(match);
+  if (!closeTime) return { level: "", className: "", badgeHtml: "" };
+  const hours = (closeTime.getTime() - Date.now()) / 36e5;
+  if (hours <= 24) {
+    return {
+      level: "lock",
+      className: "urgency-lock",
+      badgeHtml: `<span class="urgency-badge lock">Sắp khóa</span>`
+    };
+  }
+  if (hours <= 72) {
+    return {
+      level: "soon",
+      className: "urgency-soon",
+      badgeHtml: `<span class="urgency-badge soon">Sắp diễn ra</span>`
+    };
+  }
+  return { level: "", className: "", badgeHtml: "" };
+}
+
+function renderRebetConfirmModal() {
+  const match = state.matches.find((item) => Number(item.id) === Number(state.confirmRebetMatchId));
+  if (!match) return "";
+  const summary = matchBetSummary(match);
+  return `
+    <div class="modal-backdrop rebet-backdrop" data-rebet-backdrop>
+      <section class="rebet-modal glass-card" role="dialog" aria-modal="true" aria-label="Xác nhận cập nhật cược" data-rebet-panel>
+        <div class="modal-head">
+          <div>
+            <span class="pill">${escapeHtml(scheduleLabel(match))}</span>
+            <h2>Bạn đã cược trận này</h2>
+            <p>${escapeHtml(matchTitle(match))} · ${dateText(match.starts_at)}</p>
+          </div>
+          <button class="icon-button" type="button" data-cancel-rebet aria-label="Đóng">×</button>
+        </div>
+        <div class="rebet-summary">
+          <strong>${escapeHtml(summary.label)}</strong>
+          <div class="rebet-bet-list">
+            ${summary.bets.map((bet) => `
+              <span>
+                <b>${escapeHtml(modalMarketTitle(bet.market_key, bet.market_key))}</b>
+                ${escapeHtml(bet.market_key === "correct_score" ? scoreLabelFromBet(bet) : bet.selection_label)} · ${money(bet.stake)}
+              </span>
+            `).join("")}
+          </div>
+        </div>
+        <p class="empty-copy">Bạn có muốn mở lại kèo đấu để cập nhật lựa chọn hoặc số tiền cược không?</p>
+        <div class="modal-submit-row">
+          <button class="ghost-button" type="button" data-cancel-rebet>Hủy</button>
+          <button class="primary-button" type="button" data-confirm-rebet="${match.id}">Tiếp tục cập nhật</button>
+        </div>
+      </section>
+    </div>
   `;
 }
 
@@ -1533,7 +1967,7 @@ function ensureBetModalDraft(match, marketKey, markets) {
   if (!state.betModalDraft[marketKey]) {
     const score = marketKey === "correct_score" ? scoreFromExistingBet(existing) : { homeScore: 1, awayScore: 0 };
     state.betModalDraft[marketKey] = {
-      enabled: false,
+      enabled: Boolean(existing),
       stake: number(existing?.stake || 100),
       marketId: fallbackMarket?.id || null,
       homeScore: score.homeScore,
@@ -1778,6 +2212,8 @@ function searchNormalize(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[đĐ]/g, "d")
     .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -2528,8 +2964,80 @@ function bindShellEvents() {
 
   document.querySelectorAll("[data-open-bet-modal]").forEach((button) => {
     button.addEventListener("click", () => {
-      openBetModal(Number(button.dataset.openBetModal));
+      if (button.closest("#match-search-results")) return;
+      requestOpenBetModal(Number(button.dataset.openBetModal));
     });
+  });
+
+  document.querySelector("[data-match-search-toggle]")?.addEventListener("click", () => {
+    state.matchSearchPanelOpen = !state.matchSearchPanelOpen;
+    renderApp();
+    if (state.matchSearchPanelOpen) document.getElementById("group-team-search")?.focus();
+  });
+
+  document.getElementById("group-team-search")?.addEventListener("input", (event) => {
+    state.matchSearchQuery = event.target.value;
+    const results = document.getElementById("match-search-results");
+    const meta = document.querySelector(".match-search-meta");
+    if (results) results.innerHTML = renderMatchSearchResults();
+    if (meta) {
+      const resultCount = filteredGroupTeamMatches(state.matchSearchQuery).length;
+      meta.textContent = state.matchSearchQuery ? `${fmt.format(resultCount)} trận phù hợp` : "Gõ bảng hoặc đội để xem trận liên quan.";
+    }
+  });
+
+  document.getElementById("match-search-results")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-open-bet-modal]");
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    requestOpenBetModal(Number(button.dataset.openBetModal));
+  });
+
+  document.querySelectorAll("[data-calendar-month]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const direction = Number(button.dataset.calendarMonth);
+      state.calendarMonth = adjacentCalendarMonth(activeCalendarMonth(), direction);
+      state.selectedCalendarDate = "";
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll("[data-calendar-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedCalendarDate = button.dataset.calendarDate;
+      state.calendarMonth = monthKeyFromDateKey(state.selectedCalendarDate);
+      state.matchFilter = "all";
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll("[data-calendar-clear]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedCalendarDate = "";
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll("[data-confirm-rebet]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const matchId = Number(button.dataset.confirmRebet);
+      state.confirmRebetMatchId = null;
+      openBetModal(matchId);
+    });
+  });
+
+  document.querySelectorAll("[data-cancel-rebet]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.confirmRebetMatchId = null;
+      renderApp();
+    });
+  });
+
+  document.querySelector("[data-rebet-backdrop]")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-rebet-panel]")) return;
+    state.confirmRebetMatchId = null;
+    renderApp();
   });
 
   document.querySelectorAll("[data-close-bet-modal]").forEach((target) => {
@@ -2552,6 +3060,7 @@ function bindShellEvents() {
   document.querySelectorAll("[data-match-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       state.matchFilter = button.dataset.matchFilter;
+      state.selectedCalendarDate = "";
       renderApp();
     });
   });
@@ -2711,9 +3220,23 @@ function bindShellEvents() {
   });
 }
 
+function requestOpenBetModal(matchId) {
+  const match = state.matches.find((item) => Number(item.id) === Number(matchId));
+  if (match && shouldConfirmRebet(match)) {
+    state.selectedMatchId = matchId;
+    state.confirmRebetMatchId = matchId;
+    state.betModalMatchId = null;
+    state.active = "detail";
+    renderApp();
+    return;
+  }
+  openBetModal(matchId);
+}
+
 function openBetModal(matchId) {
   state.selectedMatchId = matchId;
   state.betModalMatchId = matchId;
+  state.confirmRebetMatchId = null;
   state.betModalMarketGroup = "basic";
   state.betModalDraft = {};
   state.active = "detail";
