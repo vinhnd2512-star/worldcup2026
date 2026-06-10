@@ -1796,8 +1796,8 @@ function renderBetModal() {
   const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
   if (!match) return "";
   const allOpenMarkets = (match.match_markets || []).filter((market) => market.is_open);
-  const basicMarkets = allOpenMarkets.filter((market) => isBasicMarket(market.market_key));
-  const advancedMarkets = allOpenMarkets.filter((market) => !isBasicMarket(market.market_key));
+  const basicMarkets = allOpenMarkets.filter((market) => isBasicMarket(market.market_key, market));
+  const advancedMarkets = allOpenMarkets.filter((market) => !isBasicMarket(market.market_key, market));
   const activeGroups = modalMarketGroups(state.betModalMarketGroup === "advanced" ? advancedMarkets : basicMarkets, state.betModalMarketGroup);
   return `
     <div class="modal-backdrop" data-close-bet-modal>
@@ -1870,7 +1870,7 @@ function modalMarketGroups(markets, group) {
   markets.forEach((market) => {
     groups.set(market.market_key, [...(groups.get(market.market_key) || []), market]);
   });
-  const order = group === "basic" ? ["correct_score", "match_result", "draw_no_bet"] : [];
+  const order = group === "basic" ? ["correct_score", "total_goals", "match_result", "draw_no_bet"] : [];
   return [...groups.entries()]
     .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: items }))
     .sort((left, right) => {
@@ -1888,6 +1888,7 @@ function renderModalBetSection(match, group) {
   const enabled = Boolean(draft.enabled);
   const stake = number(draft.stake || existing?.stake || 100);
   const payout = selectedMarket ? stake * number(selectedMarket.odds_multiplier) : 0;
+  const helpText = modalMarketHelpText(group.marketKey);
   return `
     <section class="modal-market-card ${enabled ? "open" : ""}" data-bet-market-card="${escapeHtml(group.marketKey)}">
       <div class="modal-market-card-head">
@@ -1895,7 +1896,10 @@ function renderModalBetSection(match, group) {
           <input type="checkbox" data-modal-market-toggle="${escapeHtml(group.marketKey)}" ${enabled ? "checked" : ""}>
           <span class="toggle-box"></span>
           <span>
-            <strong>${escapeHtml(group.label)}</strong>
+            <strong class="modal-market-title">
+              ${escapeHtml(group.label)}
+              ${helpText ? `<span class="market-help" tabindex="0" aria-label="${escapeHtml(helpText)}" data-tooltip="${escapeHtml(helpText)}">?</span>` : ""}
+            </strong>
             <small>${existing ? `Đang mở: ${escapeHtml(existing.selection_label)} · ${money(existing.stake)}` : `${fmt.format(group.markets.length)} lựa chọn`}</small>
           </span>
         </label>
@@ -1951,12 +1955,20 @@ function modalMarketTitle(marketKey, fallback = "") {
     correct_score: "Dự đoán tỷ số",
     match_result: "Đội thắng / hòa / thua",
     draw_no_bet: "Draw no bet",
-    total_goals: "Tổng bàn thắng",
+    total_goals: "Tài/Xỉu 2.5",
     btts: "Hai đội cùng ghi bàn",
     corners_total: "Tổng phạt góc",
     cards_total: "Tổng thẻ"
   };
   return labels[marketKey] || fallback || marketKey;
+}
+
+function modalMarketHelpText(marketKey) {
+  const notes = {
+    draw_no_bet: "Chọn đội thắng. Nếu trận hòa, cược được hoàn tiền; nếu đội đã chọn thua thì mất cược.",
+    total_goals: "Tài nếu tổng số bàn thắng lớn hơn 2.5, Xỉu nếu tổng số bàn thắng nhỏ hơn 2.5."
+  };
+  return notes[marketKey] || "";
 }
 
 function ensureBetModalDraft(match, marketKey, markets) {
@@ -2078,7 +2090,8 @@ function collectModalBetPayloads(match, options = {}) {
   return { payloads: orderedPayloads, totalExtra: Math.max(0, netStakeDelta) };
 }
 
-function isBasicMarket(key) {
+function isBasicMarket(key, market = null) {
+  if (key === "total_goals") return !market || number(market.line) === 2.5;
   return ["match_result", "draw_no_bet", "correct_score"].includes(key);
 }
 

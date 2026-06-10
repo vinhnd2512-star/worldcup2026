@@ -1471,6 +1471,58 @@ select:focus {
   color: var(--gold-soft);
 }
 
+.modal-market-toggle strong.modal-market-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.market-help {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(6, 63, 49, 0.35);
+  border-radius: 999px;
+  color: #063f31;
+  background: rgba(0, 126, 92, 0.08);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  line-height: 1;
+  cursor: help;
+}
+
+.market-help::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  width: min(260px, 72vw);
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #063f31;
+  box-shadow: 0 10px 24px rgba(6, 63, 49, 0.18);
+  font-family: "Hanken Grotesk", system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-transform: none;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.market-help:hover::after,
+.market-help:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .modal-market-card-body {
   display: grid;
   gap: 12px;
