@@ -21,6 +21,13 @@ const state = {
   userReport: [],
   marketReport: [],
   deploymentHealth: null,
+  providerSync: {
+    isRunning: false,
+    startedAt: "",
+    finishedAt: "",
+    result: null,
+    error: ""
+  },
   adminFilters: {
     userId: "",
     dateFrom: "",
@@ -2643,7 +2650,7 @@ function renderAdmin() {
           <button class="ghost-button" id="export-ledger-button">Export ledger</button>
           <button class="ghost-button" id="export-audit-button">Export audit</button>
           <button class="ghost-button" id="export-reports-button">Export reports</button>
-          <button class="ghost-button" id="provider-sync-button">Sync providers</button>
+          <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync providers"}</button>
           <button class="ghost-button" id="transfermarkt-sync-button">Sync Transfermarkt</button>
           <button class="primary-button" id="refresh-button">Refresh</button>
         </div>
@@ -2658,6 +2665,7 @@ function renderAdmin() {
         ${metric("Settled bets", report.settled_bets || 0)}
       </section>
       ${renderDeploymentHealth()}
+      ${renderProviderSyncPanel()}
       ${renderBracketAdminPanel()}
       <section class="admin-grid">
         <form class="glass-card form-card form-grid" id="admin-filter-form">
@@ -2758,6 +2766,7 @@ function renderAdmin() {
         <div class="section-heading"><h2>Sync runs</h2><span>${state.syncRuns.length} jobs</span></div>
         ${state.syncRuns.map((run) => `<p><b>${escapeHtml(run.provider)}</b> · ${escapeHtml(run.job_type)} · ${escapeHtml(run.status)}<br><small>${escapeHtml(run.message || "")}</small></p>`).join("") || "<p>Chưa có sync run.</p>"}
       </section>
+      ${state.providerSync.isRunning ? renderProviderSyncOverlay() : ""}
     </div>
   `;
 }
@@ -2869,6 +2878,178 @@ function renderDeploymentHealth() {
       <p><small>MAX_STATS_FIXTURES: ${fmt.format(number(health.maxStatsFixtures || 12))}. Secret values are never returned by this endpoint.</small></p>
     </section>
   `;
+}
+
+function renderProviderSyncPanel() {
+  const sync = state.providerSync || {};
+  const result = sync.result;
+  const oddsResult = result?.oddsResult || null;
+  const latestOddsRun = state.syncRuns.find((run) => run.provider === "the-odds-api" && run.job_type === "odds");
+  const statusLabel = sync.isRunning ? "Đang cập nhật" : result ? providerSyncStatusLabel(result.status) : "Sẵn sàng";
+  const details = result ? providerSyncResultItems(result) : [];
+  return `
+    <section class="glass-card panel sync-status-panel ${sync.isRunning ? "running" : ""}">
+      <div class="section-heading">
+        <div>
+          <h2>Provider sync</h2>
+          <p>${sync.isRunning ? "Đang gọi dữ liệu từ các nguồn, vui lòng chờ đến khi có output cuối cùng." : providerSyncPanelCopy(result, latestOddsRun)}</p>
+        </div>
+        <span>${escapeHtml(statusLabel)}</span>
+      </div>
+      ${
+        sync.isRunning
+          ? `<div class="sync-running-row">
+              <span class="sync-spinner" aria-hidden="true"></span>
+              <div>
+                <strong>Đang sync fixtures, stats, FIFA data và odds...</strong>
+                <small>Bắt đầu ${escapeHtml(sync.startedAt ? dateText(sync.startedAt) : "vừa xong")}. Không đóng tab cho đến khi có kết quả.</small>
+              </div>
+            </div>`
+          : ""
+      }
+      ${
+        result
+          ? `<div class="sync-status-grid">
+              ${details.map((item) => `
+                <article class="sync-status-item ${escapeHtml(item.kind)}">
+                  <span>${escapeHtml(item.label)}</span>
+                  <strong>${escapeHtml(item.value)}</strong>
+                  ${item.copy ? `<small>${escapeHtml(item.copy)}</small>` : ""}
+                </article>
+              `).join("")}
+            </div>
+            <div class="sync-output ${providerOddsOutputKind(oddsResult)}">
+              <strong>${escapeHtml(providerOddsOutputTitle(oddsResult))}</strong>
+              <span>${escapeHtml(providerOddsOutputCopy(oddsResult))}</span>
+              ${providerQuotaText(oddsResult?.quota) ? `<small>${escapeHtml(providerQuotaText(oddsResult.quota))}</small>` : ""}
+            </div>`
+          : sync.error
+            ? `<div class="sync-output failed"><strong>Sync failed</strong><span>${escapeHtml(sync.error)}</span></div>`
+            : latestOddsRun
+              ? `<div class="sync-output idle"><strong>Lần odds sync gần nhất</strong><span>${escapeHtml(latestOddsRun.message || `${latestOddsRun.status} · ${latestOddsRun.request_count} requests`)}</span></div>`
+              : `<div class="sync-output idle"><strong>Chưa có lần sync odds</strong><span>Bấm Sync providers để kiểm tra nguồn và cập nhật market.</span></div>`
+      }
+    </section>
+  `;
+}
+
+function renderProviderSyncOverlay() {
+  return `
+    <div class="sync-loading-backdrop" role="status" aria-live="polite">
+      <section class="sync-loading-card glass-card">
+        <span class="sync-spinner large" aria-hidden="true"></span>
+        <div>
+          <h2>Đang cập nhật dữ liệu</h2>
+          <p>Hệ thống đang gọi provider và sẽ tự hiển thị output khi xong.</p>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function providerSyncPanelCopy(result, latestOddsRun) {
+  if (result) return "Kết quả lần sync vừa chạy, bao gồm trạng thái odds và quota nếu nguồn trả về.";
+  if (latestOddsRun) return "Theo dõi kết quả sync provider và số lượt gọi API còn lại.";
+  return "Bấm Sync providers để cập nhật dữ liệu từ nguồn server-side.";
+}
+
+function providerSyncStatusLabel(status = "") {
+  if (status === "ok") return "Hoàn tất";
+  if (status === "partial") return "Hoàn tất một phần";
+  return status || "Hoàn tất";
+}
+
+function providerSyncResultItems(result) {
+  const odds = result.oddsResult || {};
+  return [
+    {
+      label: "API-FOOTBALL",
+      value: result.fixtureResult?.status || "unknown",
+      copy: `${fmt.format(number(result.fixtureResult?.matches))} matches`,
+      kind: syncResultKind(result.fixtureResult)
+    },
+    {
+      label: "Stats",
+      value: result.statsResult?.status || "unknown",
+      copy: `${fmt.format(number(result.statsResult?.stats))} rows`,
+      kind: syncResultKind(result.statsResult)
+    },
+    {
+      label: "FIFA squads",
+      value: result.squadResult?.status || "unknown",
+      copy: `${fmt.format(number(result.squadResult?.players))} players`,
+      kind: syncResultKind(result.squadResult)
+    },
+    {
+      label: "Odds events",
+      value: odds.dataStatus ? providerOddsDataStatusLabel(odds.dataStatus) : (odds.status || "unknown"),
+      copy: `${fmt.format(number(odds.events))} events · ${fmt.format(number(odds.matchedEvents))} matched`,
+      kind: providerOddsOutputKind(odds)
+    },
+    {
+      label: "Markets updated",
+      value: fmt.format(number(odds.updatedMarkets)),
+      copy: `${fmt.format(number(odds.updatedOutrights))} outrights`,
+      kind: providerOddsOutputKind(odds)
+    },
+    {
+      label: "API calls left",
+      value: odds?.quota?.remaining ?? "-",
+      copy: providerQuotaText(odds.quota),
+      kind: "quota"
+    }
+  ];
+}
+
+function syncResultKind(result) {
+  if (!result) return "idle";
+  if (result.status === "failed") return "failed";
+  if (result.status === "skipped") return "idle";
+  if (result.status === "partial") return "warning";
+  return "ok";
+}
+
+function providerOddsDataStatusLabel(status = "") {
+  const labels = {
+    updated: "Đã cập nhật",
+    no_data: "Chưa có data",
+    unmatched: "Chưa match lịch",
+    no_updates: "Không có update"
+  };
+  return labels[status] || status || "unknown";
+}
+
+function providerOddsOutputKind(odds = {}) {
+  if (!odds) return "idle";
+  if (odds.status === "failed") return "failed";
+  if (odds.status === "skipped") return "idle";
+  if (["no_data", "unmatched", "no_updates"].includes(odds.dataStatus)) return "warning";
+  return "ok";
+}
+
+function providerOddsOutputTitle(odds = {}) {
+  if (!odds) return "Chưa có output odds";
+  if (odds.status === "skipped") return "Odds sync bị bỏ qua";
+  if (odds.status === "failed") return "Odds sync lỗi";
+  if (odds.dataStatus === "no_data") return "Chưa có data từ The Odds API";
+  if (odds.dataStatus === "unmatched") return "Có data nhưng chưa match với lịch";
+  if (odds.dataStatus === "no_updates") return "Nguồn có data nhưng chưa có update mới";
+  return "Đã cập nhật odds thành công";
+}
+
+function providerOddsOutputCopy(odds = {}) {
+  if (!odds) return "Chưa chạy sync provider trong phiên này.";
+  if (odds.error) return odds.error;
+  if (odds.message) return odds.message;
+  return `${fmt.format(number(odds.events))} events, ${fmt.format(number(odds.matchedEvents))} matched, ${fmt.format(number(odds.updatedMarkets))} markets updated.`;
+}
+
+function providerQuotaText(quota = {}) {
+  if (!quota || quota.remaining === null || quota.remaining === undefined) return "";
+  const parts = [`Còn lại ${quota.remaining} API calls`];
+  if (quota.used !== null && quota.used !== undefined) parts.push(`đã dùng ${quota.used}`);
+  if (quota.last !== null && quota.last !== undefined) parts.push(`lần gọi này ${quota.last}`);
+  return parts.join(" · ");
 }
 
 function renderUserRow(user) {
@@ -3676,30 +3857,74 @@ async function settleTournamentWinner(event) {
 }
 
 async function syncProviders() {
-  const response = await fetch("/api/sync-football-data", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${state.session.access_token}`
-    },
-    body: JSON.stringify({ includeOdds: true, includeRankings: true, includeFifaProfiles: true, includeSquads: true })
-  });
-  const result = await response.json();
-  if (!response.ok) {
-    state.error = result.error || "Provider sync failed";
+  if (state.providerSync.isRunning) return;
+  state.providerSync = {
+    isRunning: true,
+    startedAt: new Date().toISOString(),
+    finishedAt: "",
+    result: null,
+    error: ""
+  };
+  state.message = "";
+  state.error = "";
+  renderApp();
+  try {
+    const response = await fetch("/api/sync-football-data", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${state.session.access_token}`
+      },
+      body: JSON.stringify({ includeOdds: true, includeRankings: true, includeFifaProfiles: true, includeSquads: true })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      const errorMessage = result.error || "Provider sync failed";
+      state.providerSync = {
+        ...state.providerSync,
+        isRunning: false,
+        finishedAt: new Date().toISOString(),
+        result: null,
+        error: errorMessage
+      };
+      state.error = errorMessage;
+      state.message = "";
+    } else {
+      state.providerSync = {
+        ...state.providerSync,
+        isRunning: false,
+        finishedAt: new Date().toISOString(),
+        result,
+        error: ""
+      };
+      state.message = providerSyncToast(result);
+      state.error = "";
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    state.providerSync = {
+      ...state.providerSync,
+      isRunning: false,
+      finishedAt: new Date().toISOString(),
+      result: null,
+      error: errorMessage
+    };
+    state.error = errorMessage;
     state.message = "";
-  } else {
-    const fixtureStatus = result.fixtureResult?.status || "unknown";
-    const footballDataStatus = result.footballDataResult?.status || "unknown";
-    const statsStatus = result.statsResult?.status || "unknown";
-    const rankingStatus = result.rankingResult?.status || "unknown";
-    const fifaProfileStatus = result.fifaProfileResult?.status || "unknown";
-    const squadStatus = result.squadResult?.status || "unknown";
-    const oddsStatus = result.oddsResult?.status || "unknown";
-    state.message = `Provider sync finished. API-FOOTBALL: ${fixtureStatus}; football-data.org: ${footballDataStatus}; stats: ${statsStatus}; rankings: ${rankingStatus}; FIFA profiles: ${fifaProfileStatus}; squads: ${squadStatus}; odds: ${oddsStatus}.`;
-    state.error = "";
   }
   await loadData();
+}
+
+function providerSyncToast(result) {
+  const fixtureStatus = result.fixtureResult?.status || "unknown";
+  const footballDataStatus = result.footballDataResult?.status || "unknown";
+  const statsStatus = result.statsResult?.status || "unknown";
+  const rankingStatus = result.rankingResult?.status || "unknown";
+  const fifaProfileStatus = result.fifaProfileResult?.status || "unknown";
+  const squadStatus = result.squadResult?.status || "unknown";
+  const oddsLabel = providerOddsDataStatusLabel(result.oddsResult?.dataStatus || result.oddsResult?.status || "unknown");
+  const quota = providerQuotaText(result.oddsResult?.quota);
+  return `Provider sync finished. API-FOOTBALL: ${fixtureStatus}; football-data.org: ${footballDataStatus}; stats: ${statsStatus}; rankings: ${rankingStatus}; FIFA profiles: ${fifaProfileStatus}; squads: ${squadStatus}; odds: ${oddsLabel}${quota ? `; ${quota}` : ""}.`;
 }
 
 async function syncTransfermarktValues(teamCode = "") {

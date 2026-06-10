@@ -2083,6 +2083,164 @@ select:focus {
   color: var(--danger);
 }
 
+.sync-status-panel {
+  display: grid;
+  gap: 16px;
+  border-color: rgba(0, 126, 92, 0.22);
+}
+
+.sync-status-panel.running {
+  border-color: rgba(6, 63, 49, 0.42);
+  background: linear-gradient(135deg, rgba(0, 126, 92, 0.08), rgba(255, 255, 255, 0.94));
+}
+
+.sync-running-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.sync-running-row div {
+  display: grid;
+  gap: 3px;
+}
+
+.sync-running-row small {
+  color: var(--muted);
+}
+
+.sync-spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(0, 126, 92, 0.18);
+  border-top-color: #063f31;
+  border-radius: 999px;
+  animation: sync-spin 0.9s linear infinite;
+}
+
+.sync-spinner.large {
+  width: 44px;
+  height: 44px;
+  border-width: 4px;
+}
+
+@keyframes sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sync-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sync-status-item {
+  display: grid;
+  gap: 5px;
+  min-height: 92px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.sync-status-item span,
+.sync-status-item small {
+  color: var(--muted);
+}
+
+.sync-status-item span {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.sync-status-item strong {
+  color: var(--gold-soft);
+  font-size: 18px;
+}
+
+.sync-status-item.failed strong,
+.sync-output.failed strong {
+  color: var(--danger);
+}
+
+.sync-status-item.warning strong,
+.sync-output.warning strong {
+  color: #8a5a00;
+}
+
+.sync-status-item.quota strong {
+  color: #063f31;
+}
+
+.sync-output {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 126, 92, 0.06);
+}
+
+.sync-output span,
+.sync-output small {
+  color: var(--muted);
+}
+
+.sync-output.ok strong {
+  color: var(--green);
+}
+
+.sync-output.warning {
+  background: rgba(255, 193, 7, 0.12);
+}
+
+.sync-output.failed {
+  background: rgba(179, 35, 24, 0.08);
+}
+
+.sync-output.idle {
+  background: var(--surface-2);
+}
+
+.sync-loading-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 13, 36, 0.46);
+  backdrop-filter: blur(7px);
+}
+
+.sync-loading-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: min(460px, 100%);
+  padding: 22px;
+}
+
+.sync-loading-card h2 {
+  color: var(--gold-soft);
+  font-size: 24px;
+}
+
+.sync-loading-card p {
+  margin: 6px 0 0;
+}
+
 .metric {
   padding: 20px;
 }
@@ -2908,7 +3066,8 @@ select {
   .dashboard-grid,
   .detail-grid,
   .admin-grid,
-  .prediction-layout {
+  .prediction-layout,
+  .sync-status-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2928,6 +3087,7 @@ select {
   .upcoming-groups-grid,
   .guide-grid,
   .health-grid,
+  .sync-status-grid,
   .groups-grid,
   .roster-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3013,6 +3173,7 @@ select {
   .forecast-team-grid,
   .upcoming-groups-grid,
   .health-grid,
+  .sync-status-grid,
   .groups-grid,
   .roster-grid,
   .team-profile-grid,
@@ -3023,6 +3184,12 @@ select {
 
   .team-profile-hero {
     min-height: 300px;
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .sync-running-row,
+  .sync-loading-card {
     align-items: start;
     flex-direction: column;
   }
