@@ -24,6 +24,7 @@ const TRANSFERMARKT_DELAY_MS = 650;
 const STAT_SYNC_WINDOW_HOURS = 96;
 const LIVE_STATUSES = new Set(["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"]);
 const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
+const ODDS_API_MAIN_MARKETS = "h2h,totals,outrights";
 const WORLD_CUP_TITLE_YEARS = {
   ARG: [1978, 1986, 2022],
   BRA: [1958, 1962, 1970, 1994, 2002],
@@ -1683,7 +1684,8 @@ async function syncOddsSummary() {
 
   const { data: events, quota } = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, {
     regions: "eu",
-    markets: "h2h,totals,draw_no_bet,outrights",
+    // The /odds endpoint rejects draw_no_bet; keep DNB on internal/admin odds unless event-odds sync is added.
+    markets: ODDS_API_MAIN_MARKETS,
     oddsFormat: "decimal"
   });
 

@@ -28,7 +28,8 @@ References:
 Use The Odds API for bookmaker-style markets where available.
 
 - Sport key: `soccer_fifa_world_cup`.
-- Start with `h2h`, `totals`, `draw_no_bet`, `spreads`, and `outrights`.
+- Start the main `/odds` sync with endpoint-supported markets: `h2h`, `totals`, and `outrights`.
+- Keep `draw_no_bet` on internal/admin odds unless a separate event-odds sync is added, because The Odds API rejects `draw_no_bet` on the main `/odds` endpoint.
 - Keep regions narrow, for example `eu`, because each market/region consumes quota.
 - Map odds into `match_markets` conservatively; verify real 2026 provider event names after API keys are configured.
 

@@ -96,7 +96,7 @@ const requiredAppTokens = [
 ];
 
 const requiredSyncTokens = [
-  "markets: \"h2h,totals,draw_no_bet,outrights\"",
+  "ODDS_API_MAIN_MARKETS = \"h2h,totals,outrights\"",
   "FIFA_RANKING_URL",
   "FIFA_RANKING_API_URL",
   "FIFA_RANKING_SOURCE",
