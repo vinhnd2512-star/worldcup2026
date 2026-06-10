@@ -52,6 +52,7 @@ const state = {
   matchSearchQuery: "",
   selectedCalendarDate: "",
   calendarMonth: "",
+  sidebarCollapsed: localStorage.getItem("WCP_SIDEBAR_COLLAPSED") === "true",
   message: "",
   error: ""
 };
@@ -381,9 +382,14 @@ function renderApp() {
   const items = state.profile.role === "admin" ? [...navItems, ["admin", "Admin"]] : navItems;
   const reminders = getBetReminders();
   app.innerHTML = `
-    <div class="app-shell">
+    <div class="app-shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}">
       <aside class="sidebar">
-        <div><div class="brand">WorldCup Predict</div><small>Group Stage Live</small></div>
+        <div class="sidebar-head">
+          <div><div class="brand">WorldCup Predict</div><small>Group Stage Live</small></div>
+          <button class="icon-button sidebar-toggle-button" type="button" data-sidebar-toggle aria-label="Đóng thanh menu">
+            <span class="sidebar-toggle-icon close" aria-hidden="true"><span></span><span></span></span>
+          </button>
+        </div>
         <nav class="nav-stack">
           ${items.map(([key, label]) => `<button class="nav-button ${state.active === key ? "active" : ""}" data-tab="${key}">${label}</button>`).join("")}
         </nav>
@@ -392,7 +398,12 @@ function renderApp() {
       </aside>
       <main class="workspace">
         <header class="topbar">
-          <div class="brand">WorldCup Predict</div>
+          <div class="topbar-brand-row">
+            <button class="icon-button sidebar-open-button" type="button" data-sidebar-toggle aria-label="${state.sidebarCollapsed ? "Mở thanh menu" : "Đóng thanh menu"}">
+              <span class="sidebar-toggle-icon menu" aria-hidden="true"><span></span><span></span><span></span></span>
+            </button>
+            <div class="brand">WorldCup Predict</div>
+          </div>
           <div class="top-actions">
             ${reminders.length ? `<button class="reminder-chip" data-reminder-focus>Alerts ${fmt.format(reminders.length)}</button>` : ""}
             <div class="wallet-chip">${money(state.profile.wallet_balance)}</div>
@@ -3139,6 +3150,14 @@ function renderAuditRow(entry) {
 }
 
 function bindShellEvents() {
+  document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.sidebarCollapsed = !state.sidebarCollapsed;
+      localStorage.setItem("WCP_SIDEBAR_COLLAPSED", String(state.sidebarCollapsed));
+      renderApp();
+    });
+  });
+
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       state.active = button.dataset.tab;

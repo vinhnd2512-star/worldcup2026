@@ -231,6 +231,11 @@ select:focus {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
   min-height: 100vh;
+  transition: grid-template-columns 0.22s ease;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .sidebar {
@@ -243,6 +248,83 @@ select:focus {
   padding: 28px 18px;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   background: linear-gradient(180deg, #111936, #0b1229);
+  overflow: hidden;
+  transition: opacity 0.18s ease, transform 0.22s ease, padding 0.22s ease, border-color 0.18s ease;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  padding-right: 0;
+  padding-left: 0;
+  border-right-color: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-18px);
+}
+
+.sidebar-head,
+.topbar-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-head {
+  justify-content: space-between;
+}
+
+.sidebar-head > div,
+.topbar-brand-row .brand {
+  min-width: 0;
+}
+
+.sidebar-toggle-button,
+.sidebar-open-button {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--gold-soft);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.sidebar-open-button {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar-open-button {
+  display: grid;
+}
+
+.sidebar-toggle-icon {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  width: 18px;
+  height: 18px;
+  align-content: center;
+}
+
+.sidebar-toggle-icon span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sidebar-toggle-icon.close span {
+  position: absolute;
+  top: 50%;
+  left: 0;
+}
+
+.sidebar-toggle-icon.close span:first-child {
+  transform: rotate(45deg);
+}
+
+.sidebar-toggle-icon.close span:last-child {
+  transform: rotate(-45deg);
 }
 
 .brand {
@@ -3059,8 +3141,16 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     display: none;
+  }
+
+  .sidebar-open-button {
+    display: none !important;
   }
 
   .dashboard-grid,
