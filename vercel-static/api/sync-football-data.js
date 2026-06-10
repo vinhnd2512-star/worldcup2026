@@ -5,6 +5,7 @@ const WORLD_CUP_LEAGUE_ID = 1;
 const WORLD_CUP_SEASON = 2026;
 const FOOTBALL_DATA_WORLD_CUP_CODE = "WC";
 const WORLD_CUP_SPORT_KEY = "soccer_fifa_world_cup";
+const WORLD_CUP_WINNER_SPORT_KEY = "soccer_fifa_world_cup_winner";
 const FIFA_RANKING_URL = "https://inside.fifa.com/fifa-world-ranking/men";
 const FIFA_RANKING_API_URL = "https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en";
 const FIFA_RANKING_SOURCE = "FIFA/Coca-Cola Men's World Ranking";
@@ -24,7 +25,9 @@ const TRANSFERMARKT_DELAY_MS = 650;
 const STAT_SYNC_WINDOW_HOURS = 96;
 const LIVE_STATUSES = new Set(["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"]);
 const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
-const ODDS_API_MAIN_MARKETS = "h2h,totals,outrights";
+const ODDS_API_MAIN_MARKETS = "h2h,totals";
+const ODDS_API_MATCH_FALLBACK_MARKETS = "h2h";
+const ODDS_API_OUTRIGHT_MARKETS = "outrights";
 const WORLD_CUP_TITLE_YEARS = {
   ARG: [1978, 1986, 2022],
   BRA: [1958, 1962, 1970, 1994, 2002],
@@ -1682,12 +1685,10 @@ async function syncOddsSummary() {
     return { provider: "the-odds-api", status: "skipped", requests: 0, events: 0 };
   }
 
-  const { data: events, quota } = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, {
-    regions: "eu",
-    // The /odds endpoint rejects draw_no_bet; keep DNB on internal/admin odds unless event-odds sync is added.
-    markets: ODDS_API_MAIN_MARKETS,
-    oddsFormat: "decimal"
-  });
+  const matchOdds = await fetchMatchOddsEvents();
+  const events = matchOdds.events;
+  const matchQuota = matchOdds.quota;
+  const outrightOdds = await fetchOutrightOddsEvents();
 
   const matches = await getMatchesForOddsMapping();
   const teams = await getTeamsForOutrightMapping();
@@ -1710,41 +1711,114 @@ async function syncOddsSummary() {
     }
   }
 
-  for (const candidate of bestOutrightPrices(events, teams)) {
+  for (const candidate of bestOutrightPrices(outrightOdds.events, teams)) {
     await upsertOutrightMarketFromOdds(candidate, outrightClosesAt);
     updatedOutrights += 1;
   }
 
-  const oddsDataStatus = oddsProviderDataStatus(events.length, matchedEvents, updatedMarkets, updatedOutrights);
+  const totalEvents = events.length + outrightOdds.events.length;
+  const quota = mergeOddsQuota(matchQuota, outrightOdds.quota);
+  const requests = matchOdds.requests + (outrightOdds.attempted ? 1 : 0);
+  const oddsDataStatus = oddsProviderDataStatus(totalEvents, matchedEvents, updatedMarkets, updatedOutrights);
   const quotaText = oddsQuotaText(quota);
-  const message = oddsSyncMessage(oddsDataStatus, events.length, matchedEvents, updatedMarkets, updatedOutrights, quotaText);
+  const warningText = [matchOdds.warning, outrightOdds.error].filter(Boolean).join(" ");
+  const message = oddsSyncMessage(oddsDataStatus, events.length, outrightOdds.events.length, matchedEvents, updatedMarkets, updatedOutrights, quotaText, warningText);
 
   await recordSyncRun({
     provider: "the-odds-api",
     jobType: "odds",
     status: "success",
-    requestCount: 1,
+    requestCount: requests,
     message
   });
   return {
     provider: "the-odds-api",
     status: "success",
     dataStatus: oddsDataStatus,
-    requests: 1,
-    events: events.length,
+    requests,
+    events: totalEvents,
+    matchEvents: events.length,
+    outrightEvents: outrightOdds.events.length,
     matchedEvents,
     updatedMarkets,
     updatedOutrights,
     quota,
+    matchWarning: matchOdds.warning,
+    outrightError: outrightOdds.error,
     message
   };
 }
 
 function oddsProviderDataStatus(events, matchedEvents, updatedMarkets, updatedOutrights) {
   if (!events) return "no_data";
+  if (updatedMarkets || updatedOutrights) return "updated";
   if (!matchedEvents) return "unmatched";
-  if (!updatedMarkets && !updatedOutrights) return "no_updates";
-  return "updated";
+  return "no_updates";
+}
+
+async function fetchOutrightOddsEvents() {
+  try {
+    const result = await oddsApi(`/sports/${WORLD_CUP_WINNER_SPORT_KEY}/odds`, {
+      regions: "eu",
+      markets: ODDS_API_OUTRIGHT_MARKETS,
+      oddsFormat: "decimal"
+    });
+    return { events: result.data, quota: result.quota, attempted: true, error: "" };
+  } catch (error) {
+    return {
+      events: [],
+      quota: null,
+      attempted: true,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+async function fetchMatchOddsEvents() {
+  try {
+    const result = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, {
+      regions: "eu",
+      // The /odds endpoint rejects draw_no_bet and cannot mix outrights with match markets.
+      markets: ODDS_API_MAIN_MARKETS,
+      oddsFormat: "decimal"
+    });
+    return { events: result.data, quota: result.quota, requests: 1, warning: "" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!isOddsMarketCompatibilityError(message)) throw error;
+    const fallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, {
+      regions: "eu",
+      markets: ODDS_API_MATCH_FALLBACK_MARKETS,
+      oddsFormat: "decimal"
+    });
+    return {
+      events: fallback.data,
+      quota: fallback.quota,
+      requests: 2,
+      warning: `Match odds request with ${ODDS_API_MAIN_MARKETS} failed; retried with ${ODDS_API_MATCH_FALLBACK_MARKETS}.`
+    };
+  }
+}
+
+function isOddsMarketCompatibilityError(message) {
+  return /INVALID_MARKET|INVALID_MARKET_COMBO|422/.test(String(message || ""));
+}
+
+function mergeOddsQuota(...quotas) {
+  const present = quotas.filter(Boolean);
+  if (!present.length) return null;
+  const latest = [...present].reverse().find((quota) => quota.remaining !== null && quota.remaining !== undefined) || present[present.length - 1];
+  const lastValues = present
+    .map((quota) => Number(quota.last))
+    .filter((value) => Number.isFinite(value));
+  const usedValues = present
+    .map((quota) => Number(quota.used))
+    .filter((value) => Number.isFinite(value));
+  return {
+    remaining: latest.remaining ?? null,
+    used: usedValues.length ? Math.max(...usedValues) : latest.used ?? null,
+    last: lastValues.length ? lastValues.reduce((sum, value) => sum + value, 0) : latest.last ?? null
+  };
 }
 
 function oddsQuotaText(quota) {
@@ -1755,18 +1829,20 @@ function oddsQuotaText(quota) {
   return parts.join(", ");
 }
 
-function oddsSyncMessage(dataStatus, events, matchedEvents, updatedMarkets, updatedOutrights, quotaText = "") {
+function oddsSyncMessage(dataStatus, matchEvents, outrightEvents, matchedEvents, updatedMarkets, updatedOutrights, quotaText = "", warning = "") {
   const suffix = quotaText ? ` Quota: ${quotaText}.` : "";
+  const eventText = `${matchEvents} match events, ${outrightEvents} outright events`;
+  const warningText = warning ? ` Warning: ${warning}` : "";
   if (dataStatus === "no_data") {
-    return `The Odds API chưa trả World Cup odds events cho request hiện tại.${suffix}`;
+    return `The Odds API chưa trả World Cup odds events cho request hiện tại.${warningText}${suffix}`;
   }
   if (dataStatus === "unmatched") {
-    return `Fetched ${events} World Cup odds events nhưng chưa match được với lịch Supabase; chưa cập nhật market.${suffix}`;
+    return `Fetched ${eventText} nhưng chưa match được với lịch Supabase; chưa cập nhật market.${warningText}${suffix}`;
   }
   if (dataStatus === "no_updates") {
-    return `Fetched ${events} World Cup odds events, matched ${matchedEvents}, nhưng không có market/outright mới để cập nhật.${suffix}`;
+    return `Fetched ${eventText}, matched ${matchedEvents}, nhưng không có market/outright mới để cập nhật.${warningText}${suffix}`;
   }
-  return `Fetched ${events} World Cup odds events; matched ${matchedEvents}; updated ${updatedMarkets} match markets and ${updatedOutrights} outrights.${suffix}`;
+  return `Fetched ${eventText}; matched ${matchedEvents}; updated ${updatedMarkets} match markets and ${updatedOutrights} outrights.${warningText}${suffix}`;
 }
 
 async function runProviderJob({ provider, jobType, fallback, task }) {
