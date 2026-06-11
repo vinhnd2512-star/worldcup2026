@@ -2661,6 +2661,7 @@ function renderAdmin() {
           <button class="ghost-button" id="export-ledger-button">Export ledger</button>
           <button class="ghost-button" id="export-audit-button">Export audit</button>
           <button class="ghost-button" id="export-reports-button">Export reports</button>
+          <button class="ghost-button" id="export-odds-report-button">Export odds</button>
           <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync providers"}</button>
           <button class="ghost-button" id="transfermarkt-sync-button">Sync Transfermarkt</button>
           <button class="primary-button" id="refresh-button">Refresh</button>
@@ -2677,6 +2678,7 @@ function renderAdmin() {
       </section>
       ${renderDeploymentHealth()}
       ${renderProviderSyncPanel()}
+      ${renderOddsTrackingReport()}
       ${renderBracketAdminPanel()}
       <section class="admin-grid">
         <form class="glass-card form-card form-grid" id="admin-filter-form">
@@ -3063,6 +3065,121 @@ function providerQuotaText(quota = {}) {
   return parts.join(" · ");
 }
 
+function renderOddsTrackingReport() {
+  const rows = oddsTrackingMatches();
+  const totalSelections = rows.reduce((sum, row) => sum + row.totalSelections, 0);
+  const providerSelections = rows.reduce((sum, row) => sum + row.providerSelections, 0);
+  const internalSelections = Math.max(0, totalSelections - providerSelections);
+  const latestUpdatedAt = rows
+    .flatMap((row) => row.providerMarkets.map((market) => market.updatedAt).filter(Boolean))
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] || "";
+  return `
+    <section class="glass-card table-card odds-report-card">
+      <div class="section-heading">
+        <div>
+          <h2>Odds tracking report</h2>
+          <p>Theo doi tung tran: nha cai nao da cap nhat, selection nao van dung internal.</p>
+        </div>
+        <span>${fmt.format(providerSelections)}/${fmt.format(totalSelections)} bookmaker selections</span>
+      </div>
+      <div class="odds-report-summary">
+        ${oddsReportMetric("Bookmaker", providerSelections)}
+        ${oddsReportMetric("Internal fallback", internalSelections)}
+        ${oddsReportMetric("Latest update", latestUpdatedAt ? dateText(latestUpdatedAt) : "No provider odds")}
+      </div>
+      <div class="table-row table-head odds-report-row">
+        <span>Match</span><span>Kickoff</span><span>Coverage</span><span>1X2</span><span>Totals</span><span>Updated</span>
+      </div>
+      ${rows.map(renderOddsTrackingRow).join("") || `<div class="table-row odds-report-row"><span>No upcoming matches</span><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div>`}
+    </section>
+  `;
+}
+
+function oddsReportMetric(label, value) {
+  return `
+    <article>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value))}</strong>
+    </article>
+  `;
+}
+
+function oddsTrackingMatches() {
+  return state.matches
+    .filter((match) => ["SCHEDULED", "TBD", "NS"].includes(String(match.status || "SCHEDULED")))
+    .slice(0, 16)
+    .map((match) => {
+      const trackedMarkets = (match.match_markets || [])
+        .filter((market) => market.is_open && ["match_result", "total_goals"].includes(market.market_key))
+        .map((market) => ({ ...market, extra: marketExtra(market), updatedAt: oddsMarketUpdatedAt(market) }));
+      const providerMarkets = trackedMarkets.filter((market) => market.source === "odds-api");
+      return {
+        match,
+        trackedMarkets,
+        providerMarkets,
+        totalSelections: trackedMarkets.length,
+        providerSelections: providerMarkets.length
+      };
+    });
+}
+
+function renderOddsTrackingRow(row) {
+  const match = row.match;
+  const oneXTwo = ["home", "draw", "away"]
+    .map((key) => row.trackedMarkets.find((market) => market.market_key === "match_result" && market.selection_key === key))
+    .filter(Boolean);
+  const totals = row.trackedMarkets
+    .filter((market) => market.market_key === "total_goals")
+    .sort((left, right) => number(left.line) - number(right.line) || String(left.selection_key).localeCompare(String(right.selection_key)))
+    .slice(0, 4);
+  const latestUpdatedAt = row.providerMarkets
+    .map((market) => market.updatedAt)
+    .filter(Boolean)
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] || "";
+  const coverageKind = row.providerSelections === 0 ? "internal" : row.providerSelections === row.totalSelections ? "complete" : "partial";
+  const bookmakers = uniqueList(row.providerMarkets.map((market) => market.extra.bookmaker || market.extra.bookmaker_key || "").filter(Boolean)).slice(0, 3);
+  return `
+    <div class="table-row odds-report-row ${coverageKind}">
+      <span><b>${escapeHtml(match.home_team.code)} vs ${escapeHtml(match.away_team.code)}</b><small>${escapeHtml(match.home_team.name)} vs ${escapeHtml(match.away_team.name)}</small></span>
+      <span>${escapeHtml(dateText(match.starts_at))}</span>
+      <span>${escapeHtml(oddsCoverageText(row))}${bookmakers.length ? `<small>${escapeHtml(bookmakers.join(", "))}</small>` : ""}</span>
+      <span>${marketOddsInline(oneXTwo)}</span>
+      <span>${marketOddsInline(totals)}</span>
+      <span>${latestUpdatedAt ? escapeHtml(dateText(latestUpdatedAt)) : "internal"}<small>${escapeHtml(coverageKind)}</small></span>
+    </div>
+  `;
+}
+
+function marketOddsInline(markets) {
+  return markets.length
+    ? markets.map((market) => `<b class="${market.source === "odds-api" ? "success" : ""}">${escapeHtml(shortSelectionLabel(market))} x${fmtOne.format(number(market.odds_multiplier))}</b>`).join(" ")
+    : "-";
+}
+
+function shortSelectionLabel(market) {
+  if (market.market_key === "match_result") {
+    return { home: "H", draw: "D", away: "A" }[market.selection_key] || market.selection_key;
+  }
+  const line = market.line === null || market.line === undefined ? "" : ` ${fmtOne.format(number(market.line))}`;
+  return `${String(market.selection_key || "").slice(0, 1).toUpperCase()}${line}`;
+}
+
+function oddsCoverageText(row) {
+  if (!row.totalSelections) return "No tracked markets";
+  if (!row.providerSelections) return "Internal only";
+  if (row.providerSelections === row.totalSelections) return "Bookmaker complete";
+  return `${fmt.format(row.providerSelections)}/${fmt.format(row.totalSelections)} bookmaker`;
+}
+
+function oddsMarketUpdatedAt(market) {
+  const extra = marketExtra(market);
+  return extra.updated_at || extra.bookmaker_last_update || "";
+}
+
+function uniqueList(values) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
 function renderUserRow(user) {
   return `
     <div class="user-row">
@@ -3425,6 +3542,7 @@ function bindShellEvents() {
   document.getElementById("export-ledger-button")?.addEventListener("click", exportLedgerCsv);
   document.getElementById("export-audit-button")?.addEventListener("click", exportAuditCsv);
   document.getElementById("export-reports-button")?.addEventListener("click", exportReportsCsv);
+  document.getElementById("export-odds-report-button")?.addEventListener("click", exportOddsReportCsv);
   document.querySelectorAll("[data-toggle-user]").forEach((button) => {
     button.addEventListener("click", () => toggleUser(button.dataset.toggleUser, button.dataset.active === "true"));
   });
@@ -4177,6 +4295,28 @@ function exportReportsCsv() {
     roi: row.roi
   }));
   downloadCsv("worldcup-admin-reports.csv", [...userRows, ...marketRows]);
+}
+
+function exportOddsReportCsv() {
+  const rows = oddsTrackingMatches().flatMap((row) => row.trackedMarkets.map((market) => ({
+    match_id: row.match.id,
+    kickoff: row.match.starts_at,
+    match: `${row.match.home_team.name} vs ${row.match.away_team.name}`,
+    home_code: row.match.home_team.code,
+    away_code: row.match.away_team.code,
+    market_key: market.market_key,
+    selection_key: market.selection_key,
+    selection_label: market.selection_label,
+    line: market.line ?? "",
+    odds_multiplier: market.odds_multiplier,
+    source: market.source,
+    bookmaker: market.extra.bookmaker || "",
+    bookmaker_key: market.extra.bookmaker_key || "",
+    selection_mode: market.extra.selection_mode || "",
+    provider_updated_at: oddsMarketUpdatedAt(market),
+    is_open: market.is_open
+  })));
+  downloadCsv("worldcup-odds-tracking.csv", rows);
 }
 
 function parseTransfermarktImport(raw) {

@@ -46,6 +46,8 @@ SUPABASE_SERVICE_ROLE_KEY=
 CRON_SECRET=
 API_FOOTBALL_KEY=
 ODDS_API_KEY=
+ODDS_API_REGIONS=eu
+ODDS_API_BOOKMAKERS=
 FOOTBALL_DATA_API_TOKEN=
 MAX_STATS_FIXTURES=12
 ```
@@ -53,6 +55,8 @@ MAX_STATS_FIXTURES=12
 `SUPABASE_ANON_KEY` should be the Supabase publishable key (`sb_publishable_...`) or legacy anon key and is safe for browser use. `SUPABASE_SERVICE_ROLE_KEY` should be the Supabase secret key (`sb_secret_...`) or legacy service role key. `SUPABASE_SERVICE_ROLE_KEY`, `API_FOOTBALL_KEY`, `ODDS_API_KEY`, and `FOOTBALL_DATA_API_TOKEN` must only exist in Vercel server-side environment variables.
 
 `MAX_STATS_FIXTURES` is optional. Keep it low on free tiers because each synced statistics fixture costs an API-FOOTBALL request.
+
+`ODDS_API_REGIONS` defaults to `eu`. To mirror one bookmaker instead of taking the best available regional price, set `ODDS_API_BOOKMAKERS` to a comma-separated list of The Odds API bookmaker keys, for example `pinnacle` or `pinnacle,betfair_ex_eu`. When this is set, bookmaker odds overwrite matching internal markets; markets that are missing from the provider remain internal.
 
 ## 3. First Smoke Test
 
@@ -93,6 +97,7 @@ The Vercel Function `/api/sync-football-data` currently:
 - upserts teams and fixtures from API-FOOTBALL World Cup 2026 (`league=1`, `season=2026`);
 - syncs API-FOOTBALL match statistics for live/recent matches into `match_stats`, capped by `MAX_STATS_FIXTURES`;
 - maps The Odds API 1X2 and total-goals odds into `match_markets` when event names and kickoff times match confidently;
+- prefers configured bookmaker odds from `ODDS_API_BOOKMAKERS`; otherwise it uses the best available odds from `ODDS_API_REGIONS`;
 - maps The Odds API tournament-winner outrights into `outright_markets` when team names match confidently;
 - falls back to football-data.org World Cup fixtures when API-FOOTBALL is unavailable on the current plan;
 - stores provider payloads in `odds_snapshots`;

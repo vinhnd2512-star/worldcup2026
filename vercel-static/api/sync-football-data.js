@@ -28,6 +28,8 @@ const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
 const ODDS_API_MAIN_MARKETS = "h2h,totals";
 const ODDS_API_MATCH_FALLBACK_MARKETS = "h2h";
 const ODDS_API_OUTRIGHT_MARKETS = "outrights";
+const PROVIDER_MANAGED_MARKETS = ["match_result", "total_goals"];
+const DEFAULT_ODDS_API_REGIONS = "eu";
 const WORLD_CUP_TITLE_YEARS = {
   ARG: [1978, 1986, 2022],
   BRA: [1958, 1962, 1970, 1994, 2002],
@@ -36,6 +38,17 @@ const WORLD_CUP_TITLE_YEARS = {
   FRA: [1998, 2018],
   GER: [1954, 1974, 1990, 2014],
   URU: [1930, 1950]
+};
+
+const ODDS_TEAM_ALIASES = {
+  "bosnia herzegovina": "bosnia and herzegovina",
+  "cote d ivoire": "ivory coast",
+  "czech republic": "czechia",
+  "dr congo": "democratic republic of the congo",
+  "iran": "ir iran",
+  "korea republic": "south korea",
+  "turkiye": "turkey",
+  "united states": "usa"
 };
 
 async function readJson(request) {
@@ -284,6 +297,7 @@ function transfermarktSquadUrl(teamUrl) {
 }
 
 const TRANSFERMARKT_TEAM_ALIASES = {
+  "bosnia and herzegovina": "BIH",
   "bosnia herzegovina": "BIH",
   "cape verde": "CPV",
   "czech republic": "CZE",
@@ -615,13 +629,15 @@ async function getMatchesForStatsSync(maxFixtures) {
 }
 
 function normalizeTeamName(value) {
-  return String(value || "")
+  const normalized = String(value || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
     .toLowerCase()
     .replace(/\b(fc|cf|sc|the|national|team)\b/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+  return ODDS_TEAM_ALIASES[normalized] || normalized;
 }
 
 function fifaRankingDescription(row) {
@@ -736,6 +752,57 @@ function decimal(value) {
   return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : null;
 }
 
+function commaList(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function oddsApiBookmakers() {
+  return commaList(env("ODDS_API_BOOKMAKERS"));
+}
+
+function oddsApiRequestParams(markets) {
+  const bookmakers = oddsApiBookmakers();
+  const params = {
+    markets,
+    oddsFormat: "decimal"
+  };
+  if (bookmakers.length) {
+    params.bookmakers = bookmakers.join(",");
+  } else {
+    params.regions = env("ODDS_API_REGIONS") || DEFAULT_ODDS_API_REGIONS;
+  }
+  return params;
+}
+
+function bookmakerIdentity(bookmaker) {
+  return [
+    String(bookmaker?.key || ""),
+    normalizeTeamName(bookmaker?.key),
+    normalizeTeamName(bookmaker?.title)
+  ].filter(Boolean);
+}
+
+function preferredBookmakerRank(bookmaker, preferredBookmakers) {
+  if (!preferredBookmakers.length) return Number.MAX_SAFE_INTEGER;
+  const identities = new Set(bookmakerIdentity(bookmaker));
+  const index = preferredBookmakers.findIndex((item) => identities.has(item) || identities.has(normalizeTeamName(item)));
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function shouldReplaceOddsCandidate(current, candidate, preferredBookmakers) {
+  if (!current) return true;
+  if (!preferredBookmakers.length) {
+    return candidate.odds_multiplier > current.odds_multiplier;
+  }
+  if (candidate.bookmaker_rank !== current.bookmaker_rank) {
+    return candidate.bookmaker_rank < current.bookmaker_rank;
+  }
+  return new Date(candidate.bookmaker_last_update || 0).getTime() > new Date(current.bookmaker_last_update || 0).getTime();
+}
+
 function integerStat(value) {
   if (value === null || value === undefined || value === "") return 0;
   const numeric = Number.parseInt(String(value).replace("%", ""), 10);
@@ -757,15 +824,19 @@ function teamStatsByProviderId(payload) {
 
 function bestPricesForEvent(event, match, reversed) {
   const prices = new Map();
+  const preferredBookmakers = oddsApiBookmakers().map((bookmaker) => normalizeTeamName(bookmaker));
 
   function setBest(key, candidate) {
     const current = prices.get(key);
-    if (!current || candidate.odds_multiplier > current.odds_multiplier) {
+    if (shouldReplaceOddsCandidate(current, candidate, preferredBookmakers)) {
       prices.set(key, candidate);
     }
   }
 
   for (const bookmaker of event.bookmakers || []) {
+    const bookmakerRank = preferredBookmakerRank(bookmaker, preferredBookmakers);
+    if (preferredBookmakers.length && bookmakerRank === Number.MAX_SAFE_INTEGER) continue;
+
     for (const market of bookmaker.markets || []) {
       if (market.key === "h2h") {
         for (const outcome of market.outcomes || []) {
@@ -793,6 +864,9 @@ function bestPricesForEvent(event, match, reversed) {
             line: null,
             odds_multiplier: decimal(outcome.price),
             bookmaker: bookmaker.title || bookmaker.key,
+            bookmaker_key: bookmaker.key,
+            bookmaker_rank: bookmakerRank,
+            bookmaker_last_update: bookmaker.last_update,
             payload_json: { event_id: event.id, market: market.key, outcome, bookmaker }
           });
         }
@@ -821,6 +895,9 @@ function bestPricesForEvent(event, match, reversed) {
             line: null,
             odds_multiplier: decimal(outcome.price),
             bookmaker: bookmaker.title || bookmaker.key,
+            bookmaker_key: bookmaker.key,
+            bookmaker_rank: bookmakerRank,
+            bookmaker_last_update: bookmaker.last_update,
             payload_json: { event_id: event.id, market: market.key, outcome, bookmaker }
           });
         }
@@ -841,6 +918,9 @@ function bestPricesForEvent(event, match, reversed) {
             line,
             odds_multiplier: decimal(outcome.price),
             bookmaker: bookmaker.title || bookmaker.key,
+            bookmaker_key: bookmaker.key,
+            bookmaker_rank: bookmakerRank,
+            bookmaker_last_update: bookmaker.last_update,
             payload_json: { event_id: event.id, market: market.key, outcome, bookmaker }
           });
         }
@@ -885,6 +965,9 @@ async function upsertMarketFromOdds(candidate) {
     extra_json: {
       provider: "the-odds-api",
       bookmaker: candidate.bookmaker,
+      bookmaker_key: candidate.bookmaker_key,
+      bookmaker_last_update: candidate.bookmaker_last_update,
+      selection_mode: oddsApiBookmakers().length ? "preferred_bookmaker" : "best_available",
       updated_at: new Date().toISOString()
     }
   };
@@ -932,16 +1015,20 @@ async function insertOddsSnapshot(market, candidate) {
 function bestOutrightPrices(events, teams) {
   const teamsByName = new Map(teams.map((team) => [normalizeTeamName(team.name), team]));
   const prices = new Map();
+  const preferredBookmakers = oddsApiBookmakers().map((bookmaker) => normalizeTeamName(bookmaker));
 
   function setBest(team, candidate) {
     const current = prices.get(team.code);
-    if (!current || candidate.odds_multiplier > current.odds_multiplier) {
+    if (shouldReplaceOddsCandidate(current, candidate, preferredBookmakers)) {
       prices.set(team.code, candidate);
     }
   }
 
   for (const event of events) {
     for (const bookmaker of event.bookmakers || []) {
+      const bookmakerRank = preferredBookmakerRank(bookmaker, preferredBookmakers);
+      if (preferredBookmakers.length && bookmakerRank === Number.MAX_SAFE_INTEGER) continue;
+
       for (const market of bookmaker.markets || []) {
         if (market.key !== "outrights") continue;
         for (const outcome of market.outcomes || []) {
@@ -955,6 +1042,9 @@ function bestOutrightPrices(events, teams) {
             selection_label: team.name,
             odds_multiplier: multiplier,
             bookmaker: bookmaker.title || bookmaker.key,
+            bookmaker_key: bookmaker.key,
+            bookmaker_rank: bookmakerRank,
+            bookmaker_last_update: bookmaker.last_update,
             payload_json: { event_id: event.id, market: market.key, outcome, bookmaker }
           });
         }
@@ -981,6 +1071,9 @@ async function upsertOutrightMarketFromOdds(candidate, closesAt) {
       extra_json: {
         provider: "the-odds-api",
         bookmaker: candidate.bookmaker,
+        bookmaker_key: candidate.bookmaker_key,
+        bookmaker_last_update: candidate.bookmaker_last_update,
+        selection_mode: oddsApiBookmakers().length ? "preferred_bookmaker" : "best_available",
         updated_at: new Date().toISOString(),
         payload: candidate.payload_json
       }
@@ -1157,9 +1250,48 @@ async function ensureDefaultMarketsForMatches(matches) {
   return upsertJsonMinimal("match_markets", rows, "match_id,market_key,selection_key,line_key");
 }
 
+async function resetProviderManagedMarketsToInternal(matches) {
+  const ids = [...new Set((matches || []).map((match) => Number(match.id)).filter(Boolean))];
+  if (!ids.length) return 0;
+
+  const closeResponse = await supabaseFetch(
+    `/rest/v1/match_markets?match_id=in.(${ids.join(",")})&source=eq.odds-api&market_key=in.(${PROVIDER_MANAGED_MARKETS.join(",")})`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ is_open: false })
+    }
+  );
+  if (!closeResponse.ok) {
+    throw new Error(`Supabase close stale odds markets failed: ${closeResponse.status} ${await closeResponse.text()}`);
+  }
+
+  const teams = await fetchTeamsForDefaultMarkets(matches);
+  const rows = [];
+  for (const match of matches || []) {
+    if (!match.id || !match.starts_at) continue;
+    const homeTeam = teams.get(Number(match.home_team?.id || match.home_team_id)) || {};
+    const awayTeam = teams.get(Number(match.away_team?.id || match.away_team_id)) || {};
+    const homeStrength = teamStrengthScore(homeTeam);
+    const awayStrength = teamStrengthScore(awayTeam);
+    const homeWinOdds = teamWinMultiplier(homeStrength, awayStrength, 1.35, 4.50);
+    const awayWinOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
+    const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
+    rows.push(
+      defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "home", `${homeTeam.name || "Äá»™i nhÃ "} tháº¯ng`, null, homeWinOdds, "internal"),
+      defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "draw", "HÃ²a", null, drawOdds, "internal"),
+      defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "away", `${awayTeam.name || "Äá»™i khÃ¡ch"} tháº¯ng`, null, awayWinOdds, "internal"),
+      defaultMarket(match, "total_goals", "Tá»•ng bÃ n tháº¯ng 2.5", "over", "TÃ i 2.5", 2.5, 1.92, "internal"),
+      defaultMarket(match, "total_goals", "Tá»•ng bÃ n tháº¯ng 2.5", "under", "Xá»‰u 2.5", 2.5, 1.88, "internal")
+    );
+  }
+  await upsertJson("match_markets", rows, "match_id,market_key,selection_key,line_key");
+  return rows.length;
+}
+
 async function fetchTeamsForDefaultMarkets(matches) {
   const ids = [...new Set((matches || [])
-    .flatMap((match) => [match.home_team_id, match.away_team_id])
+    .flatMap((match) => [match.home_team_id, match.away_team_id, match.home_team?.id, match.away_team?.id])
     .filter(Boolean)
     .map(Number))];
   if (!ids.length) return new Map();
@@ -1692,6 +1824,7 @@ async function syncOddsSummary() {
 
   const matches = await getMatchesForOddsMapping();
   const teams = await getTeamsForOutrightMapping();
+  await resetProviderManagedMarketsToInternal(matches);
   const outrightClosesAt = matches[0]?.starts_at || "2026-06-11T19:00:00Z";
   let matchedEvents = 0;
   let updatedMarkets = 0;
@@ -1758,11 +1891,7 @@ function oddsProviderDataStatus(events, matchedEvents, updatedMarkets, updatedOu
 
 async function fetchOutrightOddsEvents() {
   try {
-    const result = await oddsApi(`/sports/${WORLD_CUP_WINNER_SPORT_KEY}/odds`, {
-      regions: "eu",
-      markets: ODDS_API_OUTRIGHT_MARKETS,
-      oddsFormat: "decimal"
-    });
+    const result = await oddsApi(`/sports/${WORLD_CUP_WINNER_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_OUTRIGHT_MARKETS));
     return { events: result.data, quota: result.quota, attempted: true, error: "" };
   } catch (error) {
     return {
@@ -1776,21 +1905,13 @@ async function fetchOutrightOddsEvents() {
 
 async function fetchMatchOddsEvents() {
   try {
-    const result = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, {
-      regions: "eu",
-      // The /odds endpoint rejects draw_no_bet and cannot mix outrights with match markets.
-      markets: ODDS_API_MAIN_MARKETS,
-      oddsFormat: "decimal"
-    });
+    // The /odds endpoint rejects draw_no_bet and cannot mix outrights with match markets.
+    const result = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_MAIN_MARKETS));
     return { events: result.data, quota: result.quota, requests: 1, warning: "" };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!isOddsMarketCompatibilityError(message)) throw error;
-    const fallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, {
-      regions: "eu",
-      markets: ODDS_API_MATCH_FALLBACK_MARKETS,
-      oddsFormat: "decimal"
-    });
+    const fallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_MATCH_FALLBACK_MARKETS));
     return {
       events: fallback.data,
       quota: fallback.quota,

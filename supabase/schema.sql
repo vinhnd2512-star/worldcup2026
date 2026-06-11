@@ -645,6 +645,13 @@ as $$
   ))::numeric, 2);
 $$;
 
+-- Recreate report views because CREATE OR REPLACE VIEW cannot reorder or
+-- rename columns on an existing view.
+drop view if exists public.admin_market_report;
+drop view if exists public.admin_user_report;
+drop view if exists public.admin_report;
+drop view if exists public.leaderboard;
+
 create or replace view public.leaderboard as
 with user_scores as (
   select
