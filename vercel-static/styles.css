@@ -2147,7 +2147,8 @@ select:focus {
   text-transform: uppercase;
 }
 
-.update-bet-form input {
+.update-bet-form input,
+.update-bet-form select {
   min-height: 36px;
   padding: 0 10px;
   border-radius: 8px;

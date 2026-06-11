@@ -2063,12 +2063,39 @@ function syncBetModalDraftFromDom() {
     const stake = card.querySelector("[data-modal-market-stake]");
     draft.enabled = Boolean(toggle?.checked);
     if (choice) draft.marketId = Number(choice.value);
-    if (stake) draft.stake = Number(stake.value || 0);
+    if (stake) draft.stake = parseStakeInput(stake.value);
     if (marketKey === "correct_score") {
       draft.homeScore = Number(document.getElementById("modal-score-home")?.value || draft.homeScore || 0);
       draft.awayScore = Number(document.getElementById("modal-score-away")?.value || draft.awayScore || 0);
     }
   });
+}
+
+function prepareStakeInput(input) {
+  if (!input) return;
+  input.type = "text";
+  input.inputMode = "numeric";
+  input.value = formatStakeInput(parseStakeInput(input.value));
+}
+
+function handleStakeInput(event) {
+  const input = event.currentTarget;
+  input.value = formatStakeInput(parseStakeInput(input.value));
+}
+
+function updateModalDerivedValues() {
+  const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
+  if (!match) return;
+  syncBetModalDraftFromDom();
+  const allOpenMarkets = (match.match_markets || []).filter((market) => market.is_open);
+  for (const group of modalMarketGroups(allOpenMarkets, "all")) {
+    const draft = state.betModalDraft?.[group.marketKey] || {};
+    const selectedMarket = selectedDraftMarket(group.markets, draft);
+    const payoutNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-stake-grid strong`);
+    if (payoutNode) payoutNode.textContent = money(number(draft.stake) * number(selectedMarket?.odds_multiplier || 0));
+  }
+  const summary = document.querySelector("#modal-bulk-bet-form .modal-submit-row span");
+  if (summary) summary.textContent = modalSelectedSummary(match);
 }
 
 function modalSelectedSummary(match) {
@@ -2649,6 +2676,8 @@ function renderHistory() {
 
 function renderHistoryRow(bet) {
   const match = matchForBet(bet) || bet.match;
+  const market = marketForBet(bet, match);
+  if (canUpdateBet(bet, match, market)) return renderUpcomingBetRow(bet);
   const title = match ? `${match.home_team.name} vs ${match.away_team.name}` : bet.market_key;
   const delta = number(bet.points_delta);
   const bonus = number(bet.prediction_bonus);
@@ -3500,6 +3529,7 @@ function bindShellEvents() {
 
   document.getElementById("score-bet-form")?.addEventListener("submit", placeScoreBet);
   document.getElementById("modal-bulk-bet-form")?.addEventListener("submit", submitModalBets);
+  enhanceUpdateBetForms();
   document.querySelectorAll("[data-modal-market-toggle]").forEach((input) => {
     input.addEventListener("change", () => {
       syncBetModalDraftFromDom();
@@ -3513,9 +3543,19 @@ function bindShellEvents() {
     });
   });
   document.querySelectorAll("[data-modal-market-stake]").forEach((input) => {
-    input.addEventListener("input", () => {
-      syncBetModalDraftFromDom();
+    prepareStakeInput(input);
+    input.addEventListener("input", (event) => {
+      handleStakeInput(event);
+      updateModalDerivedValues();
     });
+  });
+  document.querySelectorAll(".update-bet-form input[name='stake']").forEach((input) => {
+    prepareStakeInput(input);
+    input.addEventListener("input", handleStakeInput);
+  });
+  document.querySelectorAll("#golden-boot-stake, #winner-stake, #stake").forEach((input) => {
+    prepareStakeInput(input);
+    input.addEventListener("input", handleStakeInput);
   });
   document.querySelectorAll(".update-bet-form").forEach((form) => {
     form.addEventListener("submit", updateBet);
@@ -3676,6 +3716,30 @@ function hydrateOutrightControlForm() {
   document.getElementById("admin-outright-closes-at").value = option.dataset.closesAt || "";
 }
 
+function enhanceUpdateBetForms() {
+  document.querySelectorAll(".update-bet-form").forEach((form) => {
+    const bet = state.bets.find((item) => item.id === Number(form.dataset.updateBet));
+    const match = matchForBet(bet || {});
+    if (!bet || !match || bet.market_key === "correct_score" || form.elements.market_id) return;
+    const markets = sortMarketsForDisplay((match.match_markets || [])
+      .filter((market) => market.is_open && market.market_key === bet.market_key));
+    if (!markets.length) return;
+    const selectionInput = [...form.querySelectorAll("input")].find((input) => input.disabled);
+    const label = selectionInput?.closest("label");
+    if (!label) return;
+    const select = document.createElement("select");
+    select.name = "market_id";
+    for (const market of markets) {
+      const option = document.createElement("option");
+      option.value = String(market.id);
+      option.selected = Number(market.id) === Number(bet.market_id);
+      option.textContent = `${market.selection_label} · x${fmtOne.format(number(market.odds_multiplier))}`;
+      select.appendChild(option);
+    }
+    label.replaceChildren(document.createTextNode("Selection"), select);
+  });
+}
+
 async function updateBet(event) {
   event.preventDefault();
   if (state.isSubmittingBet) return;
@@ -3683,7 +3747,9 @@ async function updateBet(event) {
   const bet = state.bets.find((item) => item.id === Number(form.dataset.updateBet));
   if (!bet) return;
   const match = matchForBet(bet);
-  const market = marketForBet(bet, match);
+  const selectedMarketId = Number(form.elements.market_id?.value || bet.market_id);
+  const market = (match?.match_markets || []).find((item) => Number(item.id) === selectedMarketId)
+    || marketForBet(bet, match);
   if (!match || !market) {
     state.error = "Không tìm thấy market để cập nhật dự đoán.";
     state.message = "";
@@ -3691,7 +3757,7 @@ async function updateBet(event) {
     return;
   }
 
-  const stake = Number(form.elements.stake.value);
+  const stake = parseStakeInput(form.elements.stake.value);
   const selectionJson = bet.market_key === "correct_score"
     ? {
         home_score: Number(form.elements.home_score.value),
@@ -3741,7 +3807,7 @@ async function placeScoreBet(event) {
   }
   const homeScore = Number(document.getElementById("home-score").value);
   const awayScore = Number(document.getElementById("away-score").value);
-  const stake = Number(document.getElementById("stake").value);
+  const stake = parseStakeInput(document.getElementById("stake")?.value);
   await placeBet({
     p_match_id: match.id,
     p_market_id: market.id,
@@ -3756,7 +3822,7 @@ async function placeMarketBet(marketId) {
   if (state.isSubmittingBet) return;
   const match = selectedMatch();
   const market = match.match_markets.find((item) => item.id === marketId);
-  const stake = Number(prompt("Tiền cược ($)", "100") || 0);
+  const stake = parseStakeInput(prompt("Tiền cược ($)", "100") || 0);
   if (!market || !stake) return;
   await placeBet({
     p_match_id: match.id,
@@ -3771,7 +3837,7 @@ async function placeMarketBet(marketId) {
 async function placeOutrightBet(marketId) {
   if (state.isSubmittingBet) return;
   const market = state.outrightMarkets.find((item) => item.id === marketId);
-  const stake = Number(prompt("Tiền cược ($)", "100") || 0);
+  const stake = parseStakeInput(prompt("Tiền cược ($)", "100") || 0);
   if (!market || !stake) return;
   await submitOutrightBet(market.id, stake);
 }
@@ -3782,7 +3848,7 @@ async function placeSelectedOutrightBet(event, marketKey) {
   const selectId = marketKey === "golden_boot" ? "golden-boot-select" : "winner-select";
   const stakeId = marketKey === "golden_boot" ? "golden-boot-stake" : "winner-stake";
   const marketId = Number(document.getElementById(selectId)?.value || 0);
-  const stake = Number(document.getElementById(stakeId)?.value || 0);
+  const stake = parseStakeInput(document.getElementById(stakeId)?.value);
   if (!marketId || !stake) return;
   await submitOutrightBet(marketId, stake);
 }
@@ -4553,6 +4619,17 @@ function metric(label, value) {
 
 function money(value) {
   return moneyFmt.format(number(value));
+}
+
+function parseStakeInput(value) {
+  const cleaned = String(value || "").replace(/[^\d.]/g, "");
+  const numeric = Number(cleaned);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function formatStakeInput(value) {
+  const numeric = Math.max(0, Math.trunc(number(value)));
+  return numeric ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(numeric) : "";
 }
 
 function number(value) {
