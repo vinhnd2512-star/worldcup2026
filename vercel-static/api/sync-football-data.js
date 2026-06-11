@@ -28,7 +28,7 @@ const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
 const ODDS_API_MAIN_MARKETS = "h2h,totals";
 const ODDS_API_MATCH_FALLBACK_MARKETS = "h2h";
 const ODDS_API_OUTRIGHT_MARKETS = "outrights";
-const PROVIDER_MANAGED_MARKETS = ["match_result", "total_goals"];
+const PROVIDER_MANAGED_MARKETS = ["match_result", "total_goals", "correct_score"];
 const DEFAULT_ODDS_API_REGIONS = "eu";
 const WORLD_CUP_TITLE_YEARS = {
   ARG: [1978, 1986, 2022],
@@ -752,6 +752,10 @@ function decimal(value) {
   return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : null;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function commaList(value) {
   return String(value || "")
     .split(",")
@@ -801,6 +805,163 @@ function shouldReplaceOddsCandidate(current, candidate, preferredBookmakers) {
     return candidate.bookmaker_rank < current.bookmaker_rank;
   }
   return new Date(candidate.bookmaker_last_update || 0).getTime() > new Date(current.bookmaker_last_update || 0).getTime();
+}
+
+function poissonDistribution(lambda, maxGoals = 6) {
+  const values = [];
+  let sum = 0;
+  for (let goals = 0; goals <= maxGoals; goals += 1) {
+    const probability = Math.exp(-lambda) * Math.pow(lambda, goals) / factorial(goals);
+    values.push(probability);
+    sum += probability;
+  }
+  return values.map((probability) => probability / (sum || 1));
+}
+
+function factorial(value) {
+  let result = 1;
+  for (let index = 2; index <= value; index += 1) result *= index;
+  return result;
+}
+
+function scoreDistribution(homeXg, awayXg, maxGoals = 6) {
+  const home = poissonDistribution(homeXg, maxGoals);
+  const away = poissonDistribution(awayXg, maxGoals);
+  const scores = [];
+  let total = 0;
+  for (let homeGoals = 0; homeGoals <= maxGoals; homeGoals += 1) {
+    for (let awayGoals = 0; awayGoals <= maxGoals; awayGoals += 1) {
+      const probability = home[homeGoals] * away[awayGoals];
+      total += probability;
+      scores.push({ homeGoals, awayGoals, probability });
+    }
+  }
+  return scores.map((score) => ({ ...score, probability: score.probability / (total || 1) }));
+}
+
+function scoreModelStats(homeXg, awayXg) {
+  const scores = scoreDistribution(homeXg, awayXg);
+  return scores.reduce((stats, score) => {
+    if (score.homeGoals > score.awayGoals) stats.home += score.probability;
+    else if (score.homeGoals === score.awayGoals) stats.draw += score.probability;
+    else stats.away += score.probability;
+    stats.totalGoals += (score.homeGoals + score.awayGoals) * score.probability;
+    return stats;
+  }, { home: 0, draw: 0, away: 0, totalGoals: 0, scores });
+}
+
+function deriveExpectedTotalGoals(totalMarkets) {
+  const byLine = new Map();
+  for (const market of totalMarkets) {
+    const line = Number(market.line);
+    if (!Number.isFinite(line)) continue;
+    const row = byLine.get(line) || { line };
+    row[market.selection_key] = Number(market.odds_multiplier);
+    byLine.set(line, row);
+  }
+
+  const pairs = [...byLine.values()]
+    .filter((row) => row.over > 1 && row.under > 1)
+    .map((row) => {
+      const overRaw = 1 / row.over;
+      const underRaw = 1 / row.under;
+      const margin = overRaw + underRaw;
+      const pOver = margin ? overRaw / margin : 0.5;
+      return {
+        line: row.line,
+        pOver,
+        estimate: row.line + (pOver - 0.5) * 1.5,
+        distance: Math.abs(pOver - 0.5)
+      };
+    });
+
+  if (!pairs.length) return 2.5;
+  pairs.sort((left, right) => left.distance - right.distance || left.line - right.line);
+  return clamp(pairs[0].estimate, 0.8, 5.5);
+}
+
+function correctScoreCandidateFromMarkets(candidates, match) {
+  const resultMarkets = Object.fromEntries(candidates
+    .filter((candidate) => candidate.market_key === "match_result")
+    .map((candidate) => [candidate.selection_key, candidate]));
+  const totalMarkets = candidates.filter((candidate) => candidate.market_key === "total_goals");
+  if (!resultMarkets.home || !resultMarkets.draw || !resultMarkets.away || totalMarkets.length < 2) return null;
+
+  const homeRaw = 1 / Number(resultMarkets.home.odds_multiplier);
+  const drawRaw = 1 / Number(resultMarkets.draw.odds_multiplier);
+  const awayRaw = 1 / Number(resultMarkets.away.odds_multiplier);
+  const margin = homeRaw + drawRaw + awayRaw;
+  if (!Number.isFinite(margin) || margin <= 0) return null;
+
+  const pHome = homeRaw / margin;
+  const pDraw = drawRaw / margin;
+  const pAway = awayRaw / margin;
+  const expectedTotalGoals = deriveExpectedTotalGoals(totalMarkets);
+  const initialGoalDiff = clamp((pHome - pAway) * 2.2, -expectedTotalGoals + 0.1, expectedTotalGoals - 0.1);
+  const initialHomeXg = Math.max(0.05, (expectedTotalGoals + initialGoalDiff) / 2);
+  const initialAwayXg = Math.max(0.05, (expectedTotalGoals - initialGoalDiff) / 2);
+
+  let best = null;
+  for (let homeXg = Math.max(0.05, initialHomeXg - 1.25); homeXg <= initialHomeXg + 1.25; homeXg += 0.05) {
+    for (let awayXg = Math.max(0.05, initialAwayXg - 1.25); awayXg <= initialAwayXg + 1.25; awayXg += 0.05) {
+      const stats = scoreModelStats(Number(homeXg.toFixed(2)), Number(awayXg.toFixed(2)));
+      const error = Math.pow(stats.home - pHome, 2)
+        + Math.pow(stats.draw - pDraw, 2)
+        + Math.pow(stats.away - pAway, 2)
+        + Math.pow(stats.totalGoals - expectedTotalGoals, 2) * 0.15;
+      if (!best || error < best.error) {
+        best = { ...stats, homeXg: Number(homeXg.toFixed(2)), awayXg: Number(awayXg.toFixed(2)), error };
+      }
+    }
+  }
+  if (!best) return null;
+
+  const scoreRows = best.scores
+    .map((score) => {
+      const resultType = score.homeGoals > score.awayGoals ? "home_win" : score.homeGoals === score.awayGoals ? "draw" : "away_win";
+      const totalGoals = score.homeGoals + score.awayGoals;
+      return {
+        score: `${score.homeGoals}-${score.awayGoals}`,
+        probability: Number(score.probability.toFixed(6)),
+        fair_odds: Number(clamp(1 / Math.max(score.probability, 0.0001), 1.01, 300).toFixed(2)),
+        result_type: resultType,
+        total_goals: totalGoals,
+        over_under_group: totalGoals > expectedTotalGoals ? "over" : totalGoals < expectedTotalGoals ? "under" : "push"
+      };
+    })
+    .sort((left, right) => right.probability - left.probability);
+  const scoreOdds = Object.fromEntries(scoreRows.map((row) => [row.score, row]));
+  const mostLikely = scoreRows[0];
+
+  return {
+    match_id: match.id,
+    market_key: "correct_score",
+    label: "Dự đoán tỷ số",
+    selection_key: "exact",
+    selection_label: "Tỷ số chính xác",
+    line: null,
+    odds_multiplier: mostLikely?.fair_odds || 6,
+    bookmaker: "model",
+    bookmaker_key: "derived_correct_score",
+    bookmaker_rank: Number.MAX_SAFE_INTEGER,
+    bookmaker_last_update: new Date().toISOString(),
+    extra_json: {
+      provider: "model-from-odds-api",
+      model: "poisson_1x2_totals_v1",
+      source_markets: ["h2h", "totals"],
+      p_home: Number(pHome.toFixed(6)),
+      p_draw: Number(pDraw.toFixed(6)),
+      p_away: Number(pAway.toFixed(6)),
+      expected_total_goals: Number(expectedTotalGoals.toFixed(3)),
+      home_xg: best.homeXg,
+      away_xg: best.awayXg,
+      model_error: Number(best.error.toFixed(6)),
+      most_likely_score: mostLikely?.score || "",
+      score_odds: scoreOdds,
+      top_scores: scoreRows.slice(0, 12)
+    },
+    payload_json: { model: "poisson_1x2_totals_v1", score_odds: scoreOdds }
+  };
 }
 
 function integerStat(value) {
@@ -960,7 +1121,7 @@ async function upsertMarketFromOdds(candidate) {
     line: candidate.line,
     odds_multiplier: candidate.odds_multiplier,
     is_open: true,
-    source: "odds-api",
+    source: candidate.source || (candidate.market_key === "correct_score" ? "odds-model" : "odds-api"),
     closes_at: candidate.closes_at,
     extra_json: {
       provider: "the-odds-api",
@@ -968,7 +1129,8 @@ async function upsertMarketFromOdds(candidate) {
       bookmaker_key: candidate.bookmaker_key,
       bookmaker_last_update: candidate.bookmaker_last_update,
       selection_mode: oddsApiBookmakers().length ? "preferred_bookmaker" : "best_available",
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      ...(candidate.extra_json || {})
     }
   };
 
@@ -1255,7 +1417,7 @@ async function resetProviderManagedMarketsToInternal(matches) {
   if (!ids.length) return 0;
 
   const closeResponse = await supabaseFetch(
-    `/rest/v1/match_markets?match_id=in.(${ids.join(",")})&source=eq.odds-api&market_key=in.(${PROVIDER_MANAGED_MARKETS.join(",")})`,
+    `/rest/v1/match_markets?match_id=in.(${ids.join(",")})&source=in.(odds-api,odds-model)&market_key=in.(${PROVIDER_MANAGED_MARKETS.join(",")})`,
     {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
@@ -1277,6 +1439,7 @@ async function resetProviderManagedMarketsToInternal(matches) {
     const homeWinOdds = teamWinMultiplier(homeStrength, awayStrength, 1.35, 4.50);
     const awayWinOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
     const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
+    rows.push(defaultMarket(match, "correct_score", "Dự đoán tỷ số", "exact", "Tỷ số chính xác", null, 6.00, "internal"));
     rows.push(
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "home", `${homeTeam.name || "Äá»™i nhÃ "} tháº¯ng`, null, homeWinOdds, "internal"),
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "draw", "HÃ²a", null, drawOdds, "internal"),
@@ -1854,6 +2017,10 @@ async function syncOddsSummary() {
     matchedEvents += 1;
     const candidates = bestPricesForEvent(event, matched.match, matched.reversed)
       .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at }));
+    const correctScoreCandidate = correctScoreCandidateFromMarkets(candidates, matched.match);
+    if (correctScoreCandidate) {
+      candidates.push({ ...correctScoreCandidate, closes_at: matched.match.starts_at });
+    }
 
     for (const candidate of candidates) {
       const market = await upsertMarketFromOdds(candidate);

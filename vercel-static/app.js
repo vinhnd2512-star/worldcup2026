@@ -1921,7 +1921,8 @@ function renderModalBetSection(match, group) {
   const selectedMarket = selectedDraftMarket(group.markets, draft);
   const enabled = Boolean(draft.enabled);
   const stake = number(draft.stake || existing?.stake || 100);
-  const payout = selectedMarket ? stake * number(selectedMarket.odds_multiplier) : 0;
+  const displayMultiplier = modalMarketMultiplier(group.marketKey, selectedMarket, draft);
+  const payout = selectedMarket ? stake * displayMultiplier : 0;
   const helpText = modalMarketHelpText(group.marketKey);
   return `
     <section class="modal-market-card ${enabled ? "open" : ""}" data-bet-market-card="${escapeHtml(group.marketKey)}">
@@ -1937,7 +1938,7 @@ function renderModalBetSection(match, group) {
             <small>${existing ? `Đang mở: ${escapeHtml(existing.selection_label)} · ${money(existing.stake)}` : `${fmt.format(group.markets.length)} lựa chọn`}</small>
           </span>
         </label>
-        <span class="pill">x${fmtOne.format(number(selectedMarket?.odds_multiplier || group.markets[0]?.odds_multiplier || 1))}</span>
+        <span class="pill">x${fmtOne.format(displayMultiplier || number(group.markets[0]?.odds_multiplier || 1))}</span>
       </div>
       ${
         enabled
@@ -1998,6 +1999,9 @@ function modalMarketTitle(marketKey, fallback = "") {
 }
 
 function modalMarketHelpText(marketKey) {
+  if (marketKey === "correct_score") {
+    return "The Odds API khong tra truc tiep correct_score; he thong suy ra fair odds tung ty so tu keo 1X2 va Tai/Xiu bang mo hinh Poisson.";
+  }
   const notes = {
     correct_score: "The Odds API hiện không hỗ trợ market correct_score cho World Cup, nên kèo tỷ số chính xác dùng multiplier internal của game.",
     draw_no_bet: "Chọn đội thắng. Nếu trận hòa, cược được hoàn tiền; nếu đội đã chọn thua thì mất cược.",
@@ -2042,6 +2046,21 @@ function scoreFromExistingBet(existing) {
 
 function selectedDraftMarket(markets, draft) {
   return markets.find((market) => Number(market.id) === Number(draft.marketId)) || markets[0] || null;
+}
+
+function modalMarketMultiplier(marketKey, market, draft = {}) {
+  if (!market) return 0;
+  if (marketKey !== "correct_score") return number(market.odds_multiplier);
+  const homeScore = Math.max(0, number(draft.homeScore ?? 0));
+  const awayScore = Math.max(0, number(draft.awayScore ?? 0));
+  return correctScoreFairOdds(market, homeScore, awayScore);
+}
+
+function correctScoreFairOdds(market, homeScore, awayScore) {
+  const extra = marketExtra(market);
+  const score = `${Math.max(0, number(homeScore))}-${Math.max(0, number(awayScore))}`;
+  const row = extra.score_odds?.[score];
+  return number(row?.fair_odds || market.odds_multiplier || 6);
 }
 
 function existingOpenBet(match, marketKey) {
@@ -2091,8 +2110,11 @@ function updateModalDerivedValues() {
   for (const group of modalMarketGroups(allOpenMarkets, "all")) {
     const draft = state.betModalDraft?.[group.marketKey] || {};
     const selectedMarket = selectedDraftMarket(group.markets, draft);
+    const multiplier = modalMarketMultiplier(group.marketKey, selectedMarket, draft);
     const payoutNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-stake-grid strong`);
-    if (payoutNode) payoutNode.textContent = money(number(draft.stake) * number(selectedMarket?.odds_multiplier || 0));
+    if (payoutNode) payoutNode.textContent = money(number(draft.stake) * multiplier);
+    const pillNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-market-card-head .pill`);
+    if (pillNode) pillNode.textContent = `x${fmtOne.format(multiplier || number(selectedMarket?.odds_multiplier || 1))}`;
   }
   const summary = document.querySelector("#modal-bulk-bet-form .modal-submit-row span");
   if (summary) summary.textContent = modalSelectedSummary(match);
@@ -4578,6 +4600,9 @@ document.addEventListener("click", (event) => {
   const next = Math.max(0, Number(input.value) + (inc ? 1 : -1));
   input.value = String(next);
   display.textContent = String(next);
+  if (id === "modal-score-home" || id === "modal-score-away") {
+    updateModalDerivedValues();
+  }
 });
 
 function downloadCsv(filename, rows) {

@@ -784,6 +784,7 @@ declare
   v_selection_key text;
   v_selection_label text;
   v_selection_json jsonb;
+  v_locked_multiplier numeric(8, 2);
 begin
   if auth.uid() is null then
     raise exception 'not authenticated';
@@ -836,6 +837,10 @@ begin
     v_selection_label := v_market.selection_label;
     v_selection_json := coalesce(p_selection_json, '{}') || jsonb_build_object('line', v_market.line);
   end if;
+  v_locked_multiplier := coalesce((v_market.extra_json #>> array['score_odds', v_selection_key, 'fair_odds'])::numeric, v_market.odds_multiplier);
+  if v_market.market_key = 'correct_score' then
+    v_selection_json := v_selection_json || jsonb_build_object('fair_odds', v_locked_multiplier);
+  end if;
   if now() >= coalesce(v_market.closes_at, v_match.starts_at) then
     raise exception 'betting is locked for this match';
   end if;
@@ -878,14 +883,14 @@ begin
       );
     end if;
 
-    v_payout := round(v_next_stake * v_market.odds_multiplier, 2);
+    v_payout := round(v_next_stake * v_locked_multiplier, 2);
     update public.bets
     set market_id = v_market.id,
         market_key = v_market.market_key,
         selection_key = v_selection_key,
         selection_label = v_selection_label,
         stake = v_next_stake,
-        locked_multiplier = v_market.odds_multiplier,
+        locked_multiplier = v_locked_multiplier,
         potential_payout = v_payout,
         selection_json = v_selection_json
     where id = v_bet.id
@@ -914,7 +919,7 @@ begin
     raise exception 'insufficient point balance';
   end if;
 
-  v_payout := round(v_next_stake * v_market.odds_multiplier, 2);
+  v_payout := round(v_next_stake * v_locked_multiplier, 2);
 
   update public.profiles
   set wallet_balance = wallet_balance - v_next_stake
@@ -927,7 +932,7 @@ begin
   )
   values (
     auth.uid(), p_match_id, p_market_id, v_market.market_key, v_selection_key, v_selection_label,
-    v_next_stake, v_market.odds_multiplier, v_payout,
+    v_next_stake, v_locked_multiplier, v_payout,
     v_selection_json
   )
   returning * into v_bet;
@@ -986,6 +991,7 @@ declare
   v_selection_label text;
   v_selection_json jsonb;
   v_payout numeric(12, 2);
+  v_locked_multiplier numeric(8, 2);
 begin
   if auth.uid() is null then
     raise exception 'not authenticated';
@@ -1066,6 +1072,10 @@ begin
     v_selection_label := v_market.selection_label;
     v_selection_json := coalesce(p_selection_json, '{}') || jsonb_build_object('line', v_market.line);
   end if;
+  v_locked_multiplier := coalesce((v_market.extra_json #>> array['score_odds', v_selection_key, 'fair_odds'])::numeric, v_market.odds_multiplier);
+  if v_market.market_key = 'correct_score' then
+    v_selection_json := v_selection_json || jsonb_build_object('fair_odds', v_locked_multiplier);
+  end if;
 
   v_next_stake := round(p_stake, 2);
   v_stake_delta := v_next_stake - v_bet.stake;
@@ -1090,14 +1100,14 @@ begin
     );
   end if;
 
-  v_payout := round(v_next_stake * v_market.odds_multiplier, 2);
+  v_payout := round(v_next_stake * v_locked_multiplier, 2);
   update public.bets
   set market_id = v_market.id,
       market_key = v_market.market_key,
       selection_key = v_selection_key,
       selection_label = v_selection_label,
       stake = v_next_stake,
-      locked_multiplier = v_market.odds_multiplier,
+      locked_multiplier = v_locked_multiplier,
       potential_payout = v_payout,
       selection_json = v_selection_json
   where id = p_bet_id
