@@ -113,6 +113,13 @@ h3,
   font-size: 34px;
 }
 
+.login-card h2,
+.boot-card h2 {
+  margin: 4px 0 0;
+  color: var(--gold-soft);
+  font-size: 18px;
+}
+
 p,
 small,
 .muted {
@@ -123,6 +130,30 @@ small,
   display: grid;
   gap: 16px;
   margin-top: 28px;
+}
+
+.signup-form {
+  margin-top: 18px;
+}
+
+.signup-form h3 {
+  color: var(--gold-soft);
+  font-size: 16px;
+}
+
+.auth-divider {
+  display: grid;
+  place-items: center;
+  margin: 20px 0 -4px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.auth-divider span {
+  padding: 0 10px;
+  background: var(--surface);
 }
 
 label {
@@ -399,6 +430,79 @@ select:focus {
   background: rgba(255, 255, 255, 0.06);
   font-family: "JetBrains Mono", monospace;
   font-weight: 800;
+}
+
+.profile-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.profile-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+}
+
+.profile-button .avatar {
+  width: 42px;
+  height: 42px;
+}
+
+.profile-popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 10px;
+  width: min(320px, calc(100vw - 28px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 22px 56px rgba(12, 37, 30, 0.18);
+}
+
+.profile-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #edf7f2;
+}
+
+.profile-summary strong,
+.profile-summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-summary strong {
+  color: var(--gold-soft);
+}
+
+.profile-summary span {
+  color: var(--gold-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 900;
+}
+
+.profile-menu-nav {
+  display: none;
+}
+
+.profile-logout {
+  min-height: 40px;
 }
 
 .reminder-chip {
@@ -3532,34 +3636,26 @@ select {
     min-width: 980px;
   }
 
-  .mobile-nav {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 20;
+  .profile-menu-nav {
     display: grid;
-    grid-auto-flow: column;
-    padding: 8px 10px 12px;
-    border-top: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.94);
-    backdrop-filter: blur(14px);
+    gap: 6px;
   }
 
-  .mobile-nav button {
-    min-height: 46px;
-    border: 0;
-    color: var(--muted);
-    background: transparent;
-    font-size: 11px;
+  .profile-menu-nav button {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--gold-soft);
+    background: #ffffff;
+    font-weight: 900;
+    text-align: left;
+    padding: 0 10px;
   }
 
-  .mobile-nav .active {
-    color: var(--gold);
-  }
-
-  .page {
-    padding-bottom: 86px;
+  .profile-menu-nav button.active {
+    color: #ffffff;
+    background: var(--gold);
   }
 }
 
@@ -3570,6 +3666,15 @@ select {
 
   .top-actions {
     gap: 8px;
+  }
+
+  .wallet-chip {
+    display: none;
+  }
+
+  .profile-popover {
+    right: 0;
+    width: calc(100vw - 20px);
   }
 
   .notification-popover {

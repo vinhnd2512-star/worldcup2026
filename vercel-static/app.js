@@ -42,6 +42,7 @@ const state = {
   betModalDraft: {},
   confirmRebetMatchId: null,
   notificationPanelOpen: false,
+  profileMenuOpen: false,
   goldenBootSearch: "",
   winnerSearch: "",
   lastPredictionBetId: null,
@@ -116,7 +117,7 @@ const flagImages = {
 
 const navItems = [
   ["matches", "Lịch thi đấu"],
-  ["groups", "Groups"],
+  ["groups", "Bảng kết quả (Vòng loại)"],
   ["detail", "Dự đoán"],
   ["bracket", "Nhánh đấu (sau vòng loại)"],
   ["leaderboard", "Bảng xếp hạng"],
@@ -179,7 +180,8 @@ function renderConfigScreen() {
     <main class="login-screen">
       <section class="login-card glass-card">
         <div class="brand-mark">WC</div>
-        <h1>WorldCup Predict</h1>
+        <h1>WC 2026</h1>
+        <h2>WorldCup Predict</h2>
         <p>Nhập cấu hình Supabase để chạy bản static không cần cài package.</p>
         <form class="form-grid" id="config-form">
           <label>Supabase URL<input id="supabase-url" placeholder="https://xxxx.supabase.co" required></label>
@@ -202,13 +204,23 @@ function renderLogin() {
     <main class="login-screen">
       <section class="login-card glass-card">
         <div class="brand-mark">WC</div>
-        <h1>WorldCup Predict</h1>
+        <h1>WC 2026</h1>
+        <h2>WorldCup Predict</h2>
         <p>Private play-points league cho World Cup 2026.</p>
+        ${state.message ? `<p class="success">${escapeHtml(state.message)}</p>` : ""}
         ${state.error ? `<p class="error">${escapeHtml(state.error)}</p>` : ""}
         <form class="form-grid" id="login-form">
           <label>Tài khoản<input id="login-username" value="demo" autocomplete="username"></label>
           <label>Mật khẩu<input id="login-password" type="password" value="demo123" autocomplete="current-password"></label>
           <button class="primary-button wide">Đăng nhập</button>
+        </form>
+        <div class="auth-divider"><span>hoặc</span></div>
+        <form class="form-grid signup-form" id="signup-form">
+          <h3>Tạo tài khoản mới</h3>
+          <label>Tài khoản<input id="signup-username" autocomplete="username" required></label>
+          <label>Tên hiển thị<input id="signup-display-name" autocomplete="name" required></label>
+          <label>Mật khẩu<input id="signup-password" type="password" autocomplete="new-password" minlength="6" required></label>
+          <button class="ghost-button wide">Tạo tài khoản</button>
         </form>
         <div class="demo-row">
           <span>player do admin cấp</span>
@@ -218,11 +230,13 @@ function renderLogin() {
     </main>
   `;
   document.getElementById("login-form").addEventListener("submit", login);
+  document.getElementById("signup-form").addEventListener("submit", createPublicAccount);
 }
 
 async function login(event) {
   event.preventDefault();
   state.error = "";
+  state.message = "";
   const raw = document.getElementById("login-username").value.trim().toLowerCase();
   const password = document.getElementById("login-password").value;
   const email = raw.includes("@") ? raw : `${raw}@worldcup.local`;
@@ -234,6 +248,45 @@ async function login(event) {
   }
   state.session = data.session;
   await loadData();
+}
+
+async function createPublicAccount(event) {
+  event.preventDefault();
+  state.error = "";
+  state.message = "";
+  const raw = document.getElementById("signup-username").value.trim().toLowerCase();
+  const displayName = document.getElementById("signup-display-name").value.trim();
+  const password = document.getElementById("signup-password").value;
+  const username = raw.replace(/[^a-z0-9._-]/g, "");
+  if (!username || !displayName || password.length < 6) {
+    state.error = "Vui lòng nhập tài khoản, tên hiển thị và mật khẩu tối thiểu 6 ký tự.";
+    renderLogin();
+    return;
+  }
+  const email = raw.includes("@") ? raw : `${username}@worldcup.local`;
+  const { data, error } = await state.client.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        username,
+        display_name: displayName,
+        role: "player"
+      }
+    }
+  });
+  if (error) {
+    state.error = error.message;
+    renderLogin();
+    return;
+  }
+  if (data.session) {
+    state.session = data.session;
+    await loadData();
+    return;
+  }
+  state.message = "Đã tạo tài khoản. Nếu hệ thống yêu cầu xác nhận, hãy xác nhận rồi đăng nhập lại.";
+  renderLogin();
 }
 
 async function loadData() {
@@ -410,7 +463,7 @@ function renderApp() {
           <div class="top-actions">
             ${renderNotificationCenter(notifications, unreadCount)}
             <div class="wallet-chip">${money(state.profile.wallet_balance)}</div>
-            <div class="avatar">${initials(state.profile.display_name)}</div>
+            ${renderProfileMenu(items)}
           </div>
         </header>
         ${renderNotificationTicker(notifications)}
@@ -420,12 +473,33 @@ function renderApp() {
           ${renderActiveView()}
         </section>
       </main>
-      <nav class="mobile-nav">
-        ${items.map(([key, label]) => `<button class="${state.active === key ? "active" : ""}" data-tab="${key}">${label}</button>`).join("")}
-      </nav>
     </div>
   `;
   bindShellEvents();
+}
+
+function renderProfileMenu(items) {
+  return `
+    <div class="profile-menu ${state.profileMenuOpen ? "open" : ""}">
+      <button class="profile-button" type="button" data-profile-toggle aria-label="Tài khoản">
+        <span class="avatar">${initials(state.profile.display_name)}</span>
+      </button>
+      ${
+        state.profileMenuOpen
+          ? `<section class="profile-popover" aria-label="Tài khoản">
+              <div class="profile-summary">
+                <strong>${escapeHtml(state.profile.display_name)}</strong>
+                <span>${money(state.profile.wallet_balance)}</span>
+              </div>
+              <div class="profile-menu-nav">
+                ${items.map(([key, label]) => `<button class="${state.active === key ? "active" : ""}" data-tab="${key}">${label}</button>`).join("")}
+              </div>
+              <button class="ghost-button wide profile-logout" id="profile-logout-button">Logout</button>
+            </section>`
+          : ""
+      }
+    </div>
+  `;
 }
 
 function renderActiveView() {
@@ -1020,13 +1094,13 @@ function renderGroups() {
     <div class="stack">
       <div class="section-heading">
         <div>
-          <h1>Group Standings</h1>
-          <p>Tables are calculated from settled group-stage match results.</p>
+          <h1>Bảng kết quả (Vòng loại)</h1>
+          <p>Bảng điểm được tính từ kết quả các trận vòng loại đã hoàn tất.</p>
         </div>
-        <span>${fmt.format(groups.length)} groups</span>
+        <span>${fmt.format(groups.length)} bảng</span>
       </div>
       <section class="groups-grid">
-        ${groups.map(renderGroupCard).join("") || `<section class="glass-card panel"><h2>No groups</h2><p>Run supabase/seed.sql.</p></section>`}
+        ${groups.map(renderGroupCard).join("") || `<section class="glass-card panel"><h2>Chưa có bảng đấu</h2><p>Hãy chạy supabase/seed.sql.</p></section>`}
       </section>
     </div>
   `;
@@ -1044,13 +1118,13 @@ function renderGroupCard(groupName) {
       <div class="group-card-top">
         <div>
           <h2>${escapeHtml(formatGroupName(groupName))}</h2>
-          <small>${fmt.format(rows.length)} teams</small>
+          <small>${fmt.format(rows.length)} đội</small>
         </div>
         <span class="group-badge">${escapeHtml(formatGroupName(groupName))}</span>
       </div>
       <div class="standings-table">
         <div class="standings-row standings-head">
-          <span>#</span><span>Team</span><span>P</span><span>W</span><span>D</span><span>L</span><span>GD</span><span>Pts</span><span></span>
+          <span>#</span><span>Đội</span><span>Tr</span><span>T</span><span>H</span><span>B</span><span>HS</span><span>Đ</span><span></span>
         </div>
         ${rows.map(renderStandingRow).join("")}
       </div>
@@ -1075,7 +1149,7 @@ function renderStandingRow(row, index) {
       <span>${fmt.format(row.lost)}</span>
       <span>${gd > 0 ? "+" : ""}${fmt.format(gd)}</span>
       <b>${fmt.format(row.points)}</b>
-      <button class="ghost-button compact-button" data-team-roster="${row.team.id}">Players</button>
+      <button class="ghost-button compact-button" data-team-roster="${row.team.id}">Cầu thủ</button>
     </div>
   `;
 }
@@ -3465,6 +3539,7 @@ function bindShellEvents() {
     button.addEventListener("click", () => {
       state.sidebarCollapsed = !state.sidebarCollapsed;
       localStorage.setItem("WCP_SIDEBAR_COLLAPSED", String(state.sidebarCollapsed));
+      state.profileMenuOpen = false;
       renderApp();
     });
   });
@@ -3473,10 +3548,18 @@ function bindShellEvents() {
     button.addEventListener("click", () => {
       state.active = button.dataset.tab;
       state.notificationPanelOpen = false;
+      state.profileMenuOpen = false;
       state.message = "";
       state.error = "";
       renderApp();
     });
+  });
+
+  document.querySelector("[data-profile-toggle]")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    state.profileMenuOpen = !state.profileMenuOpen;
+    state.notificationPanelOpen = false;
+    renderApp();
   });
 
   document.querySelector("[data-notification-toggle]")?.addEventListener("click", (event) => {
@@ -3486,6 +3569,7 @@ function bindShellEvents() {
       markNotificationsRead(getNotificationItems().map((item) => item.id));
     }
     state.notificationPanelOpen = opening;
+    state.profileMenuOpen = false;
     renderApp();
   });
 
@@ -3493,6 +3577,7 @@ function bindShellEvents() {
     button.addEventListener("click", () => {
       markNotificationsRead([button.dataset.notificationRead]);
       state.notificationPanelOpen = false;
+      state.profileMenuOpen = false;
       requestOpenBetModal(Number(button.dataset.notificationBet));
     });
   });
@@ -3501,6 +3586,7 @@ function bindShellEvents() {
     button.addEventListener("click", () => {
       markNotificationsRead([button.dataset.notificationRead]);
       state.notificationPanelOpen = false;
+      state.profileMenuOpen = false;
       state.active = "predictionStats";
       state.predictionStatsTab = "history";
       renderApp();
@@ -3520,6 +3606,7 @@ function bindShellEvents() {
       if (button.closest("#match-search-results")) return;
       if (button.dataset.notificationRead) markNotificationsRead([button.dataset.notificationRead]);
       state.notificationPanelOpen = false;
+      state.profileMenuOpen = false;
       requestOpenBetModal(Number(button.dataset.openBetModal));
     });
   });
@@ -3699,12 +3786,13 @@ function bindShellEvents() {
     });
   });
 
-  document.getElementById("logout-button")?.addEventListener("click", async () => {
+  document.querySelectorAll("#logout-button, #profile-logout-button").forEach((button) => button.addEventListener("click", async () => {
     await state.client.auth.signOut();
     state.session = null;
     state.profile = null;
+    state.profileMenuOpen = false;
     renderLogin();
-  });
+  }));
 
   document.getElementById("score-bet-form")?.addEventListener("submit", placeScoreBet);
   document.getElementById("modal-bulk-bet-form")?.addEventListener("submit", submitModalBets);
