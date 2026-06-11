@@ -175,11 +175,25 @@ async function loadConfig() {
   };
 }
 
+function renderWorldCupLogo(variant = "shell") {
+  return `
+    <span class="wc-logo wc-logo-${escapeHtml(variant)}" aria-hidden="true">
+      <svg viewBox="0 0 64 64" role="img" focusable="false">
+        <path class="wc-logo-cup" d="M21 10h22v9c0 8-4.7 14.7-11 16.2C25.7 33.7 21 27 21 19v-9Z" />
+        <path class="wc-logo-handle" d="M21 15h-7c0 8.2 4.8 13 11 13M43 15h7c0 8.2-4.8 13-11 13" />
+        <path class="wc-logo-stem" d="M32 35v9M24 50h16M27 44h10" />
+        <circle class="wc-logo-ball" cx="46" cy="46" r="10" />
+        <path class="wc-logo-ball-line" d="M46 36v20M36 46h20M39 39c4 3.2 9.8 3.2 14 0M39 53c4-3.2 9.8-3.2 14 0" />
+      </svg>
+    </span>
+  `;
+}
+
 function renderConfigScreen() {
   app.innerHTML = `
     <main class="login-screen">
       <section class="login-card glass-card">
-        <div class="brand-mark">WC</div>
+        <div class="brand-mark">${renderWorldCupLogo("hero")}<span>WC</span></div>
         <h1>WC 2026</h1>
         <h2>WorldCup Predict</h2>
         <p>Nhập cấu hình Supabase để chạy bản static không cần cài package.</p>
@@ -203,7 +217,7 @@ function renderLogin() {
   app.innerHTML = `
     <main class="login-screen">
       <section class="login-card glass-card">
-        <div class="brand-mark">WC</div>
+        <div class="brand-mark">${renderWorldCupLogo("hero")}<span>WC</span></div>
         <h1>WC 2026</h1>
         <h2>WorldCup Predict</h2>
         <p>Private play-points league cho World Cup 2026.</p>
@@ -441,7 +455,10 @@ function renderApp() {
     <div class="app-shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}">
       <aside class="sidebar">
         <div class="sidebar-head">
-          <div><div class="brand">WorldCup Predict</div><small>Group Stage Live</small></div>
+          <div class="app-brand-lockup">
+            ${renderWorldCupLogo("shell")}
+            <div><div class="brand">WorldCup Predict</div><small>WC 2026 Live</small></div>
+          </div>
           <button class="icon-button sidebar-toggle-button" type="button" data-sidebar-toggle aria-label="Đóng thanh menu">
             <span class="sidebar-toggle-icon close" aria-hidden="true"><span></span><span></span></span>
           </button>
@@ -458,6 +475,7 @@ function renderApp() {
             <button class="icon-button sidebar-open-button" type="button" data-sidebar-toggle aria-label="${state.sidebarCollapsed ? "Mở thanh menu" : "Đóng thanh menu"}">
               <span class="sidebar-toggle-icon menu" aria-hidden="true"><span></span><span></span><span></span></span>
             </button>
+            ${renderWorldCupLogo("topbar")}
             <div class="brand">WorldCup Predict</div>
           </div>
           <div class="top-actions">
