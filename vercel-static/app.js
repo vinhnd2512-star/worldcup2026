@@ -1890,13 +1890,29 @@ function modalMarketGroups(markets, group) {
   });
   const order = group === "basic" ? ["correct_score", "total_goals", "match_result", "draw_no_bet"] : [];
   return [...groups.entries()]
-    .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: items }))
+    .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: sortMarketsForDisplay(items) }))
     .sort((left, right) => {
       const leftIndex = order.indexOf(left.marketKey);
       const rightIndex = order.indexOf(right.marketKey);
       if (leftIndex >= 0 || rightIndex >= 0) return (leftIndex < 0 ? 999 : leftIndex) - (rightIndex < 0 ? 999 : rightIndex);
       return left.label.localeCompare(right.label, "vi");
     });
+}
+
+function sortMarketsForDisplay(markets) {
+  return [...(markets || [])].sort((left, right) => {
+    if (left.market_key === "total_goals" && right.market_key === "total_goals") {
+      return number(left.line) - number(right.line)
+        || marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key)
+        || Number(left.id) - Number(right.id);
+    }
+    return marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key)
+      || Number(left.id) - Number(right.id);
+  });
+}
+
+function marketSelectionOrder(selectionKey) {
+  return { home: 1, draw: 2, away: 3, over: 4, under: 5, yes: 6, no: 7, exact: 8 }[selectionKey] || 99;
 }
 
 function renderModalBetSection(match, group) {
@@ -1973,7 +1989,7 @@ function modalMarketTitle(marketKey, fallback = "") {
     correct_score: "Dự đoán tỷ số",
     match_result: "Đội thắng / hòa / thua",
     draw_no_bet: "Draw no bet",
-    total_goals: "Tài/Xỉu 2.5",
+    total_goals: "Tài/Xỉu bàn thắng",
     btts: "Hai đội cùng ghi bàn",
     corners_total: "Tổng phạt góc",
     cards_total: "Tổng thẻ"
@@ -1983,8 +1999,9 @@ function modalMarketTitle(marketKey, fallback = "") {
 
 function modalMarketHelpText(marketKey) {
   const notes = {
+    correct_score: "The Odds API hiện không hỗ trợ market correct_score cho World Cup, nên kèo tỷ số chính xác dùng multiplier internal của game.",
     draw_no_bet: "Chọn đội thắng. Nếu trận hòa, cược được hoàn tiền; nếu đội đã chọn thua thì mất cược.",
-    total_goals: "Tài nếu tổng số bàn thắng lớn hơn 2.5, Xỉu nếu tổng số bàn thắng nhỏ hơn 2.5."
+    total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal."
   };
   return notes[marketKey] || "";
 }
@@ -2109,7 +2126,7 @@ function collectModalBetPayloads(match, options = {}) {
 }
 
 function isBasicMarket(key, market = null) {
-  if (key === "total_goals") return !market || number(market.line) === 2.5;
+  if (key === "total_goals") return true;
   return ["match_result", "draw_no_bet", "correct_score"].includes(key);
 }
 
@@ -3130,7 +3147,7 @@ function renderOddsTrackingRow(row) {
     .filter(Boolean);
   const totals = row.trackedMarkets
     .filter((market) => market.market_key === "total_goals")
-    .sort((left, right) => number(left.line) - number(right.line) || String(left.selection_key).localeCompare(String(right.selection_key)))
+    .sort((left, right) => number(left.line) - number(right.line) || marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key))
     .slice(0, 4);
   const latestUpdatedAt = row.providerMarkets
     .map((market) => market.updatedAt)

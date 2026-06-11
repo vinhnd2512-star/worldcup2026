@@ -1289,6 +1289,23 @@ async function resetProviderManagedMarketsToInternal(matches) {
   return rows.length;
 }
 
+async function closeInternalTotalGoalFallbacks(matchIds) {
+  const ids = [...new Set((matchIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) return 0;
+  const response = await supabaseFetch(
+    `/rest/v1/match_markets?match_id=in.(${ids.join(",")})&market_key=eq.total_goals&source=eq.internal`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ is_open: false })
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase close internal total-goals fallback failed: ${response.status} ${await response.text()}`);
+  }
+  return ids.length;
+}
+
 async function fetchTeamsForDefaultMarkets(matches) {
   const ids = [...new Set((matches || [])
     .flatMap((match) => [match.home_team_id, match.away_team_id, match.home_team?.id, match.away_team?.id])
@@ -1829,6 +1846,7 @@ async function syncOddsSummary() {
   let matchedEvents = 0;
   let updatedMarkets = 0;
   let updatedOutrights = 0;
+  const providerTotalMatchIds = new Set();
 
   for (const event of events) {
     const matched = matchOddsEvent(event, matches);
@@ -1840,9 +1858,14 @@ async function syncOddsSummary() {
     for (const candidate of candidates) {
       const market = await upsertMarketFromOdds(candidate);
       await insertOddsSnapshot(market, candidate);
+      if (candidate.market_key === "total_goals") {
+        providerTotalMatchIds.add(Number(candidate.match_id));
+      }
       updatedMarkets += 1;
     }
   }
+
+  await closeInternalTotalGoalFallbacks([...providerTotalMatchIds]);
 
   for (const candidate of bestOutrightPrices(outrightOdds.events, teams)) {
     await upsertOutrightMarketFromOdds(candidate, outrightClosesAt);
