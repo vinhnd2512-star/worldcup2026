@@ -382,7 +382,7 @@ select
   'Vô địch World Cup 2026',
   t.code,
   t.name,
-  round(greatest(4.00, least(45.00, 3.50 + t.strength_rank * 0.70))::numeric, 2),
+  50.00,
   'internal',
   '2026-06-11 19:00:00+00'::timestamptz
 from (
@@ -410,7 +410,7 @@ select
   'Dự đoán Vua phá lưới',
   'player:' || p.id::text,
   p.name || ' (' || t.code || ')',
-  round(greatest(6.00, least(80.00, 5.25 + p.player_rank * 0.85))::numeric, 2),
+  120.00,
   'internal',
   '2026-06-11 19:00:00+00'::timestamptz,
   jsonb_build_object(

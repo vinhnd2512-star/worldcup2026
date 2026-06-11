@@ -3032,6 +3032,11 @@ function renderAdmin() {
           <label>Đội vô địch<select id="winner-key">${state.outrightMarkets.filter((market) => market.market_key === "tournament_winner").map((market) => `<option value="${market.selection_key}">${escapeHtml(market.selection_label)}</option>`).join("")}</select></label>
           <button class="primary-button">Settle outright</button>
         </form>
+        <form class="glass-card form-card form-grid" id="golden-boot-settle-form">
+          <h2>Settle Golden Boot</h2>
+          <label>Top scorer<select id="golden-boot-key">${state.outrightMarkets.filter((market) => market.market_key === "golden_boot").map((market) => `<option value="${market.selection_key}">${escapeHtml(market.selection_label)}</option>`).join("")}</select></label>
+          <button class="primary-button">Settle Golden Boot</button>
+        </form>
       </section>
       <section class="glass-card panel">
         <div class="section-heading"><h2>Tài khoản</h2><span>${state.users.length} user</span></div>
@@ -3875,6 +3880,7 @@ function bindShellEvents() {
   hydrateOutrightControlForm();
   document.getElementById("reset-password-form")?.addEventListener("submit", resetPassword);
   document.getElementById("tournament-winner-form")?.addEventListener("submit", settleTournamentWinner);
+  document.getElementById("golden-boot-settle-form")?.addEventListener("submit", settleGoldenBoot);
   document.getElementById("refresh-button")?.addEventListener("click", () => loadData());
   document.getElementById("provider-sync-button")?.addEventListener("click", syncProviders);
   document.getElementById("transfermarkt-sync-button")?.addEventListener("click", () => syncTransfermarktValues());
@@ -4357,6 +4363,15 @@ async function settleTournamentWinner(event) {
   const winnerKey = document.getElementById("winner-key").value;
   const { data, error } = await state.client.rpc("settle_tournament_winner", { p_winner_key: winnerKey });
   state.message = error ? "" : `Đã settle ${data} kèo vô địch.`;
+  state.error = error ? error.message : "";
+  await loadData();
+}
+
+async function settleGoldenBoot(event) {
+  event.preventDefault();
+  const topScorerKey = document.getElementById("golden-boot-key").value;
+  const { data, error } = await state.client.rpc("settle_golden_boot", { p_top_scorer_key: topScorerKey });
+  state.message = error ? "" : `Settled ${data} Golden Boot bets.`;
   state.error = error ? error.message : "";
   await loadData();
 }

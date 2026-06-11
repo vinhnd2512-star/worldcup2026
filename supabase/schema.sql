@@ -431,6 +431,10 @@ create index if not exists bets_open_tournament_winner_idx
   on public.bets (selection_key, id)
   where status = 'placed' and market_key = 'tournament_winner';
 
+create index if not exists bets_open_golden_boot_idx
+  on public.bets (selection_key, id)
+  where status = 'placed' and market_key = 'golden_boot';
+
 create index if not exists sync_runs_started_at_idx
   on public.sync_runs (started_at desc);
 
@@ -1155,7 +1159,7 @@ begin
     'Dự đoán Vua phá lưới',
     'player:' || ranked.id::text,
     ranked.name || ' (' || ranked.team_code || ')',
-    round(greatest(6.00, least(80.00, 5.25 + ranked.player_rank * 0.85))::numeric, 2),
+    120.00,
     'internal',
     coalesce(
       (select min(starts_at) from public.matches where status in ('SCHEDULED', 'NS', 'TBD')),
@@ -1803,7 +1807,7 @@ begin
     if v_won then
       v_payout := round(v_bet.stake * v_bet.locked_multiplier, 2);
       v_delta := v_payout - v_bet.stake;
-      v_bonus := 25;
+      v_bonus := 40;
       update public.bets set status = 'won', points_delta = v_delta, prediction_bonus = v_bonus, settled_at = now() where id = v_bet.id;
       update public.profiles set wallet_balance = wallet_balance + v_payout where id = v_bet.user_id;
       insert into public.wallet_ledger (user_id, actor_id, amount, kind, reason, balance_after)
@@ -1836,6 +1840,75 @@ begin
     'tournament_winner',
     p_winner_key,
     jsonb_build_object('winner_key', p_winner_key, 'settled_bets', v_count)
+  );
+
+  return v_count;
+end;
+$$;
+
+create or replace function public.settle_golden_boot(p_top_scorer_key text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_bet public.bets%rowtype;
+  v_won boolean;
+  v_payout numeric(12, 2);
+  v_delta numeric(12, 2);
+  v_bonus numeric(12, 2);
+  v_count integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'admin role required';
+  end if;
+
+  update public.outright_markets
+  set is_open = false
+  where market_key = 'golden_boot';
+
+  for v_bet in
+    select * from public.bets
+    where market_key = 'golden_boot' and status = 'placed'
+  loop
+    v_won := v_bet.selection_key = p_top_scorer_key;
+    if v_won then
+      v_payout := round(v_bet.stake * v_bet.locked_multiplier, 2);
+      v_delta := v_payout - v_bet.stake;
+      v_bonus := 50;
+      update public.bets set status = 'won', points_delta = v_delta, prediction_bonus = v_bonus, settled_at = now() where id = v_bet.id;
+      update public.profiles set wallet_balance = wallet_balance + v_payout where id = v_bet.user_id;
+      insert into public.wallet_ledger (user_id, actor_id, amount, kind, reason, balance_after)
+      select
+        v_bet.user_id,
+        auth.uid(),
+        v_payout,
+        'bet_payout',
+        'Golden boot payout: ' || v_bet.selection_label,
+        wallet_balance
+      from public.profiles
+      where id = v_bet.user_id;
+      insert into public.settlements (bet_id, result, status, payout, reason)
+      values (v_bet.id, p_top_scorer_key, 'won', v_payout, 'Golden boot matched; leaderboard bonus applied.');
+    else
+      v_payout := 0;
+      v_delta := -v_bet.stake;
+      v_bonus := 0;
+      update public.bets set status = 'lost', points_delta = v_delta, prediction_bonus = v_bonus, settled_at = now() where id = v_bet.id;
+      insert into public.settlements (bet_id, result, status, payout, reason)
+      values (v_bet.id, p_top_scorer_key, 'lost', v_payout, 'Golden boot did not match.');
+    end if;
+    v_count := v_count + 1;
+  end loop;
+
+  insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
+  values (
+    auth.uid(),
+    'settlement.golden_boot',
+    'golden_boot',
+    p_top_scorer_key,
+    jsonb_build_object('top_scorer_key', p_top_scorer_key, 'settled_bets', v_count)
   );
 
   return v_count;
