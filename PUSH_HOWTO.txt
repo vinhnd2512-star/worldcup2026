@@ -1,0 +1,125 @@
+🚀 PUSH GIT - HƯỚNG DẪN TỪNG BƯỚC
+
+================================================================================
+CÁCH NHANH NHẤT (Copy & Paste)
+================================================================================
+
+1. Nhấn: Win + R
+
+2. Gõ: cmd
+   (Cửa sổ Command Prompt sẽ mở)
+
+3. Copy toàn bộ lệnh này (Ctrl+C):
+
+cd /d "C:\Users\user\OneDrive\Cong - iCapital Intern" && cd "Project Z - Khác" && cd "web_app_worldcup.worktrees\agents-sheet-lich-thi-dau-du-doan" && git add -A && git commit -m "Điều chỉnh odds: Tournament Winner & Golden Boot" && git push
+
+4. Paste vào Command Prompt (Ctrl+V hoặc Right Click > Paste)
+
+5. Nhấn ENTER
+
+6. Chờ ~ 30 giây, xem output
+
+
+================================================================================
+NẾU BÁO LỖI "fatal: not a git repository"
+================================================================================
+
+Thử cách này:
+
+1. Nhấn: Win + E (File Explorer)
+
+2. Dán vào Address Bar:
+   C:\Users\user\OneDrive\Cong - iCapital Intern\Project Z - Khác\web_app_worldcup.worktrees\agents-sheet-lich-thi-dau-du-doan
+
+3. Nhấn ENTER
+
+4. Khi vào folder, nhấn: Shift + Right Click (trống)
+   → Chọn: "Open PowerShell here" hoặc "Open command window here"
+
+5. Copy & paste lệnh này:
+   git add -A && git commit -m "Điều chỉnh odds: Tournament Winner & Golden Boot" && git push
+
+6. Nhấn ENTER
+
+
+================================================================================
+NẾU BÁO LỖI "git: command not found"
+================================================================================
+
+→ Git chưa cài. Cài từ: https://git-scm.com/download/win
+→ Restart Command Prompt & thử lại
+
+
+================================================================================
+NẾU BÁO LỖI "upstream branch does not match"
+================================================================================
+
+Chạy lệnh này thay vào:
+
+git add -A && git commit -m "Điều chỉnh odds: Tournament Winner & Golden Boot" && git push --set-upstream origin HEAD
+
+
+================================================================================
+NẾU BÁO "nothing to commit, working tree clean"
+================================================================================
+
+→ Có nghĩa đã commit rồi
+→ Chạy: git push
+→ Xong!
+
+
+================================================================================
+STEP BY STEP (Nếu không muốn Copy Paste toàn bộ)
+================================================================================
+
+1. Win + R → cmd
+
+2. Chạy từng lệnh này (ENTER sau mỗi dòng):
+
+cd /d "C:\Users\user\OneDrive\Cong - iCapital Intern"
+
+cd "Project Z - Khác"
+
+cd "web_app_worldcup.worktrees\agents-sheet-lich-thi-dau-du-doan"
+
+git status
+
+git add -A
+
+git commit -m "Điều chỉnh odds: Tournament Winner & Golden Boot"
+
+git push
+
+3. Nếu báo lỗi ở bước push, chạy:
+   git push --set-upstream origin HEAD
+
+
+================================================================================
+KỲ VỌ: HỎI ĐÁP
+================================================================================
+
+Q: "Cứ báo là không tìm thấy path?"
+A: Dùng File Explorer → Right Click → Open command window here (trong folder)
+   Rồi chạy: git add -A && git commit -m "..." && git push
+
+Q: "Push thành công là sao?"
+A: Command Prompt in ra:
+   - "Master/main/branch-name 12345ab...commit message"
+   - Hoặc có dòng: "main -> origin/main"
+   - Không báo lỗi = thành công ✅
+
+Q: "Sau khi push xong, làm gì tiếp?"
+A: Báo cho tôi, sau đó merge nhánh này về main/master từ folder cũ
+
+Q: "Có cách dễ hơn không?"
+A: Có - dùng GitHub Desktop GUI
+   Cài từ: https://desktop.github.com/
+   Interface đẹp, dễ hiểu hơn
+
+
+================================================================================
+✅ CHẠY & BÁO KẾT QUẢ
+================================================================================
+
+Chạy cách "NHANH NHẤT" ở trên, rồi báo output cuối cùng cho tôi!
+

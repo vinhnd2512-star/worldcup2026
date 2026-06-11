@@ -89,6 +89,44 @@ class SettlementTests(unittest.TestCase):
         )
         self.assertEqual(outcome.status, "pending")
 
+    def test_tournament_winner_win(self) -> None:
+        outcome = settle_bet(
+            BetSelection("tournament_winner", "BRA", Decimal("100"), Decimal("50.00"), {}),
+            MatchResult(status="FT", home_score=2, away_score=1, tournament_winner_team_code="BRA"),
+        )
+        self.assertEqual(outcome.status, "won")
+        self.assertEqual(outcome.payout, Decimal("5000.00"))
+        self.assertEqual(outcome.net_points, Decimal("4900.00"))
+        self.assertEqual(outcome.prediction_bonus, Decimal("40.00"))
+
+    def test_tournament_winner_loss(self) -> None:
+        outcome = settle_bet(
+            BetSelection("tournament_winner", "BRA", Decimal("100"), Decimal("50.00"), {}),
+            MatchResult(status="FT", home_score=2, away_score=1, tournament_winner_team_code="ARG"),
+        )
+        self.assertEqual(outcome.status, "lost")
+        self.assertEqual(outcome.net_points, Decimal("-100.00"))
+        self.assertEqual(outcome.prediction_bonus, Decimal("0.00"))
+
+    def test_golden_boot_win(self) -> None:
+        outcome = settle_bet(
+            BetSelection("golden_boot", "player:42", Decimal("50"), Decimal("120.00"), {}),
+            MatchResult(status="FT", home_score=1, away_score=0, top_scorer_player_id=42),
+        )
+        self.assertEqual(outcome.status, "won")
+        self.assertEqual(outcome.payout, Decimal("6000.00"))
+        self.assertEqual(outcome.net_points, Decimal("5950.00"))
+        self.assertEqual(outcome.prediction_bonus, Decimal("50.00"))
+
+    def test_golden_boot_loss(self) -> None:
+        outcome = settle_bet(
+            BetSelection("golden_boot", "player:42", Decimal("50"), Decimal("120.00"), {}),
+            MatchResult(status="FT", home_score=1, away_score=0, top_scorer_player_id=99),
+        )
+        self.assertEqual(outcome.status, "lost")
+        self.assertEqual(outcome.net_points, Decimal("-50.00"))
+        self.assertEqual(outcome.prediction_bonus, Decimal("0.00"))
+
 
 if __name__ == "__main__":
     unittest.main()
