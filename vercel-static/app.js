@@ -41,6 +41,7 @@ const state = {
   betModalMarketGroup: "basic",
   betModalDraft: {},
   confirmRebetMatchId: null,
+  notificationPanelOpen: false,
   goldenBootSearch: "",
   winnerSearch: "",
   lastPredictionBetId: null,
@@ -125,6 +126,7 @@ const navItems = [
 
 const fmt = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
 const fmtOne = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
+const stakeFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const moneyFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 boot();
@@ -380,7 +382,8 @@ async function loadDeploymentHealth() {
 
 function renderApp() {
   const items = state.profile.role === "admin" ? [...navItems, ["admin", "Admin"]] : navItems;
-  const reminders = getBetReminders();
+  const notifications = getNotificationItems();
+  const unreadCount = notifications.filter((item) => !item.read).length;
   app.innerHTML = `
     <div class="app-shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}">
       <aside class="sidebar">
@@ -405,11 +408,12 @@ function renderApp() {
             <div class="brand">WorldCup Predict</div>
           </div>
           <div class="top-actions">
-            ${reminders.length ? `<button class="reminder-chip" data-reminder-focus>Alerts ${fmt.format(reminders.length)}</button>` : ""}
+            ${renderNotificationCenter(notifications, unreadCount)}
             <div class="wallet-chip">${money(state.profile.wallet_balance)}</div>
             <div class="avatar">${initials(state.profile.display_name)}</div>
           </div>
         </header>
+        ${renderNotificationTicker(notifications)}
         <section class="page">
           ${state.message ? `<div class="toast success">${escapeHtml(state.message)}</div>` : ""}
           ${state.error ? `<div class="toast error">${escapeHtml(state.error)}</div>` : ""}
@@ -439,7 +443,6 @@ function renderActiveView() {
 }
 
 function renderMatches() {
-  const reminders = getBetReminders();
   const filteredMatches = filteredScheduleMatches();
   const featured = filteredMatches.find((match) => match.status === "SCHEDULED") || filteredMatches[0] || state.matches.find((match) => match.status === "SCHEDULED") || state.matches[0];
   if (!featured) {
@@ -451,7 +454,6 @@ function renderMatches() {
   return `
     <div class="dashboard-grid">
       <div class="stack">
-        ${renderReminderPanel(reminders)}
         ${renderScheduleFilters()}
         <section class="hero stadium-surface">
           <span class="kicker">Trận đấu tâm điểm</span>
@@ -789,6 +791,130 @@ function renderReminderPanel(reminders) {
       </div>
     </section>
   `;
+}
+
+function renderNotificationCenter(notifications, unreadCount) {
+  const total = notifications.length;
+  const hasUnread = unreadCount > 0;
+  return `
+    <div class="notification-center ${state.notificationPanelOpen ? "open" : ""}">
+      <button class="notification-button ${hasUnread ? "has-unread" : ""}" type="button" data-notification-toggle aria-label="Thông báo">
+        <span class="notification-bell-icon" aria-hidden="true"></span>
+        ${total ? `<span class="notification-count">${fmt.format(hasUnread ? unreadCount : total)}</span>` : ""}
+      </button>
+      ${
+        state.notificationPanelOpen
+          ? `<section class="notification-popover" aria-label="Thông báo">
+              <div class="notification-head">
+                <strong>Thông báo</strong>
+                <span>${total ? `${fmt.format(total)} tin` : "Không có tin mới"}</span>
+              </div>
+              <div class="notification-list">
+                ${notifications.length ? notifications.slice(0, 12).map(renderNotificationItem).join("") : `<p class="notification-empty">Chưa có cảnh báo sắp khóa cược hoặc kết quả mới.</p>`}
+              </div>
+            </section>`
+          : ""
+      }
+    </div>
+  `;
+}
+
+function renderNotificationTicker(notifications) {
+  const reminders = notifications.filter((item) => item.type === "reminder").slice(0, 6);
+  if (!reminders.length) return "";
+  const tickerItems = reminders.map((item) => `
+    <button class="notification-ticker-item" type="button" data-open-bet-modal="${item.match.id}" data-notification-read="${escapeHtml(item.id)}">
+      <strong>${escapeHtml(item.title)}</strong>
+      <span>${escapeHtml(item.body)}</span>
+    </button>
+  `).join("");
+  return `
+    <div class="notification-ticker" role="status" aria-live="polite">
+      <div class="notification-ticker-track">
+        ${tickerItems}
+        ${tickerItems}
+      </div>
+    </div>
+  `;
+}
+
+function renderNotificationItem(item) {
+  const actionAttrs = item.type === "reminder"
+    ? `data-notification-bet="${item.match.id}"`
+    : `data-notification-history`;
+  return `
+    <button class="notification-item ${escapeHtml(item.type)} ${item.read ? "" : "unread"}" type="button" data-notification-read="${escapeHtml(item.id)}" ${actionAttrs}>
+      <span class="notification-dot" aria-hidden="true"></span>
+      <span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <small>${escapeHtml(item.body)}</small>
+      </span>
+      <time>${escapeHtml(item.timeText)}</time>
+    </button>
+  `;
+}
+
+function getNotificationItems() {
+  const readIds = readNotificationIds();
+  return [
+    ...getReminderNotifications(),
+    ...getSettlementNotifications()
+  ]
+    .map((item) => ({ ...item, read: readIds.has(item.id) }))
+    .sort((left, right) => right.priority - left.priority || right.sortTime - left.sortTime)
+    .slice(0, 24);
+}
+
+function getReminderNotifications() {
+  return getBetReminders().map((reminder) => ({
+    id: `reminder:${reminder.id}`,
+    type: "reminder",
+    priority: reminder.windowHours === 1 ? 30 : reminder.windowHours === 6 ? 20 : 10,
+    sortTime: reminder.closesAt.getTime(),
+    match: reminder.match,
+    title: `Sắp khóa cược: ${matchTitle(reminder.match)}`,
+    body: `${reminder.label} - khóa lúc ${dateText(reminder.closesAt)}. Bấm để vào cược.`,
+    timeText: dateText(reminder.closesAt)
+  }));
+}
+
+function getSettlementNotifications() {
+  return state.bets
+    .filter((bet) => ["won", "lost", "refunded"].includes(String(bet.status || "")))
+    .map((bet) => {
+      const match = matchForBet(bet);
+      const settledAt = new Date(bet.settled_at || bet.updated_at || bet.placed_at || Date.now());
+      const net = number(bet.points_delta) + number(bet.prediction_bonus);
+      const statusLabel = bet.status === "won" ? "Cược thắng" : bet.status === "refunded" ? "Hoàn tiền" : "Cược thua";
+      const amountText = bet.status === "won"
+        ? `Ví nhận ${money(bet.potential_payout)}${net ? `, lãi ${net >= 0 ? "+" : ""}${money(net)}` : ""}`
+        : bet.status === "refunded"
+          ? `Hoàn lại ${money(bet.stake)}`
+          : `Đã ghi nhận thua ${money(Math.abs(net || number(bet.stake)))}`;
+      return {
+        id: `settled:${bet.id}:${bet.status}:${bet.settled_at || bet.placed_at || ""}`,
+        type: bet.status === "won" ? "settlement-win" : bet.status === "refunded" ? "settlement-refund" : "settlement-loss",
+        priority: bet.status === "won" ? 25 : 15,
+        sortTime: Number.isFinite(settledAt.getTime()) ? settledAt.getTime() : 0,
+        title: `${statusLabel}: ${match ? matchTitle(match) : bet.market_key}`,
+        body: `${amountText} - ${bet.selection_label || bet.market_key}`,
+        timeText: Number.isFinite(settledAt.getTime()) ? dateText(settledAt) : ""
+      };
+    });
+}
+
+function notificationStorageKey() {
+  return `WCP_READ_NOTIFICATIONS:${state.profile?.id || "anon"}`;
+}
+
+function readNotificationIds() {
+  return new Set(safeJson(localStorage.getItem(notificationStorageKey()) || "[]"));
+}
+
+function markNotificationsRead(ids) {
+  const readIds = readNotificationIds();
+  ids.filter(Boolean).forEach((id) => readIds.add(id));
+  localStorage.setItem(notificationStorageKey(), JSON.stringify([...readIds].slice(-240)));
 }
 
 function getBetReminders() {
@@ -1953,7 +2079,7 @@ function renderModalBetSection(match, group) {
                   : renderModalSelectionOptions(group, draft)
               }
               <div class="modal-stake-grid">
-                <label>Tiền cược<input data-modal-market-stake="${escapeHtml(group.marketKey)}" type="number" min="10" step="10" value="${stake}"></label>
+                <label>Tiền cược<input data-modal-market-stake="${escapeHtml(group.marketKey)}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(stake)}"></label>
                 <div>
                   <small>Payout dự kiến</small>
                   <strong>${money(payout)}</strong>
@@ -2230,7 +2356,7 @@ function renderOutrightSearchCard(marketKey) {
       </label>
       <label>
         Tiền cược
-        <input id="${stakeId}" type="number" min="10" step="10" value="100">
+        <input id="${stakeId}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(100)}">
       </label>
       <button class="primary-button wide" type="submit" ${filtered.length ? "" : "disabled"}>${isGoldenBoot ? "Đặt Vua phá lưới" : "Đặt vô địch"}</button>
     </form>
@@ -2649,7 +2775,7 @@ function renderUpcomingBetRow(bet) {
                      <label>Away<input name="away_score" type="number" min="0" step="1" value="${awayScore}"></label>`
                   : `<label>Selection<input value="${escapeHtml(bet.selection_label)}" disabled></label>`
               }
-              <label>Stake<input name="stake" type="number" min="1" step="1" value="${number(bet.stake)}"></label>
+              <label>Stake<input name="stake" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(bet.stake)}"></label>
               <button class="primary-button compact-button" ${state.isSubmittingBet ? "disabled" : ""}>Cập nhật</button>
             </form>`
           : `<div class="locked-copy"><small>Không thể sửa</small><b>${match ? escapeHtml(match.status) : "Outright"}</b></div>`
@@ -3346,8 +3472,37 @@ function bindShellEvents() {
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       state.active = button.dataset.tab;
+      state.notificationPanelOpen = false;
       state.message = "";
       state.error = "";
+      renderApp();
+    });
+  });
+
+  document.querySelector("[data-notification-toggle]")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const opening = !state.notificationPanelOpen;
+    if (opening) {
+      markNotificationsRead(getNotificationItems().map((item) => item.id));
+    }
+    state.notificationPanelOpen = opening;
+    renderApp();
+  });
+
+  document.querySelectorAll("[data-notification-bet]").forEach((button) => {
+    button.addEventListener("click", () => {
+      markNotificationsRead([button.dataset.notificationRead]);
+      state.notificationPanelOpen = false;
+      requestOpenBetModal(Number(button.dataset.notificationBet));
+    });
+  });
+
+  document.querySelectorAll("[data-notification-history]").forEach((button) => {
+    button.addEventListener("click", () => {
+      markNotificationsRead([button.dataset.notificationRead]);
+      state.notificationPanelOpen = false;
+      state.active = "predictionStats";
+      state.predictionStatsTab = "history";
       renderApp();
     });
   });
@@ -3363,6 +3518,8 @@ function bindShellEvents() {
   document.querySelectorAll("[data-open-bet-modal]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.closest("#match-search-results")) return;
+      if (button.dataset.notificationRead) markNotificationsRead([button.dataset.notificationRead]);
+      state.notificationPanelOpen = false;
       requestOpenBetModal(Number(button.dataset.openBetModal));
     });
   });
@@ -4655,18 +4812,18 @@ function money(value) {
 }
 
 function parseStakeInput(value) {
-  const cleaned = String(value || "").replace(/[^\d.]/g, "");
+  const cleaned = String(value || "").replace(/[^\d]/g, "");
   const numeric = Number(cleaned);
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
 function formatStakeInput(value) {
-  const numeric = Math.max(0, Math.trunc(number(value)));
-  return numeric ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(numeric) : "";
+  const numeric = Math.max(0, Math.trunc(parseStakeInput(value)));
+  return numeric ? stakeFmt.format(numeric) : "";
 }
 
 function number(value) {
-  return Number(value || 0);
+  return Number(String(value ?? 0).replace(/,/g, "")) || 0;
 }
 
 function dateText(value) {
