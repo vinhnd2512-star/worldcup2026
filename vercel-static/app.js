@@ -345,16 +345,22 @@ async function loadData() {
       .order("display_order", { ascending: true });
     state.bracketMatches = bracketResult.error ? [] : bracketResult.data || [];
 
-    let outrightQuery = state.client
-      .from("outright_markets")
-      .select("*")
-      .order("odds_multiplier", { ascending: true });
-    if (state.profile?.role !== "admin") {
-      outrightQuery = outrightQuery.eq("is_open", true);
-    }
-    const outrightResult = await outrightQuery;
-    throwIfError(outrightResult.error);
-    state.outrightMarkets = outrightResult.data || [];
+    const outrightMarketKeys = ["tournament_winner", "golden_boot"];
+    const outrightResults = await Promise.all(outrightMarketKeys.map((marketKey) => {
+      let query = state.client
+        .from("outright_markets")
+        .select("*")
+        .eq("market_key", marketKey)
+        .order("odds_multiplier", { ascending: true })
+        .order("selection_label", { ascending: true })
+        .limit(marketKey === "golden_boot" ? 1000 : 100);
+      if (state.profile?.role !== "admin") {
+        query = query.eq("is_open", true);
+      }
+      return query;
+    }));
+    outrightResults.forEach((result) => throwIfError(result.error));
+    state.outrightMarkets = outrightResults.flatMap((result) => result.data || []);
 
     const leaderboardResult = await state.client.from("leaderboard").select("*").order("rank", { ascending: true });
     throwIfError(leaderboardResult.error);

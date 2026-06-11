@@ -2000,12 +2000,15 @@ async function syncOddsSummary() {
   const matchOdds = await fetchMatchOddsEvents();
   const events = matchOdds.events;
   const matchQuota = matchOdds.quota;
-  const outrightOdds = await fetchOutrightOddsEvents();
+  const outrightOdds = {
+    events: [],
+    quota: null,
+    attempted: false,
+    error: "Tournament winner odds are managed internally by game rules."
+  };
 
   const matches = await getMatchesForOddsMapping();
-  const teams = await getTeamsForOutrightMapping();
   await resetProviderManagedMarketsToInternal(matches);
-  const outrightClosesAt = matches[0]?.starts_at || "2026-06-11T19:00:00Z";
   let matchedEvents = 0;
   let updatedMarkets = 0;
   let updatedOutrights = 0;
@@ -2034,10 +2037,6 @@ async function syncOddsSummary() {
 
   await closeInternalTotalGoalFallbacks([...providerTotalMatchIds]);
 
-  for (const candidate of bestOutrightPrices(outrightOdds.events, teams)) {
-    await upsertOutrightMarketFromOdds(candidate, outrightClosesAt);
-    updatedOutrights += 1;
-  }
 
   const totalEvents = events.length + outrightOdds.events.length;
   const quota = mergeOddsQuota(matchQuota, outrightOdds.quota);
