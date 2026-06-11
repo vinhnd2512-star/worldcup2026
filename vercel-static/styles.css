@@ -880,12 +880,27 @@ select:focus {
   background: transparent;
 }
 
-.stepper-control strong {
+.stepper-control input {
+  width: 58px;
+  border: 0;
   padding: 12px 0;
   color: var(--gold-soft);
   font-family: "Anybody", system-ui, sans-serif;
   font-size: 28px;
+  font-weight: 800;
   text-align: center;
+  background: transparent;
+  outline: 0;
+}
+
+.stepper-control input::-webkit-outer-spin-button,
+.stepper-control input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.stepper-control input[type="number"] {
+  appearance: textfield;
 }
 
 .market-grid {

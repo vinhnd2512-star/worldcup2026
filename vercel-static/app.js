@@ -4564,10 +4564,9 @@ function scoreStepper(id, label, value) {
       <span>${escapeHtml(label)}</span>
       <div class="stepper-control">
         <button type="button" data-dec="${id}">-</button>
-        <strong id="${id}-display">${value}</strong>
+        <input id="${id}" class="score-stepper-input" type="number" min="0" step="1" inputmode="numeric" value="${value}" aria-label="${escapeHtml(label)}">
         <button type="button" data-inc="${id}">+</button>
       </div>
-      <input id="${id}" type="hidden" value="${value}">
     </div>
   `;
 }
@@ -4596,11 +4595,20 @@ document.addEventListener("click", (event) => {
   if (!dec && !inc) return;
   const id = (dec || inc).dataset.dec || (dec || inc).dataset.inc;
   const input = document.getElementById(id);
-  const display = document.getElementById(`${id}-display`);
-  const next = Math.max(0, Number(input.value) + (inc ? 1 : -1));
+  if (!input) return;
+  const next = Math.max(0, Number(input.value || 0) + (inc ? 1 : -1));
   input.value = String(next);
-  display.textContent = String(next);
   if (id === "modal-score-home" || id === "modal-score-away") {
+    updateModalDerivedValues();
+  }
+});
+
+document.addEventListener("input", (event) => {
+  const input = event.target.closest(".score-stepper-input");
+  if (!input) return;
+  const next = Math.max(0, Math.trunc(Number(input.value || 0)));
+  input.value = String(next);
+  if (input.id === "modal-score-home" || input.id === "modal-score-away") {
     updateModalDerivedValues();
   }
 });
