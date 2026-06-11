@@ -19,6 +19,8 @@ class MatchResult:
     yellow_cards_away: int = 0
     red_cards_home: int = 0
     red_cards_away: int = 0
+    top_scorer_player_id: int | None = None
+    tournament_winner_team_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,17 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
 
 
 def prediction_bonus(market_key: str) -> Decimal:
+    """
+    Prediction bonuses by market type.
+    
+    Bonus values reflect difficulty:
+    - Easy markets (1X2, totals): 8-10 points
+    - Medium markets (correct_score, BTTS): 25-50 points
+    - Hard outrights (tournament_winner, golden_boot): 30-50 points
+      * Calculated from xG simulation and team strength models
+      * Fair odds: 1 / probability
+      * Bonus range: 30-50 for high-difficulty long-term bets
+    """
     bonuses = {
         "correct_score": Decimal("50.00"),
         "match_result": Decimal("10.00"),
@@ -106,7 +119,8 @@ def prediction_bonus(market_key: str) -> Decimal:
         "btts": Decimal("8.00"),
         "corners_total": Decimal("6.00"),
         "cards_total": Decimal("6.00"),
-        "tournament_winner": Decimal("25.00"),
+        "tournament_winner": Decimal("40.00"),
+        "golden_boot": Decimal("50.00"),
     }
     return bonuses.get(market_key, Decimal("0.00"))
 
@@ -156,5 +170,11 @@ def _is_winning_selection(bet: BetSelection, result: MatchResult) -> bool:
         return (bet.selection_key == "over" and Decimal(total_cards) > line) or (
             bet.selection_key == "under" and Decimal(total_cards) < line
         )
+
+    if bet.market_key == "golden_boot":
+        return result.top_scorer_player_id is not None and bet.selection_key == f"player:{result.top_scorer_player_id}"
+
+    if bet.market_key == "tournament_winner":
+        return result.tournament_winner_team_code is not None and bet.selection_key == result.tournament_winner_team_code
 
     return False

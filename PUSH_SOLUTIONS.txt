@@ -1,0 +1,92 @@
+🎯 GIẢI PHÁP CHO "PATH NOT FOUND"
+
+================================================================================
+✅ CÁCH 1: Từ File Explorer (Dễ Nhất - Khuyến Nghị)
+================================================================================
+
+1. Mở File Explorer (Win+E)
+
+2. Dán đường dẫn này vào Address Bar:
+   C:\Users\user\OneDrive\Cong - iCapital Intern\Project Z - Khác\web_app_worldcup.worktrees\agents-sheet-lich-thi-dau-du-doan
+
+3. Nhấn Enter để vào folder
+
+4. Trong folder, làm theo:
+   - Giữ Shift + Click chuột phải → "Open PowerShell here"
+   - Hoặc "Open command window here"
+
+5. Dán lệnh này:
+   python git_push_cli.py
+
+6. Nhấn Enter và chờ hoàn thành ✅
+
+
+================================================================================
+✅ CÁCH 2: Sử Dụng Script Smart (Tự Tìm Path)
+================================================================================
+
+1. Nhấn Win+R
+
+2. Gõ: cmd
+
+3. Dán lệnh này (sao chép nguyên vẹn):
+   C:\Users\user\OneDrive\Cong\ -\ iCapital\ Intern\Project\ Z\ -\ Khác\web_app_worldcup.worktrees\agents-sheet-lich-thi-dau-du-doan\push_smart.bat
+
+4. Nhấn Enter
+
+
+================================================================================
+✅ CÁCH 3: PowerShell Shortcut (Nếu Có PS 5+)
+================================================================================
+
+1. Nhấn Win+R
+
+2. Gõ: powershell
+
+3. Dán lệnh này:
+   cd 'C:\Users\user\OneDrive\Cong - iCapital Intern\Project Z - Khác\web_app_worldcup.worktrees\agents-sheet-lich-thi-dau-du-doan'; python git_push_cli.py
+
+
+================================================================================
+✅ CÁCH 4: Tạo Shortcut trên Desktop
+================================================================================
+
+1. Tạo file mới → lưu tên: git_push.cmd
+
+2. Nội dung (sao chép nguyên vẹn):
+@echo off
+cd /d "C:\Users\user\OneDrive\Cong - iCapital Intern\Project Z - Khác\web_app_worldcup.worktrees\agents-sheet-lich-thi-dau-du-doan"
+python git_push_cli.py
+pause
+
+3. Lưu file vào Desktop
+
+4. Double-click file để chạy
+
+
+================================================================================
+❓ NẾU VẪN BÁO LỖI
+================================================================================
+
+Lỗi: "python not found"
+→ Cài Python: https://www.python.org/downloads/
+→ Tích vào "Add Python to PATH"
+
+Lỗi: "git not found"
+→ Cài Git: https://git-scm.com/download/win
+
+Lỗi: Khác
+→ Chạy: git status
+→ Chạy: git log --oneline -5
+→ Nếu có commit, thì chạy: git push
+
+
+================================================================================
+✨ NHANH NHẤT - COPY & PASTE
+================================================================================
+
+Mở Command Prompt (Win+R → cmd) và dán:
+
+cd /d C:\Users\user\OneDrive && cd "Cong - iCapital Intern" && cd "Project Z - Khác" && cd web_app_worldcup.worktrees && cd agents-sheet-lich-thi-dau-du-doan && git add -A && git commit -m "Điều chỉnh odds: Tournament Winner & Golden Boot" && git push
+
+Nhấn Enter! 🚀

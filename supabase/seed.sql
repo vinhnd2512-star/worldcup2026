@@ -244,8 +244,8 @@ values
   ('btts', 'Hai đội cùng ghi bàn', 'single', 'btts', false, 1.95, 5),
   ('corners_total', 'Tổng phạt góc', 'line', 'corners_total', true, 1.90, 6),
   ('cards_total', 'Tổng thẻ', 'line', 'cards_total', true, 1.90, 7),
-  ('tournament_winner', 'Vô địch giải', 'outright', 'tournament_winner', false, 4.00, 8),
-  ('golden_boot', 'Dự đoán Vua phá lưới', 'outright', 'golden_boot', false, 12.00, 9)
+  ('tournament_winner', 'Vô địch giải', 'outright', 'tournament_winner', false, 50.00, 8),
+  ('golden_boot', 'Dự đoán Vua phá lưới', 'outright', 'golden_boot', false, 120.00, 9)
 on conflict (key) do update
 set name = excluded.name,
     market_type = excluded.market_type,
