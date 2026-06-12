@@ -2258,6 +2258,7 @@ declare
   v_total_cards numeric;
   v_count integer := 0;
   v_advanced integer := 0;
+  v_ah_adjusted numeric;
 begin
   if not public.is_admin() then
     raise exception 'admin role required';
@@ -2349,6 +2350,33 @@ begin
     elsif v_bet.market_key = 'cards_total' then
       v_won := (v_bet.selection_key = 'over' and v_total_cards > v_bet.line)
         or (v_bet.selection_key = 'under' and v_total_cards < v_bet.line);
+    elsif v_bet.market_key = 'asian_handicap' then
+      -- line is handicap applied to home team (negative = home gives goals, positive = home receives)
+      v_ah_adjusted := coalesce(v_match.home_score, 0) + coalesce(v_bet.line, 0);
+      if v_ah_adjusted = coalesce(v_match.away_score, 0) then
+        -- Push: refund stake
+        v_payout := v_bet.stake;
+        v_delta := 0;
+        v_bonus := 0;
+        update public.bets set status = 'refunded', points_delta = v_delta, prediction_bonus = v_bonus, settled_at = now() where id = v_bet.id;
+        update public.profiles set wallet_balance = wallet_balance + v_payout where id = v_bet.user_id;
+        insert into public.wallet_ledger (user_id, actor_id, amount, kind, reason, balance_after)
+        select
+          v_bet.user_id,
+          auth.uid(),
+          v_payout,
+          'bet_refund',
+          'Asian handicap push: ' || v_bet.selection_label,
+          wallet_balance
+        from public.profiles
+        where id = v_bet.user_id;
+        insert into public.settlements (bet_id, result, status, payout, reason)
+        values (v_bet.id, 'draw', 'refunded', v_payout, 'Asian handicap push; adjusted scores tied; stake refunded.');
+        v_count := v_count + 1;
+        continue;
+      end if;
+      v_won := (v_bet.selection_key = 'home' and v_ah_adjusted > coalesce(v_match.away_score, 0))
+        or (v_bet.selection_key = 'away' and v_ah_adjusted < coalesce(v_match.away_score, 0));
     end if;
 
     if v_won then
@@ -2359,6 +2387,7 @@ begin
         when v_bet.market_key = 'match_result' then 10
         when v_bet.market_key in ('draw_no_bet', 'total_goals', 'btts') then 8
         when v_bet.market_key in ('corners_total', 'cards_total') then 6
+        when v_bet.market_key = 'asian_handicap' then 8
         else 0
       end;
       update public.bets set status = 'won', points_delta = v_delta, prediction_bonus = v_bonus, settled_at = now() where id = v_bet.id;

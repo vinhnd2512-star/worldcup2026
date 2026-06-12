@@ -2112,7 +2112,7 @@ function modalMarketGroups(markets, group) {
   markets.forEach((market) => {
     groups.set(market.market_key, [...(groups.get(market.market_key) || []), market]);
   });
-  const order = group === "basic" ? ["correct_score", "total_goals", "match_result", "draw_no_bet"] : [];
+  const order = group === "basic" ? ["correct_score", "total_goals", "match_result", "draw_no_bet", "asian_handicap"] : [];
   return [...groups.entries()]
     .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: sortMarketsForDisplay(items) }))
     .sort((left, right) => {
@@ -2217,7 +2217,8 @@ function modalMarketTitle(marketKey, fallback = "") {
     total_goals: "Tài/Xỉu bàn thắng",
     btts: "Hai đội cùng ghi bàn",
     corners_total: "Tổng phạt góc",
-    cards_total: "Tổng thẻ"
+    cards_total: "Tổng thẻ",
+    asian_handicap: "Kèo châu Á (Handicap)"
   };
   return labels[marketKey] || fallback || marketKey;
 }
@@ -2229,7 +2230,8 @@ function modalMarketHelpText(marketKey) {
   const notes = {
     correct_score: "The Odds API hiện không hỗ trợ market correct_score cho World Cup, nên kèo tỷ số chính xác dùng multiplier internal của game.",
     draw_no_bet: "Chọn đội thắng. Nếu trận hòa, cược được hoàn tiền; nếu đội đã chọn thua thì mất cược.",
-    total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal."
+    total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal.",
+    asian_handicap: "Kèo châu Á: line áp dụng cho đội nhà (ví dụ -1.5 nghĩa là nhà phải thắng 2 bàn trở lên). Nếu tỷ số sau handicap bằng nhau, cược được hoàn tiền."
   };
   return notes[marketKey] || "";
 }
@@ -5007,4 +5009,18 @@ function throwIfError(error) {
   if (error) {
     throw error;
   }
+}
+
+async function safeFetchJson(path, options = {}) {
+  const response = await fetch(path, options);
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || `Request failed: ${response.status}`);
+  }
+  return payload;
 }
