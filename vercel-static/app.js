@@ -1173,6 +1173,9 @@ function groupNames() {
 
 function renderGroupCard(groupName) {
   const rows = groupStandings(groupName);
+  const completedMatches = state.matches
+    .filter((m) => m.group_name === groupName && isCompletedScore(m))
+    .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
   return `
     <article class="group-card glass-card">
       <div class="group-card-top">
@@ -1188,7 +1191,40 @@ function renderGroupCard(groupName) {
         </div>
         ${rows.map(renderStandingRow).join("")}
       </div>
+      ${completedMatches.length ? `
+        <div class="group-results">
+          <div class="group-results-head">Kết quả</div>
+          ${completedMatches.map(renderGroupMatchResult).join("")}
+        </div>
+      ` : ""}
     </article>
+  `;
+}
+
+function renderGroupMatchResult(match) {
+  const home = match.home_team?.name || match.home_team?.code || "?";
+  const away = match.away_team?.name || match.away_team?.code || "?";
+  const homeCode = match.home_team?.code || "";
+  const awayCode = match.away_team?.code || "";
+  const homeWon = number(match.home_score) > number(match.away_score);
+  const awayWon = number(match.away_score) > number(match.home_score);
+  return `
+    <div class="group-result-row" data-open-bet-modal="${match.id}">
+      <span class="group-result-team ${homeWon ? "winner" : ""}">
+        <span class="fixture-flag">${teamFlagContent(match.home_team)}</span>
+        <span class="group-result-name">${escapeHtml(homeCode)}</span>
+      </span>
+      <span class="group-result-score">
+        <b class="${homeWon ? "score-win" : ""}">${match.home_score}</b>
+        <span>–</span>
+        <b class="${awayWon ? "score-win" : ""}">${match.away_score}</b>
+      </span>
+      <span class="group-result-team away ${awayWon ? "winner" : ""}">
+        <span class="group-result-name">${escapeHtml(awayCode)}</span>
+        <span class="fixture-flag">${teamFlagContent(match.away_team)}</span>
+      </span>
+      <span class="group-result-status">${escapeHtml(match.status)}</span>
+    </div>
   `;
 }
 

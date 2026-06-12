@@ -1,4 +1,4 @@
-const API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io";
+﻿const API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io";
 const ODDS_API_BASE_URL = "https://api.the-odds-api.com/v4";
 const FOOTBALL_DATA_BASE_URL = "https://api.football-data.org/v4";
 const WORLD_CUP_LEAGUE_ID = 1;
@@ -1591,7 +1591,21 @@ async function ensureDefaultMarketsForMatches(matches) {
       defaultMarket(match, "corners_total", "Tổng phạt góc 8.5", "over", "Tài góc 8.5", 8.5, 1.90, "internal"),
       defaultMarket(match, "corners_total", "Tổng phạt góc 8.5", "under", "Xỉu góc 8.5", 8.5, 1.90, "internal"),
       defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "over", "Tài thẻ 3.5", 3.5, 1.90, "internal"),
-      defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal")
+      defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal"),
+      // Asian Handicap -0.5: home must win; away wins or draws
+      defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "home",
+        `${homeTeam.name || "Đội nhà"} -0.5`, -0.5,
+        roundOdds(Math.max(1.28, Math.min(3.50, homeWinOdds))), "internal"),
+      defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "away",
+        `${awayTeam.name || "Đội khách"} +0.5`, -0.5,
+        roundOdds(Math.max(1.35, Math.min(2.80, (homeWinOdds / Math.max(0.1, homeWinOdds - 1)) * 0.97))), "internal"),
+      // Asian Handicap +0.5: home wins or draws; away must win
+      defaultMarket(match, "asian_handicap", "Kèo Châu Á +0.5", "home",
+        `${homeTeam.name || "Đội nhà"} +0.5`, 0.5,
+        roundOdds(Math.max(1.35, Math.min(2.80, (awayWinOdds / Math.max(0.1, awayWinOdds - 1)) * 0.97))), "internal"),
+      defaultMarket(match, "asian_handicap", "Kèo Châu Á +0.5", "away",
+        `${awayTeam.name || "Đội khách"} -0.5`, 0.5,
+        roundOdds(Math.max(1.28, Math.min(3.50, awayWinOdds))), "internal")
     );
   }
   return upsertJsonMinimal("match_markets", rows, "match_id,market_key,selection_key,line_key");
@@ -1629,15 +1643,27 @@ async function resetProviderManagedMarketsToInternal(matches) {
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "home", `${homeTeam.name || "Äá»™i nhÃ "} tháº¯ng`, null, homeWinOdds, "internal"),
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "draw", "HÃ²a", null, drawOdds, "internal"),
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "away", `${awayTeam.name || "Äá»™i khÃ¡ch"} tháº¯ng`, null, awayWinOdds, "internal"),
-      defaultMarket(match, "total_goals", "Tá»•ng bÃ n tháº¯ng 2.5", "over", "TÃ i 2.5", 2.5, 1.92, "internal"),
-      defaultMarket(match, "total_goals", "Tá»•ng bÃ n tháº¯ng 2.5", "under", "Xá»‰u 2.5", 2.5, 1.88, "internal")
+      defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", 2.5, 1.92, "internal"),
+      defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", 2.5, 1.88, "internal"),
+      // Asian Handicap -0.5: home must win; away wins or draws
+      defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "home",
+        `${homeTeam.name || "Đội nhà"} -0.5`, -0.5,
+        roundOdds(Math.max(1.28, Math.min(3.50, homeWinOdds))), "internal"),
+      defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "away",
+        `${awayTeam.name || "Đội khách"} +0.5`, -0.5,
+        roundOdds(Math.max(1.35, Math.min(2.80, (homeWinOdds / Math.max(0.1, homeWinOdds - 1)) * 0.97))), "internal"),
+      // Asian Handicap +0.5: home wins or draws; away must win
+      defaultMarket(match, "asian_handicap", "Kèo Châu Á +0.5", "home",
+        `${homeTeam.name || "Đội nhà"} +0.5`, 0.5,
+        roundOdds(Math.max(1.35, Math.min(2.80, (awayWinOdds / Math.max(0.1, awayWinOdds - 1)) * 0.97))), "internal"),
+      defaultMarket(match, "asian_handicap", "Kèo Châu Á +0.5", "away",
+        `${awayTeam.name || "Đội khách"} -0.5`, 0.5,
+        roundOdds(Math.max(1.28, Math.min(3.50, awayWinOdds))), "internal")
     );
   }
   await upsertJson("match_markets", rows, "match_id,market_key,selection_key,line_key");
   return rows.length;
-}
-
-async function closeInternalTotalGoalFallbacks(matchIds) {
+}async function closeInternalTotalGoalFallbacks(matchIds) {
   const ids = [...new Set((matchIds || []).map(Number).filter(Boolean))];
   if (!ids.length) return 0;
   const response = await supabaseFetch(
