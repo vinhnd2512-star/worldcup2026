@@ -1381,6 +1381,60 @@ async function autoSettleMatches(matchIds, accessToken) {
   return totalSettled;
 }
 
+function extractEspnFixtures(payload) {
+  const events = payload?.events || [];
+  const fixtures = [];
+  for (const ev of events) {
+    const comp = (ev.competitions || [])[0];
+    if (!comp) continue;
+    const homeComp = comp.competitors?.find((c) => c.homeAway === "home");
+    const awayComp = comp.competitors?.find((c) => c.homeAway === "away");
+    if (!homeComp || !awayComp) continue;
+    const homeCode = String(homeComp.team?.abbreviation || homeComp.team?.shortDisplayName || "").toUpperCase();
+    const awayCode = String(awayComp.team?.abbreviation || awayComp.team?.shortDisplayName || "").toUpperCase();
+    if (!homeCode || !awayCode) continue;
+    const statusName = String(comp.status?.type?.name || "").toUpperCase();
+    const statusState = String(comp.status?.type?.state || "").toLowerCase();
+    let status = "SCHEDULED";
+    if (statusName === "STATUS_FINAL" || statusState === "post") status = "FT";
+    else if (statusName === "STATUS_FINAL_AET") status = "AET";
+    else if (statusName === "STATUS_FINAL_PEN") status = "PEN";
+    else if (statusState === "in") status = "1H";
+    else if (statusName === "STATUS_HALFTIME") status = "HT";
+    else if (statusName === "STATUS_POSTPONED") status = "PST";
+    else if (statusName === "STATUS_CANCELED" || statusName === "STATUS_CANCELLED") status = "CANC";
+    const homeScore = statusState === "post" || statusState === "in" ? Number(homeComp.score ?? null) : null;
+    const awayScore = statusState === "post" || statusState === "in" ? Number(awayComp.score ?? null) : null;
+    fixtures.push({ homeCode, awayCode, homeScore: isNaN(homeScore) ? null : homeScore, awayScore: isNaN(awayScore) ? null : awayScore, status, kickOff: ev.date || comp.date || null });
+  }
+  return fixtures;
+}
+
+async function syncEspnResults() {
+  // Fetch the full WC2026 schedule in one call (Jun 11 – Jul 19 2026)
+  const url = `${ESPN_SOCCER_BASE}/scoreboard?dates=20260611-20260720&limit=200`;
+  let payload;
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
+    const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" }, signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) throw new Error(`ESPN scoreboard failed: ${res.status}`);
+    payload = await res.json();
+  } catch (err) {
+    await recordSyncRun({ provider: "espn", jobType: "results", status: "failed", requestCount: 1, message: String(err.message) });
+    return { provider: "espn", status: "failed", requests: 1, updated: 0, completedMatchIds: [] };
+  }
+  const fixtures = extractEspnFixtures(payload);
+  const { updated, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
+  await recordSyncRun({
+    provider: "espn",
+    jobType: "results",
+    status: "success",
+    requestCount: 1,
+    message: `ESPN: ${fixtures.length} fixtures parsed, ${updated} updated, ${(completedMatchIds || []).length} newly completed.`
+  });
+  return { provider: "espn", status: "success", requests: 1, updated, completedMatchIds };
+}
 async function syncFifaFantasyResults() {
   let payload;
   try {
@@ -2440,8 +2494,18 @@ export default async function handler(request, response) {
       Math.min(64, Number(body.maxTransfermarktTeams || env("MAX_TRANSFERMARKT_TEAMS") || DEFAULT_MAX_TRANSFERMARKT_TEAMS))
     );
 
-    // ── FIFA result sync (primary result source) ──────────────────────────
-    const fifaFantasyResult = includeFifaResults
+    // ── ESPN result sync (primary result source, no API key needed) ───────
+    const espnResult = includeFifaResults
+      ? await runProviderJob({
+          provider: "espn",
+          jobType: "results",
+          fallback: { updated: 0, completedMatchIds: [] },
+          task: syncEspnResults
+        })
+      : { provider: "espn", status: "skipped", requests: 0, updated: 0, completedMatchIds: [] };
+
+    // FIFA Fantasy fallback (if ESPN found nothing)
+    const fifaFantasyResult = (includeFifaResults && espnResult.status !== "success")
       ? await runProviderJob({
           provider: "fifa-fantasy",
           jobType: "results",
@@ -2450,8 +2514,8 @@ export default async function handler(request, response) {
         })
       : { provider: "fifa-fantasy", status: "skipped", requests: 0, updated: 0, completedMatchIds: [] };
 
-    // If FIFA Fantasy found nothing, try FIFA Calendar API as fallback
-    const fifaCalendarResult = (includeFifaResults && fifaFantasyResult.status !== "success") || includeFifaCalendar
+    // FIFA Calendar fallback (if ESPN + FIFA Fantasy both failed)
+    const fifaCalendarResult = (includeFifaResults && espnResult.status !== "success" && fifaFantasyResult.status !== "success") || includeFifaCalendar
       ? await runProviderJob({
           provider: "fifa-calendar",
           jobType: "results",
@@ -2460,8 +2524,9 @@ export default async function handler(request, response) {
         })
       : { provider: "fifa-calendar", status: "skipped", requests: 0, updated: 0, completedMatchIds: [] };
 
-    // Collect all newly-completed match IDs from both FIFA sources
+    // Collect all newly-completed match IDs from all result sources
     const newlyCompletedIds = [
+      ...(espnResult.completedMatchIds || []),
       ...(fifaFantasyResult.completedMatchIds || []),
       ...(fifaCalendarResult.completedMatchIds || [])
     ];
@@ -2543,12 +2608,13 @@ export default async function handler(request, response) {
         })
       : { provider: "the-odds-api", status: "skipped", requests: 0, events: 0 };
 
-    const results = [fifaFantasyResult, fifaCalendarResult, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult];
+    const results = [espnResult, fifaFantasyResult, fifaCalendarResult, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult];
     const status = results.some((result) => result.status === "failed" || result.status === "partial") ? "partial" : "ok";
     return send(response, 200, {
       status,
       settledBets,
       newlyCompleted: newlyCompletedIds.length,
+      espnResult,
       fifaFantasyResult,
       fifaCalendarResult,
       fixtureResult,

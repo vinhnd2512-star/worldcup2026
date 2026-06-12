@@ -4474,12 +4474,11 @@ async function syncResultsOnly() {
       })
     });
     state.providerSync = { isRunning: false, startedAt: state.providerSync.startedAt, finishedAt: new Date().toISOString(), result, error: "" };
-    const fantasy = result.fifaFantasyResult?.status || "skipped";
-    const calendar = result.fifaCalendarResult?.status || "skipped";
-    const updated = (result.fifaFantasyResult?.updated || 0) + (result.fifaCalendarResult?.updated || 0);
+    const espnOk = result.espnResult?.status === "success";
+    const updated = (result.espnResult?.updated || 0) + (result.fifaFantasyResult?.updated || 0) + (result.fifaCalendarResult?.updated || 0);
     const settled = result.settledBets || 0;
     const parts = [];
-    if (fantasy === "success" || calendar === "success") parts.push(`${updated} trận cập nhật`);
+    if (espnOk || result.fifaFantasyResult?.status === "success" || result.fifaCalendarResult?.status === "success") parts.push(`${updated} trận cập nhật`);
     if (settled > 0) parts.push(`${settled} cược đã settle`);
     if (!parts.length) parts.push("Không có dữ liệu mới");
     state.message = `Sync kết quả xong. ${parts.join(", ")}.`;
