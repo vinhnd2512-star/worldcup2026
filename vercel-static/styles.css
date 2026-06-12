@@ -1129,12 +1129,100 @@ select:focus {
   padding-right: 4px;
 }
 
+.schedule-sheet-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sheet-tab {
+  min-height: 40px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sheet-tab b {
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.08);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.sheet-tab.active {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
 .fixture-row {
   min-height: 76px;
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.fixture-row--done .compact-button {
+  grid-column: 6;
+  grid-row: 1;
+  border-color: var(--border);
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.fixture-bet-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.fixture-bet-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fixture-bet-item {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.75fr) minmax(150px, 0.8fr) minmax(220px, 1.25fr) minmax(150px, 0.8fr);
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.fixture-bet-item div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fixture-bet-item small,
+.fixture-bet-item span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.fixture-bet-item b {
+  overflow-wrap: anywhere;
 }
 
 .fixture-number,
@@ -2955,6 +3043,38 @@ select:focus {
   margin: 6px 0 0;
 }
 
+.sync-help-button {
+  width: 38px;
+  height: 38px;
+  font-weight: 900;
+}
+
+.sync-help-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.sync-help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.sync-help-grid div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sync-help-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .metric {
   padding: 20px;
 }
@@ -3264,6 +3384,11 @@ select {
 }
 
 /* Group match results section */
+.group-results-toggle {
+  width: fit-content;
+  justify-self: start;
+}
+
 .group-results {
   border-top: 1px solid var(--border);
   padding-top: 10px;
@@ -4262,6 +4387,21 @@ select {
     grid-row: 1;
     min-height: 34px;
     padding: 0 12px;
+  }
+
+  .fixture-row .compact-button {
+    grid-column: 3;
+    grid-row: 1;
+    min-height: 34px;
+    padding: 0 12px;
+  }
+
+  .fixture-bet-summary {
+    grid-column: 1 / -1;
+  }
+
+  .fixture-bet-item {
+    grid-template-columns: 1fr;
   }
 
   .history-row,

@@ -61,6 +61,9 @@ const state = {
   actionLoading: "",
   predictionStatsTab: "upcoming",
   matchFilter: "upcoming",
+  scheduleSheet: "upcoming",
+  groupResultsOpen: {},
+  syncHelpOpen: false,
   matchSearch: "",
   matchSearchPanelOpen: false,
   matchSearchQuery: "",
@@ -635,12 +638,16 @@ function renderActiveView() {
 }
 
 function renderMatches() {
-  const filteredMatches = filteredScheduleMatches();
-  const featured = spotlightMatchFor(filteredMatches) || spotlightMatchFor(state.matches);
+  const filteredMatches = filteredScheduleMatches({ includeAllStatusesForTabs: true });
+  const upcomingMatches = filteredMatches.filter((match) => !isCompletedScore(match));
+  const completedMatches = filteredMatches.filter(isCompletedScore);
+  const activeSheet = state.scheduleSheet === "completed" ? "completed" : "upcoming";
+  const activeMatches = activeSheet === "completed" ? completedMatches : upcomingMatches;
+  const featured = spotlightMatchFor(upcomingMatches) || spotlightMatchFor(filteredScheduleMatches()) || spotlightMatchFor(filteredMatches) || spotlightMatchFor(state.matches);
   if (!featured) {
     return `<section class="glass-card panel"><h2>Chưa có lịch đấu</h2><p>Hãy chạy Supabase seed.</p></section>`;
   }
-  const visibleMatches = filteredMatches.filter((match) => match.id !== featured.id);
+  const visibleMatches = activeMatches.filter((match) => match.id !== featured.id);
   const summaryMatches = visibleMatches.slice(0, 6);
   const odd = featured.match_markets.find((market) => market.market_key === "correct_score")?.odds_multiplier || 6.00;
   return `
@@ -662,9 +669,9 @@ function renderMatches() {
           </div>
           <p><button class="primary-button" data-open-bet-modal="${featured.id}">Dự đoán ngay</button></p>
         </section>
-        <div class="section-heading"><h2>Lịch thi đấu</h2><span>${fmt.format(filteredMatches.length)} trận</span></div>
-        ${renderFixtureTable(filteredMatches)}
-        <div class="section-heading"><h2>Trận nổi bật tiếp theo</h2><span>${fmt.format(summaryMatches.length)} trận</span></div>
+        <div class="section-heading"><h2>Lịch thi đấu</h2><span>${fmt.format(activeMatches.length)} trận</span></div>
+        ${renderFixtureTable(activeMatches, { activeSheet, upcomingCount: upcomingMatches.length, completedCount: completedMatches.length })}
+        <div class="section-heading"><h2>${activeSheet === "completed" ? "Trận đã kết thúc gần đây" : "Trận nổi bật tiếp theo"}</h2><span>${fmt.format(summaryMatches.length)} trận</span></div>
         <section class="card-grid">${summaryMatches.map(renderMatchCard).join("") || "<p>Không có trận trong bộ lọc này.</p>"}</section>
       </div>
       <aside class="stack">
@@ -685,13 +692,17 @@ function renderMatches() {
   `;
 }
 
-function renderFixtureTable(matches) {
+function renderFixtureTable(matches, options = {}) {
+  const activeSheet = options.activeSheet === "completed" ? "completed" : "upcoming";
+  const tableTitle = activeSheet === "completed" ? "Trận đã kết thúc" : "Trận sắp diễn ra";
+  const tableHint = activeSheet === "completed" ? "trận có kết quả" : "trận để dự đoán";
   return `
     <section class="fixture-table glass-card">
       <div class="section-heading">
-        <h2>Tất cả cặp trận</h2>
-        <span>${fmt.format(matches.length)} trận để dự đoán</span>
+        <h2>${tableTitle}</h2>
+        <span>${fmt.format(matches.length)} ${tableHint}</span>
       </div>
+      ${renderScheduleSheetTabs(activeSheet, options)}
       <div class="fixture-head">
         <span>Trận</span>
         <span>Thời gian</span>
@@ -704,6 +715,23 @@ function renderFixtureTable(matches) {
         ${matches.map(renderFixtureRow).join("") || `<p class="empty-copy">Không có trận trong bộ lọc này.</p>`}
       </div>
     </section>
+  `;
+}
+
+function renderScheduleSheetTabs(activeSheet, options = {}) {
+  const tabs = [
+    ["upcoming", "Sắp diễn ra", options.upcomingCount || 0],
+    ["completed", "Đã kết thúc", options.completedCount || 0]
+  ];
+  return `
+    <div class="schedule-sheet-tabs" role="tablist" aria-label="Schedule sheets">
+      ${tabs.map(([key, label, count]) => `
+        <button class="sheet-tab ${activeSheet === key ? "active" : ""}" type="button" role="tab" aria-selected="${activeSheet === key ? "true" : "false"}" data-schedule-sheet="${key}">
+          <span>${label}</span>
+          <b>${fmt.format(count)}</b>
+        </button>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -728,8 +756,41 @@ function renderFixtureRow(match) {
         <small>${escapeHtml(matchLocation(match))}</small>
       </div>
       <span class="fixture-market-count">${done ? escapeHtml(match.status) : `${fmt.format(openMarkets)} open`}</span>
-      <button class="compact-button${done ? "" : " primary-button"}" data-open-bet-modal="${match.id}">${done ? "Chi tiết" : "Dự đoán"}</button>
+      ${done ? renderCompletedFixtureBetSummary(match) : ""}
+      <button class="compact-button${done ? "" : " primary-button"}" data-open-bet-modal="${match.id}">${done ? "Xem chi tiết" : "Dự đoán"}</button>
     </article>
+  `;
+}
+
+function renderCompletedFixtureBetSummary(match) {
+  const bets = betsForMatch(match);
+  if (!bets.length) {
+    return `<div class="fixture-bet-summary"><span class="fixture-bet-empty">Bạn chưa bet trận này.</span></div>`;
+  }
+  return `
+    <div class="fixture-bet-summary">
+      ${bets.map(renderFixtureBetSummaryItem).join("")}
+    </div>
+  `;
+}
+
+function betsForMatch(match) {
+  return (state.bets || [])
+    .filter((bet) => Number(bet.match_id) === Number(match.id))
+    .sort((left, right) => new Date(right.placed_at || 0).getTime() - new Date(left.placed_at || 0).getTime());
+}
+
+function renderFixtureBetSummaryItem(bet) {
+  const outcome = betOutcome(bet);
+  const score = betScoreAmount(bet);
+  const receivedLabel = bet.status === "placed" ? `Potential ${money(betReceivedAmount(bet))}` : money(betReceivedAmount(bet));
+  return `
+    <div class="fixture-bet-item">
+      <div><small>Kèo đã bet</small><b>${escapeHtml(betMarketTitle(bet))}</b></div>
+      <div><small>Dự đoán</small><b>${escapeHtml(bet.selection_label || "-")}</b><span>${money(bet.stake)} x${fmtOne.format(number(bet.locked_multiplier))}</span></div>
+      <div><small>Thực tế</small><b>${escapeHtml(betActualText(bet))}</b></div>
+      <div><small>Kết luận</small><b class="${escapeHtml(outcome.className)}">${escapeHtml(outcome.label)}</b><span>Nhận về: ${escapeHtml(receivedLabel)} | Điểm: ${score >= 0 ? "+" : ""}${money(score)}</span></div>
+    </div>
   `;
 }
 
@@ -809,6 +870,7 @@ function filteredScheduleMatches(options = {}) {
   const now = new Date();
   const todayKey = localDateKey(now);
   const useSearch = options.useSearch !== false;
+  const includeAllStatusesForTabs = options.includeAllStatusesForTabs === true;
   const selectedDate = options.dateKey || "";
   const search = searchNormalize(state.matchSearch);
   return state.matches.filter((match) => {
@@ -818,6 +880,7 @@ function filteredScheduleMatches(options = {}) {
     else if (state.matchFilter === "today") matchesFilter = localDateKey(new Date(match.starts_at)) === todayKey;
     else if (state.matchFilter === "knockout") matchesFilter = isKnockoutMatch(match);
     else if (state.matchFilter?.startsWith("group:")) matchesFilter = match.group_name === state.matchFilter.slice(6);
+    else if (includeAllStatusesForTabs) matchesFilter = true;
     else { const ms = new Date(match.starts_at).getTime(); const threeDaysAgo = now.getTime() - 3 * 86400000; matchesFilter = (ms >= now.getTime() && match.status === "SCHEDULED") || (ms >= threeDaysAgo && ["FT","AET","PEN","FT_PEN","1H","2H","HT"].includes(match.status)); }
     if (!matchesFilter) return false;
     if (!useSearch || !search) return true;
@@ -1309,6 +1372,7 @@ function renderGroupCard(groupName) {
   const completedMatches = state.matches
     .filter((m) => m.group_name === groupName && isCompletedScore(m))
     .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+  const resultsOpen = Boolean(state.groupResultsOpen?.[groupName]);
   return `
     <article class="group-card glass-card">
       <div class="group-card-top">
@@ -1325,6 +1389,11 @@ function renderGroupCard(groupName) {
         ${rows.map(renderStandingRow).join("")}
       </div>
       ${completedMatches.length ? `
+        <button class="ghost-button compact-button group-results-toggle" type="button" data-toggle-group-results="${escapeHtml(groupName)}">
+          ${resultsOpen ? "Ẩn kết quả" : "Xem kết quả"} (${fmt.format(completedMatches.length)})
+        </button>
+      ` : ""}
+      ${completedMatches.length && resultsOpen ? `
         <div class="group-results">
           <div class="group-results-head">Kết quả</div>
           ${completedMatches.map(renderGroupMatchResult).join("")}
@@ -3292,6 +3361,26 @@ function renderHistoryRow(bet) {
   `;
 }
 
+function renderSyncHelpPanel() {
+  if (!state.syncHelpOpen) return "";
+  const items = [
+    ["Sync odds", "Cap nhat keo nha cai va odds dang mo cho cac tran."],
+    ["Sync fixtures/FIFA", "Cap nhat lich thi dau, thong tin FIFA, ranking, doi hinh va du lieu tran."],
+    ["Sync ket qua nhanh", "Chi lay ket qua moi nhat va settle cac bet lien quan nhanh hon."],
+    ["Sync day du", "Chay dong bo tong hop tu cac provider dang cau hinh."],
+    ["Sync Transfermarkt", "Cap nhat gia tri cau thu/doi tu Transfermarkt de phuc vu ranking suc manh."],
+    ["Settle tat ca FT", "Tinh win/loss/refund cho nhung tran da co trang thai FT/AET/PEN/FT_PEN."]
+  ];
+  return `
+    <section class="glass-card panel sync-help-panel">
+      <div class="section-heading"><h2>Sync help</h2><span>${fmt.format(items.length)} actions</span></div>
+      <div class="sync-help-grid">
+        ${items.map(([title, text]) => `<div><b>${escapeHtml(title)}</b><span>${escapeHtml(text)}</span></div>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderAdmin() {
   const players = state.users.filter((user) => user.role === "player");
   const report = state.report || {};
@@ -3310,6 +3399,7 @@ function renderAdmin() {
           <button class="ghost-button" id="export-reports-button">Export reports</button>
           <button class="ghost-button" id="export-results-button">Export results</button>
           <button class="ghost-button" id="export-odds-report-button">Export odds</button>
+          <button class="icon-button sync-help-button" type="button" data-sync-help-toggle aria-label="Sync help">?</button>
           <button class="ghost-button" id="sync-odds-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync odds"}</button>
           <button class="ghost-button" id="sync-data-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync fixtures/FIFA"}</button>
           <button class="ghost-button" id="settle-all-button">Settle tất cả FT</button>
@@ -3328,6 +3418,7 @@ function renderAdmin() {
         ${metric("Open bets", report.open_bets || 0)}
         ${metric("Settled bets", report.settled_bets || 0)}
       </section>
+      ${renderSyncHelpPanel()}
       ${renderDeploymentHealth()}
       ${renderProviderSyncPanel()}
       ${renderOddsTrackingReport()}
@@ -4149,6 +4240,30 @@ function bindShellEvents() {
       state.selectedMatchId = null;
       renderApp();
     });
+  });
+
+  document.querySelectorAll("[data-schedule-sheet]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.scheduleSheet = button.dataset.scheduleSheet === "completed" ? "completed" : "upcoming";
+      state.selectedMatchId = null;
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll("[data-toggle-group-results]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const groupName = button.dataset.toggleGroupResults;
+      state.groupResultsOpen = {
+        ...state.groupResultsOpen,
+        [groupName]: !state.groupResultsOpen?.[groupName]
+      };
+      renderApp();
+    });
+  });
+
+  document.querySelector("[data-sync-help-toggle]")?.addEventListener("click", () => {
+    state.syncHelpOpen = !state.syncHelpOpen;
+    renderApp();
   });
 
   document.querySelectorAll("[data-prediction-stats-tab]").forEach((button) => {
