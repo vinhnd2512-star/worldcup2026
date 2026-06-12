@@ -1308,7 +1308,7 @@ function extractFifaCalendarFixtures(payload) {
 }
 
 async function upsertMatchResultsByCode(fixtures) {
-  if (!fixtures.length) return { updated: 0 };
+  if (!fixtures || !fixtures.length) return { updated: 0, completedMatchIds: [] };
   const codes = [...new Set(fixtures.flatMap((f) => [f.homeCode, f.awayCode]))];
   const teamsByCode = await getTeamsByCodes(codes);
   const matchesRes = await supabaseFetch(
@@ -1403,7 +1403,7 @@ async function syncFifaFantasyResults() {
     jobType: "results",
     status: "success",
     requestCount: 1,
-    message: `Parsed ${fixtures.length} fixtures from FIFA Fantasy; updated ${updated} matches; ${completedMatchIds.length} newly completed.`
+    message: `Parsed ${fixtures.length} fixtures from FIFA Fantasy; updated ${updated} matches; ${(completedMatchIds || []).length} newly completed.`
   });
   return { provider: "fifa-fantasy", status: "success", requests: 1, updated, completedMatchIds };
 }
@@ -1430,7 +1430,7 @@ async function syncFifaCalendarResults() {
     jobType: "results",
     status: "success",
     requestCount: 1,
-    message: `Parsed ${fixtures.length} fixtures from FIFA Calendar API; updated ${updated} matches; ${completedMatchIds.length} newly completed.`
+    message: `Parsed ${fixtures.length} fixtures from FIFA Calendar API; updated ${updated} matches; ${(completedMatchIds || []).length} newly completed.`
   });
   return { provider: "fifa-calendar", status: "success", requests: 1, updated, completedMatchIds };
 }
