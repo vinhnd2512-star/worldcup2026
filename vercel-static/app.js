@@ -725,7 +725,7 @@ function filteredScheduleMatches(options = {}) {
     else if (state.matchFilter === "today") matchesFilter = localDateKey(new Date(match.starts_at)) === todayKey;
     else if (state.matchFilter === "knockout") matchesFilter = isKnockoutMatch(match);
     else if (state.matchFilter?.startsWith("group:")) matchesFilter = match.group_name === state.matchFilter.slice(6);
-    else matchesFilter = new Date(match.starts_at).getTime() >= now.getTime() && match.status === "SCHEDULED";
+    else { const ms = new Date(match.starts_at).getTime(); const threeDaysAgo = now.getTime() - 3 * 86400000; matchesFilter = (ms >= now.getTime() && match.status === "SCHEDULED") || (ms >= threeDaysAgo && ["FT","AET","PEN","FT_PEN","1H","2H","HT"].includes(match.status)); }
     if (!matchesFilter) return false;
     if (!useSearch || !search) return true;
     return searchNormalize(matchSearchText(match)).includes(search);
@@ -3028,6 +3028,7 @@ function renderAdmin() {
           <button class="ghost-button" id="export-audit-button">Export audit</button>
           <button class="ghost-button" id="export-reports-button">Export reports</button>
           <button class="ghost-button" id="export-odds-report-button">Export odds</button>
+          <button class="ghost-button" id="settle-all-button">Settle tất cả FT</button>
           <button class="primary-button" id="quick-results-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync kết quả nhanh"}</button>
           <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync đầy đủ"}</button>
           <button class="ghost-button" id="transfermarkt-sync-button">Sync Transfermarkt</button>
@@ -3963,6 +3964,7 @@ function bindShellEvents() {
   document.getElementById("tournament-winner-form")?.addEventListener("submit", settleTournamentWinner);
   document.getElementById("golden-boot-settle-form")?.addEventListener("submit", settleGoldenBoot);
   document.getElementById("refresh-button")?.addEventListener("click", () => loadData());
+  document.getElementById("settle-all-button")?.addEventListener("click", settleAllFt);
   document.getElementById("quick-results-sync-button")?.addEventListener("click", syncResultsOnly);
   document.getElementById("provider-sync-button")?.addEventListener("click", syncProviders);
   document.getElementById("transfermarkt-sync-button")?.addEventListener("click", () => syncTransfermarktValues());
@@ -4457,6 +4459,32 @@ async function settleGoldenBoot(event) {
   await loadData();
 }
 
+async function settleAllFt() {
+  state.message = ""; state.error = ""; renderApp();
+  try {
+    const { data: ftMatches, error: e1 } = await state.client
+      .from("matches")
+      .select("id")
+      .in("status", ["FT", "AET", "PEN", "FT_PEN"]);
+    if (e1) throw e1;
+    if (!ftMatches.length) { state.message = "Không có trận FT nào."; renderApp(); return; }
+    const ids = ftMatches.map((m) => m.id);
+    const { data: bets, error: e2 } = await state.client
+      .from("bets").select("match_id").eq("status", "placed").in("match_id", ids);
+    if (e2) throw e2;
+    const unsettledIds = [...new Set((bets || []).map((b) => b.match_id))];
+    if (!unsettledIds.length) { state.message = "Tất cả cược đã settle rồi."; renderApp(); return; }
+    let total = 0;
+    for (const matchId of unsettledIds) {
+      const { data, error } = await state.client.rpc("settle_match_bets", { p_match_id: matchId });
+      if (!error) total += Number(data) || 0;
+    }
+    state.message = `Settle xong ${total} cược từ ${unsettledIds.length} trận.`;
+  } catch (err) {
+    state.error = err.message || String(err);
+  }
+  await loadData();
+}
 async function syncResultsOnly() {
   if (state.providerSync.isRunning) return;
   state.providerSync = { isRunning: true, startedAt: new Date().toISOString(), finishedAt: "", result: null, error: "" };

@@ -2555,8 +2555,25 @@ export default async function handler(request, response) {
 
     // ── Auto-settle newly completed matches ───────────────────────────────
     let settledBets = 0;
-    if (autoSettle && newlyCompletedIds.length && callerToken) {
-      settledBets = await autoSettleMatches([...new Set(newlyCompletedIds)], callerToken);
+    if (autoSettle && callerToken) {
+      // Settle newly-completed + any FT matches that still have unsettled bets
+      const toSettle = [...new Set(newlyCompletedIds)];
+      try {
+        const ftRes = await supabaseFetch("/rest/v1/matches?status=in.(FT,AET,PEN,FT_PEN)&select=id");
+        if (ftRes.ok) {
+          const ftMatches = await ftRes.json();
+          const ftIds = ftMatches.map((m) => m.id);
+          if (ftIds.length) {
+            const betsRes = await supabaseFetch(`/rest/v1/bets?status=eq.placed&match_id=in.()&select=match_id`);
+            if (betsRes.ok) {
+              const unsettled = await betsRes.json();
+              const unsettledIds = [...new Set(unsettled.map((b) => b.match_id))];
+              for (const id of unsettledIds) { if (!toSettle.includes(id)) toSettle.push(id); }
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
+      if (toSettle.length) settledBets = await autoSettleMatches(toSettle, callerToken);
     }
 
     const statsResult = includeStats
