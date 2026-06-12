@@ -9,9 +9,13 @@ const state = {
   teams: [],
   teamPlayers: [],
   teamLineups: [],
+  matchStats: [],
   outrightMarkets: [],
   bets: [],
   leaderboard: [],
+  selectedLeaderboardUserId: "",
+  selectedLeaderboardBets: null,
+  leaderboardDetailError: "",
   users: [],
   report: null,
   syncRuns: [],
@@ -48,6 +52,13 @@ const state = {
   winnerSearch: "",
   lastPredictionBetId: null,
   isSubmittingBet: false,
+  authLoading: "",
+  authDraft: {
+    loginUsername: "demo",
+    signupUsername: "",
+    signupDisplayName: ""
+  },
+  actionLoading: "",
   predictionStatsTab: "upcoming",
   matchFilter: "upcoming",
   matchSearch: "",
@@ -130,6 +141,7 @@ const fmt = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
 const fmtOne = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
 const stakeFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const moneyFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const betDetailSelect = "*,user:profiles!bets_user_id_fkey(username,display_name),match:matches(*,home_team:teams!matches_home_team_id_fkey(*),away_team:teams!matches_away_team_id_fkey(*))";
 
 boot();
 
@@ -190,6 +202,41 @@ function renderWorldCupLogo(variant = "shell") {
   `;
 }
 
+function renderBouncingBall(label = "Loading", size = "small") {
+  return `
+    <span class="bouncing-ball-loader ${escapeHtml(size)}" role="status" aria-live="polite">
+      <span class="bouncing-ball" aria-hidden="true">
+        <svg viewBox="0 0 64 64" focusable="false">
+          <circle cx="32" cy="32" r="27" />
+          <path d="M32 5v54M5 32h54M13 14c11 8 27 8 38 0M13 50c11-8 27-8 38 0" />
+        </svg>
+      </span>
+      <span>${escapeHtml(label)}</span>
+    </span>
+  `;
+}
+
+function friendlyAuthError(error) {
+  const message = error?.message || String(error || "");
+  const lower = message.toLowerCase();
+  if (lower.includes("already registered") || lower.includes("already exists") || lower.includes("duplicate")) {
+    return "Tài khoản hoặc email này đã tồn tại. Hãy đăng nhập hoặc chọn username khác.";
+  }
+  if (lower.includes("signup") && lower.includes("disabled")) {
+    return "Supabase đang tắt public signup. Hãy bật Auth > Signups hoặc nhờ admin tạo tài khoản.";
+  }
+  if (lower.includes("password")) {
+    return "Mật khẩu chưa hợp lệ. Vui lòng dùng mật khẩu tối thiểu 6 ký tự.";
+  }
+  if (lower.includes("database") || lower.includes("profile") || lower.includes("trigger")) {
+    return "Không thể tạo hồ sơ người chơi. Hãy thử username khác hoặc báo admin kiểm tra trigger profiles.";
+  }
+  if (lower.includes("invalid login") || lower.includes("invalid credentials")) {
+    return "Sai tài khoản hoặc mật khẩu.";
+  }
+  return message || "Không thể xử lý yêu cầu đăng nhập.";
+}
+
 function renderConfigScreen() {
   app.innerHTML = `
     <main class="login-screen">
@@ -215,6 +262,9 @@ function renderConfigScreen() {
 }
 
 function renderLogin() {
+  const isLoginLoading = state.authLoading === "login";
+  const isSignupLoading = state.authLoading === "signup";
+  const isAuthLoading = Boolean(state.authLoading);
   app.innerHTML = `
     <main class="login-screen">
       <section class="login-card glass-card">
@@ -244,6 +294,25 @@ function renderLogin() {
       </section>
     </main>
   `;
+  const loginUsername = document.getElementById("login-username");
+  const signupUsername = document.getElementById("signup-username");
+  const signupDisplayName = document.getElementById("signup-display-name");
+  if (loginUsername) loginUsername.value = state.authDraft.loginUsername || "demo";
+  if (signupUsername) signupUsername.value = state.authDraft.signupUsername || "";
+  if (signupDisplayName) signupDisplayName.value = state.authDraft.signupDisplayName || "";
+  if (isAuthLoading) {
+    document.querySelectorAll("#login-form input, #signup-form input, #login-form button, #signup-form button").forEach((node) => {
+      node.disabled = true;
+    });
+  }
+  if (isLoginLoading) {
+    const button = document.querySelector("#login-form button");
+    if (button) button.innerHTML = renderBouncingBall("Dang dang nhap...");
+  }
+  if (isSignupLoading) {
+    const button = document.querySelector("#signup-form button");
+    if (button) button.innerHTML = renderBouncingBall("Dang tao tai khoan...");
+  }
   document.getElementById("login-form").addEventListener("submit", login);
   document.getElementById("signup-form").addEventListener("submit", createPublicAccount);
 }
@@ -255,13 +324,18 @@ async function login(event) {
   const raw = document.getElementById("login-username").value.trim().toLowerCase();
   const password = document.getElementById("login-password").value;
   const email = raw.includes("@") ? raw : `${raw}@worldcup.local`;
+  state.authDraft.loginUsername = raw;
+  state.authLoading = "login";
+  renderLogin();
   const { data, error } = await state.client.auth.signInWithPassword({ email, password });
   if (error) {
-    state.error = error.message;
+    state.error = friendlyAuthError(error);
+    state.authLoading = "";
     renderLogin();
     return;
   }
   state.session = data.session;
+  state.authLoading = "";
   await loadData();
 }
 
@@ -273,12 +347,17 @@ async function createPublicAccount(event) {
   const displayName = document.getElementById("signup-display-name").value.trim();
   const password = document.getElementById("signup-password").value;
   const username = raw.replace(/[^a-z0-9._-]/g, "");
+  state.authDraft.signupUsername = username || raw;
+  state.authDraft.signupDisplayName = displayName;
   if (!username || !displayName || password.length < 6) {
     state.error = "Vui lòng nhập tài khoản, tên hiển thị và mật khẩu tối thiểu 6 ký tự.";
+    state.authLoading = "";
     renderLogin();
     return;
   }
   const email = raw.includes("@") ? raw : `${username}@worldcup.local`;
+  state.authLoading = "signup";
+  renderLogin();
   const { data, error } = await state.client.auth.signUp({
     email,
     password,
@@ -291,16 +370,19 @@ async function createPublicAccount(event) {
     }
   });
   if (error) {
-    state.error = error.message;
+    state.error = friendlyAuthError(error);
+    state.authLoading = "";
     renderLogin();
     return;
   }
   if (data.session) {
     state.session = data.session;
+    state.authLoading = "";
     await loadData();
     return;
   }
-  state.message = "Đã tạo tài khoản. Nếu hệ thống yêu cầu xác nhận, hãy xác nhận rồi đăng nhập lại.";
+  state.authLoading = "";
+  state.message = "Đã tạo tài khoản. Nếu Supabase bật xác nhận email, hãy xác nhận email rồi đăng nhập lại; nếu dùng tài khoản local, admin cần tắt email confirmation.";
   renderLogin();
 }
 
@@ -339,6 +421,9 @@ async function loadData() {
       match_markets: [...(match.match_markets || [])].sort((a, b) => a.id - b.id)
     }));
     state.selectedMatchId ||= state.matches.find((match) => match.status === "SCHEDULED")?.id || state.matches[0]?.id || null;
+
+    const matchStatsResult = await state.client.from("match_stats").select("*");
+    state.matchStats = matchStatsResult.error ? [] : matchStatsResult.data || [];
 
     const bracketResult = await state.client
       .from("bracket_matches")
@@ -397,7 +482,7 @@ async function loadData() {
 
       let adminBetsQuery = state.client
         .from("bets")
-        .select("*,user:profiles!bets_user_id_fkey(username,display_name),match:matches(*,home_team:teams!matches_home_team_id_fkey(*),away_team:teams!matches_away_team_id_fkey(*))")
+        .select(betDetailSelect)
         .order("placed_at", { ascending: false })
         .limit(100);
       adminBetsQuery = applyAdminFilters(adminBetsQuery, "placed_at", "user_id");
@@ -551,7 +636,7 @@ function renderActiveView() {
 
 function renderMatches() {
   const filteredMatches = filteredScheduleMatches();
-  const featured = filteredMatches.find((match) => match.status === "SCHEDULED") || filteredMatches[0] || state.matches.find((match) => match.status === "SCHEDULED") || state.matches[0];
+  const featured = spotlightMatchFor(filteredMatches) || spotlightMatchFor(state.matches);
   if (!featured) {
     return `<section class="glass-card panel"><h2>Chưa có lịch đấu</h2><p>Hãy chạy Supabase seed.</p></section>`;
   }
@@ -738,6 +823,46 @@ function filteredScheduleMatches(options = {}) {
     if (!useSearch || !search) return true;
     return searchNormalize(matchSearchText(match)).includes(search);
   });
+}
+
+function matchRankQuality(team) {
+  const rank = number(team?.fifa_rank);
+  return rank ? Math.max(0, 220 - rank) : 0;
+}
+
+function matchSpotlightScore(match) {
+  return matchRankQuality(match?.home_team)
+    + matchRankQuality(match?.away_team)
+    + teamStrengthScore(match?.home_team)
+    + teamStrengthScore(match?.away_team);
+}
+
+function compareSpotlightMatches(left, right) {
+  const leftScore = matchSpotlightScore(left);
+  const rightScore = matchSpotlightScore(right);
+  if (rightScore !== leftScore) return rightScore - leftScore;
+  return new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime();
+}
+
+function spotlightMatchFor(matches, options = {}) {
+  const list = (matches || []).filter(Boolean);
+  if (!list.length) return null;
+  if (options.preferSelected) {
+    const selected = list.find((match) => Number(match.id) === Number(state.selectedMatchId));
+    if (selected) return selected;
+  }
+
+  const playable = list.filter((match) => canPredictMatch(match));
+  const scheduled = list.filter((match) => ["SCHEDULED", "NS", "TBD"].includes(String(match.status || "")));
+  const base = playable.length ? playable : (scheduled.length ? scheduled : list);
+  const now = Date.now();
+  const future = base.filter((match) => new Date(match.starts_at).getTime() >= now);
+  const pool = future.length ? future : base;
+  const nearestDay = pool
+    .map((match) => vnDateKey(match.starts_at))
+    .sort()[0];
+  const sameDay = pool.filter((match) => vnDateKey(match.starts_at) === nearestDay);
+  return [...sameDay].sort(compareSpotlightMatches)[0] || [...pool].sort(compareSpotlightMatches)[0] || list[0];
 }
 
 function renderPredictionMatchSearchPanel() {
@@ -1760,6 +1885,7 @@ function renderDetail() {
   const matches = filteredScheduleMatches({ useSearch: false, dateKey: selectedDate })
     .filter((match) => canPredictMatch(match))
     .sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime());
+  const forecastMatch = spotlightMatchFor(matches, { preferSelected: true });
   return `
     <div class="stack prediction-schedule-page">
       <div class="section-heading">
@@ -1770,7 +1896,7 @@ function renderDetail() {
         <span>${fmt.format(matches.length)} trận mở cược</span>
       </div>
       ${renderScheduleFilters({ includeSearchPanel: true })}
-      ${matches.length ? renderMatchValueForecast(state.matches.find((match) => match.id === state.selectedMatchId) || matches[0]) : ""}
+      ${forecastMatch ? renderMatchValueForecast(forecastMatch) : ""}
       <div class="prediction-layout">
         <div class="prediction-main-column">
           ${renderPredictionSchedule(matches)}
@@ -2149,7 +2275,7 @@ function renderBetModal() {
           </div>
           <div class="modal-submit-row">
             <span>${escapeHtml(modalSelectedSummary(match))}</span>
-            <button class="primary-button" ${state.isSubmittingBet ? "disabled" : ""}>Lưu mục đã chọn</button>
+            <button class="primary-button" ${state.isSubmittingBet ? "disabled" : ""}>${state.isSubmittingBet ? renderBouncingBall("Dang luu cuoc...") : "Lưu mục đã chọn"}</button>
           </div>
         </form>
       </section>
@@ -2538,7 +2664,7 @@ function renderOutrightSearchCard(marketKey) {
         Tiền cược
         <input id="${stakeId}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(100)}">
       </label>
-      <button class="primary-button wide" type="submit" ${filtered.length ? "" : "disabled"}>${isGoldenBoot ? "Đặt Vua phá lưới" : "Đặt vô địch"}</button>
+      <button class="primary-button wide" type="submit" ${filtered.length && !state.isSubmittingBet ? "" : "disabled"}>${state.isSubmittingBet ? renderBouncingBall("Dang dat cuoc...") : (isGoldenBoot ? "Đặt Vua phá lưới" : "Đặt vô địch")}</button>
     </form>
   `;
 }
@@ -2775,6 +2901,7 @@ function matchWinner(match) {
 }
 
 function renderLeaderboard() {
+  const selectedRow = state.leaderboard.find((row) => row.user_id === state.selectedLeaderboardUserId) || null;
   return `
     <div class="stack">
       <div class="section-heading"><div><h1>Bảng xếp hạng</h1><p>Thống kê theo cược đã đặt, ví hiện tại và lãi/lỗ đã settle.</p></div></div>
@@ -2794,7 +2921,7 @@ function renderLeaderboard() {
           <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền cược</span><span>Số tiền hiện tại</span><span>Lãi/Lỗ</span><span>% Lãi/Lỗ</span>
         </div>
         ${state.leaderboard.map((row) => `
-          <div class="table-row leaderboard-row">
+          <button class="table-row leaderboard-row clickable-row ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" type="button" data-leaderboard-user="${escapeHtml(row.user_id)}">
             <strong>#${row.rank}</strong>
             <span>${escapeHtml(row.display_name)}</span>
             <span>${fmt.format(number(row.total_bets ?? row.settled_bets))}</span>
@@ -2803,10 +2930,47 @@ function renderLeaderboard() {
             <span>${money(row.wallet_balance)}</span>
             <b class="${number(row.profit_loss ?? row.score) >= 0 ? "success" : "error"}">${number(row.profit_loss ?? row.score) >= 0 ? "+" : ""}${money(row.profit_loss ?? row.score)}</b>
             <span>${fmtOne.format(number(row.profit_loss_pct ?? row.roi))}%</span>
-          </div>
+          </button>
         `).join("")}
       </section>
+      ${selectedRow ? renderLeaderboardPlayerDetails(selectedRow) : ""}
     </div>
+  `;
+}
+
+function renderLeaderboardPlayerDetails(row) {
+  const bets = state.selectedLeaderboardBets;
+  const isOwnProfile = state.profile?.id === row.user_id;
+  const readHint = state.profile?.role === "admin" || isOwnProfile
+    ? ""
+    : `<p class="empty-copy">Chi tiet bet co the bi an boi RLS; admin hoac chinh nguoi choi moi xem duoc day du.</p>`;
+  return `
+    <section class="glass-card panel leaderboard-detail-panel">
+      <div class="section-heading">
+        <div>
+          <h2>${escapeHtml(row.display_name)}</h2>
+          <p>#${escapeHtml(row.rank)} · ${fmt.format(number(row.total_bets ?? row.settled_bets))} bets · ${fmtOne.format(number(row.accuracy))}% accuracy · score ${money(row.score)}</p>
+        </div>
+        <button class="ghost-button compact-button" data-clear-leaderboard-user>Close</button>
+      </div>
+      ${state.leaderboardDetailError ? `<p class="error">${escapeHtml(state.leaderboardDetailError)}</p>` : ""}
+      ${readHint}
+      ${
+        bets === null
+          ? `<p>Loading player predictions...</p>`
+          : bets.length
+            ? `<div class="stack compact-stack">${bets.map(renderLeaderboardBetRow).join("")}</div>`
+            : `<p>No readable predictions for this player.</p>`
+      }
+    </section>
+  `;
+}
+
+function renderLeaderboardBetRow(bet) {
+  return `
+    <article class="history-row bet-detail-row ${escapeHtml(bet.status)}">
+      ${renderBetDetailCells(bet)}
+    </article>
   `;
 }
 
@@ -2956,7 +3120,7 @@ function renderUpcomingBetRow(bet) {
                   : `<label>Selection<input value="${escapeHtml(bet.selection_label)}" disabled></label>`
               }
               <label>Stake<input name="stake" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(bet.stake)}"></label>
-              <button class="primary-button compact-button" ${state.isSubmittingBet ? "disabled" : ""}>Cập nhật</button>
+              <button class="primary-button compact-button" ${state.isSubmittingBet ? "disabled" : ""}>${state.isSubmittingBet ? renderBouncingBall("Dang cap nhat...") : "Cập nhật"}</button>
             </form>`
           : `<div class="locked-copy"><small>Không thể sửa</small><b>${match ? escapeHtml(match.status) : "Outright"}</b></div>`
       }
@@ -2981,6 +3145,115 @@ function canUpdateBet(bet, match = matchForBet(bet), market = marketForBet(bet, 
   if (!["SCHEDULED", "NS", "TBD"].includes(match.status)) return false;
   const closeTime = new Date(market.closes_at || match.starts_at).getTime();
   return Number.isFinite(closeTime) && closeTime > Date.now() && market.is_open !== false;
+}
+
+function statsForMatch(match) {
+  if (!match) return null;
+  return state.matchStats.find((stats) => Number(stats.match_id) === Number(match.id)) || null;
+}
+
+function settledMatchStatus(match) {
+  return Boolean(match && ["FT", "AET", "PEN", "FT_PEN", "PST", "CANC", "ABD", "SUSP", "VOID"].includes(String(match.status || "")));
+}
+
+function matchScoreText(match) {
+  if (!match) return "Outright market";
+  const home = match.home_team?.code || match.home_team?.name || "Home";
+  const away = match.away_team?.code || match.away_team?.name || "Away";
+  if (match.home_score === null || match.home_score === undefined || match.away_score === null || match.away_score === undefined) {
+    return `${home} vs ${away} · ${match.status || "pending"}`;
+  }
+  const penalty = match.home_penalties !== null && match.home_penalties !== undefined && match.away_penalties !== null && match.away_penalties !== undefined
+    ? ` · pens ${match.home_penalties}-${match.away_penalties}`
+    : "";
+  return `${home} ${match.home_score}-${match.away_score} ${away}${penalty} · ${match.status || "FT"}`;
+}
+
+function matchResultText(match) {
+  if (!match || match.home_score === null || match.home_score === undefined || match.away_score === null || match.away_score === undefined) return "pending";
+  if (number(match.home_score) > number(match.away_score)) return `${match.home_team?.name || "Home"} win`;
+  if (number(match.away_score) > number(match.home_score)) return `${match.away_team?.name || "Away"} win`;
+  return "Draw";
+}
+
+function betActualText(bet) {
+  const match = matchForBet(bet);
+  const market = marketForBet(bet, match);
+  if (!match) {
+    if (bet.status === "placed") return "Pending outright result";
+    if (bet.status === "won") return `Settled winner: ${bet.selection_label}`;
+    if (bet.status === "lost") return "Settled outright: selection did not win";
+    if (bet.status === "refunded") return "Outright refunded";
+    return bet.status || "Outright market";
+  }
+  if (["PST", "CANC", "ABD", "SUSP", "VOID"].includes(String(match.status || ""))) {
+    return `${matchScoreText(match)} · match void/refunded`;
+  }
+  if (!settledMatchStatus(match)) return `${matchScoreText(match)} · not settled`;
+
+  const stats = statsForMatch(match);
+  const totalGoals = number(match.home_score) + number(match.away_score);
+  const line = market?.line === null || market?.line === undefined ? null : number(market.line);
+  if (bet.market_key === "match_result") return `${matchScoreText(match)} · ${matchResultText(match)}`;
+  if (bet.market_key === "draw_no_bet") return `${matchScoreText(match)} · ${matchResultText(match)}${number(match.home_score) === number(match.away_score) ? " · stake refunded" : ""}`;
+  if (bet.market_key === "total_goals") return `${matchScoreText(match)} · total goals ${fmtOne.format(totalGoals)}${line !== null ? ` vs line ${fmtOne.format(line)}` : ""}`;
+  if (bet.market_key === "btts") return `${matchScoreText(match)} · BTTS ${number(match.home_score) > 0 && number(match.away_score) > 0 ? "Yes" : "No"}`;
+  if (bet.market_key === "corners_total") {
+    const totalCorners = stats ? number(stats.corners_home) + number(stats.corners_away) : null;
+    return `${matchScoreText(match)} · corners ${totalCorners === null ? "not synced" : fmtOne.format(totalCorners)}${line !== null ? ` vs line ${fmtOne.format(line)}` : ""}`;
+  }
+  if (bet.market_key === "cards_total") {
+    const totalCards = stats ? number(stats.yellow_cards_home) + number(stats.yellow_cards_away) + number(stats.red_cards_home) + number(stats.red_cards_away) : null;
+    return `${matchScoreText(match)} · cards ${totalCards === null ? "not synced" : fmtOne.format(totalCards)}${line !== null ? ` vs line ${fmtOne.format(line)}` : ""}`;
+  }
+  if (bet.market_key === "asian_handicap") {
+    const adjusted = number(match.home_score) + number(line || 0);
+    return `${matchScoreText(match)} · AH adjusted home ${fmtOne.format(adjusted)} vs away ${fmtOne.format(number(match.away_score))}`;
+  }
+  return matchScoreText(match);
+}
+
+function betOutcome(bet) {
+  if (bet.status === "won") return { label: "WIN", className: "success" };
+  if (bet.status === "lost") return { label: "LOSS", className: "error" };
+  if (bet.status === "refunded") return { label: "REFUND", className: "muted" };
+  return { label: "OPEN", className: "muted" };
+}
+
+function betReceivedAmount(bet) {
+  if (bet.status === "won") return number(bet.potential_payout);
+  if (bet.status === "refunded") return number(bet.stake);
+  if (bet.status === "lost") return 0;
+  return number(bet.potential_payout);
+}
+
+function betScoreAmount(bet) {
+  return number(bet.points_delta) + number(bet.prediction_bonus);
+}
+
+function betMarketTitle(bet) {
+  return modalMarketTitle(bet.market_key, bet.market_key);
+}
+
+function renderBetDetailCells(bet, { includeUser = false, allowVoid = false } = {}) {
+  const match = matchForBet(bet) || bet.match;
+  const title = match ? `${match.home_team.name} vs ${match.away_team.name}` : betMarketTitle(bet);
+  const outcome = betOutcome(bet);
+  const score = betScoreAmount(bet);
+  const receivedLabel = bet.status === "placed" ? `Potential ${money(betReceivedAmount(bet))}` : money(betReceivedAmount(bet));
+  return `
+    ${includeUser ? `<div><small>User</small><strong>${escapeHtml(bet.user?.display_name || bet.user_id)}</strong><small>${dateText(bet.placed_at)}</small></div>` : `<div><small>Match</small><strong>${escapeHtml(title)}</strong><small>${dateText(bet.placed_at)}</small></div>`}
+    <div><small>Bet type</small><b>${escapeHtml(betMarketTitle(bet))}</b><small>${escapeHtml(bet.market_key)}</small></div>
+    <div><small>Prediction</small><b>${escapeHtml(bet.selection_label)}</b><small>${money(bet.stake)} · x${fmtOne.format(number(bet.locked_multiplier))}</small></div>
+    <div><small>Actual</small><b>${escapeHtml(betActualText(bet))}</b></div>
+    <div>
+      <small>Outcome</small>
+      <b class="${escapeHtml(outcome.className)}">${escapeHtml(outcome.label)}</b>
+      <small>Received: ${escapeHtml(receivedLabel)}</small>
+      <small>Score: ${score >= 0 ? "+" : ""}${money(score)}${number(bet.prediction_bonus) ? ` · bonus ${money(bet.prediction_bonus)}` : ""}</small>
+      ${allowVoid && bet.status === "placed" ? `<button class="ghost-button compact-button" data-void-bet="${bet.id}">Void</button>` : ""}
+    </div>
+  `;
 }
 
 function renderHistory() {
@@ -3037,11 +3310,11 @@ function renderAdmin() {
           <button class="ghost-button" id="export-reports-button">Export reports</button>
           <button class="ghost-button" id="export-results-button">Export results</button>
           <button class="ghost-button" id="export-odds-report-button">Export odds</button>
-          <button class="ghost-button" id="sync-odds-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync odds"}</button>
-          <button class="ghost-button" id="sync-data-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync fixtures/FIFA"}</button>
+          <button class="ghost-button" id="sync-odds-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync odds"}</button>
+          <button class="ghost-button" id="sync-data-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync fixtures/FIFA"}</button>
           <button class="ghost-button" id="settle-all-button">Settle tất cả FT</button>
-          <button class="primary-button" id="quick-results-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync kết quả nhanh"}</button>
-          <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync đầy đủ"}</button>
+          <button class="primary-button" id="quick-results-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync kết quả nhanh"}</button>
+          <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync đầy đủ"}</button>
           <button class="ghost-button" id="transfermarkt-sync-button">Sync Transfermarkt</button>
           <button class="primary-button" id="refresh-button">Refresh</button>
         </div>
@@ -3074,14 +3347,14 @@ function renderAdmin() {
           <label>Tên hiển thị<input id="new-display-name" required></label>
           <label>Password<input id="new-password" value="demo123" required></label>
           <label>Tiền ban đầu<input id="new-points" type="number" value="1000"></label>
-          <button class="primary-button">Tạo user</button>
+          <button class="primary-button" ${state.actionLoading === "createUser" ? "disabled" : ""}>${state.actionLoading === "createUser" ? renderBouncingBall("Dang tao user...") : "Tạo user"}</button>
         </form>
         <form class="glass-card form-card form-grid" id="top-up-form">
           <h2>Nạp / trừ tiền</h2>
           <label>Người chơi<select id="topup-user">${players.map((user) => `<option value="${user.id}">${escapeHtml(user.display_name)}</option>`).join("")}</select></label>
           <label>Số tiền<input id="topup-amount" type="number" value="500"></label>
           <label>Lý do<input id="topup-reason" value="Admin top-up"></label>
-          <button class="primary-button">Cập nhật ví</button>
+          <button class="primary-button" ${state.actionLoading === "wallet" ? "disabled" : ""}>${state.actionLoading === "wallet" ? renderBouncingBall("Dang cap nhat...") : "Cập nhật ví"}</button>
         </form>
         <form class="glass-card form-card form-grid transfermarkt-import-form" id="transfermarkt-import-form">
           <h2>Transfermarkt import</h2>
@@ -3118,7 +3391,7 @@ function renderAdmin() {
           <h2>Reset password</h2>
           <label>Player<select id="reset-user">${players.map((user) => `<option value="${user.id}">${escapeHtml(user.display_name)}</option>`).join("")}</select></label>
           <label>New password<input id="reset-password" value="demo123" minlength="6" required></label>
-          <button class="primary-button">Reset password</button>
+          <button class="primary-button" ${state.actionLoading === "resetPassword" ? "disabled" : ""}>${state.actionLoading === "resetPassword" ? renderBouncingBall("Dang reset...") : "Reset password"}</button>
         </form>
         <form class="glass-card form-card form-grid" id="tournament-winner-form">
           <h2>Settle vô địch</h2>
@@ -3296,7 +3569,7 @@ function renderProviderSyncPanel() {
       ${
         sync.isRunning
           ? `<div class="sync-running-row">
-              <span class="sync-spinner" aria-hidden="true"></span>
+              ${renderBouncingBall("Syncing data...")}
               <div>
                 <strong>Đang sync fixtures, stats, FIFA data và odds...</strong>
                 <small>Bắt đầu ${escapeHtml(sync.startedAt ? dateText(sync.startedAt) : "vừa xong")}. Không đóng tab cho đến khi có kết quả.</small>
@@ -3334,7 +3607,7 @@ function renderProviderSyncOverlay() {
   return `
     <div class="sync-loading-backdrop" role="status" aria-live="polite">
       <section class="sync-loading-card glass-card">
-        <span class="sync-spinner large" aria-hidden="true"></span>
+        ${renderBouncingBall("Dang cap nhat...", "large")}
         <div>
           <h2>Đang cập nhật dữ liệu</h2>
           <p>Hệ thống đang gọi provider và sẽ tự hiển thị output khi xong.</p>
@@ -3634,6 +3907,14 @@ function renderAdminBetRow(bet) {
   `;
 }
 
+function renderAdminBetRow(bet) {
+  return `
+    <article class="history-row bet-detail-row ${escapeHtml(bet.status)}">
+      ${renderBetDetailCells(bet, { includeUser: true, allowVoid: true })}
+    </article>
+  `;
+}
+
 function renderLedgerRow(entry) {
   return `
     <div class="table-row">
@@ -3658,6 +3939,30 @@ function renderAuditRow(entry) {
   `;
 }
 
+async function selectLeaderboardUser(userId) {
+  if (!userId) return;
+  state.selectedLeaderboardUserId = userId;
+  state.selectedLeaderboardBets = null;
+  state.leaderboardDetailError = "";
+  renderApp();
+  try {
+    const { data, error } = await state.client
+      .from("bets")
+      .select(betDetailSelect)
+      .eq("user_id", userId)
+      .order("placed_at", { ascending: false })
+      .limit(300);
+    if (error) throw error;
+    if (state.selectedLeaderboardUserId !== userId) return;
+    state.selectedLeaderboardBets = data || [];
+  } catch (error) {
+    if (state.selectedLeaderboardUserId !== userId) return;
+    state.selectedLeaderboardBets = [];
+    state.leaderboardDetailError = error.message || String(error);
+  }
+  renderApp();
+}
+
 function bindShellEvents() {
   document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -3677,6 +3982,17 @@ function bindShellEvents() {
       state.error = "";
       renderApp();
     });
+  });
+
+  document.querySelectorAll("[data-leaderboard-user]").forEach((button) => {
+    button.addEventListener("click", () => selectLeaderboardUser(button.dataset.leaderboardUser));
+  });
+
+  document.querySelector("[data-clear-leaderboard-user]")?.addEventListener("click", () => {
+    state.selectedLeaderboardUserId = "";
+    state.selectedLeaderboardBets = null;
+    state.leaderboardDetailError = "";
+    renderApp();
   });
 
   document.querySelector("[data-profile-toggle]")?.addEventListener("click", (event) => {
@@ -3765,6 +4081,7 @@ function bindShellEvents() {
       const direction = Number(button.dataset.calendarMonth);
       state.calendarMonth = adjacentCalendarMonth(activeCalendarMonth(), direction);
       state.selectedCalendarDate = "";
+      state.selectedMatchId = null;
       renderApp();
     });
   });
@@ -3774,6 +4091,7 @@ function bindShellEvents() {
       state.selectedCalendarDate = button.dataset.calendarDate;
       state.calendarMonth = monthKeyFromDateKey(state.selectedCalendarDate);
       state.matchFilter = "all";
+      state.selectedMatchId = null;
       renderApp();
     });
   });
@@ -3781,6 +4099,7 @@ function bindShellEvents() {
   document.querySelectorAll("[data-calendar-clear]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedCalendarDate = "";
+      state.selectedMatchId = null;
       renderApp();
     });
   });
@@ -3827,6 +4146,7 @@ function bindShellEvents() {
     button.addEventListener("click", () => {
       state.matchFilter = button.dataset.matchFilter;
       state.selectedCalendarDate = "";
+      state.selectedMatchId = null;
       renderApp();
     });
   });
@@ -3893,6 +4213,7 @@ function bindShellEvents() {
 
   document.getElementById("match-search")?.addEventListener("input", (event) => {
     state.matchSearch = event.target.value;
+    state.selectedMatchId = null;
     renderApp();
     document.getElementById("match-search")?.focus();
   });
@@ -4058,6 +4379,7 @@ async function submitModalBets(event) {
   }
 
   state.isSubmittingBet = true;
+  renderApp();
   try {
     let lastBetId = null;
     for (const payload of payloads) {
@@ -4166,6 +4488,7 @@ async function updateBet(event) {
     : market.selection_key;
 
   state.isSubmittingBet = true;
+  renderApp();
   try {
     const { data, error } = await state.client.rpc("update_bet", {
       p_bet_id: bet.id,
@@ -4254,6 +4577,7 @@ async function submitOutrightBet(marketId, stake) {
   const market = state.outrightMarkets.find((item) => item.id === marketId);
   if (!market || !stake) return;
   state.isSubmittingBet = true;
+  renderApp();
   try {
     const { data, error } = await state.client.rpc("place_outright_bet", {
       p_outright_market_id: market.id,
@@ -4282,6 +4606,7 @@ async function submitOutrightBet(marketId, stake) {
 async function placeBet(payload) {
   if (state.isSubmittingBet) return;
   state.isSubmittingBet = true;
+  renderApp();
   try {
     const { data, error } = await state.client.rpc("place_bet", payload);
     if (error) {
@@ -4305,12 +4630,15 @@ async function placeBet(payload) {
 
 async function createUser(event) {
   event.preventDefault();
+  if (state.actionLoading) return;
   const payload = {
     username: document.getElementById("new-username").value.trim().toLowerCase(),
     display_name: document.getElementById("new-display-name").value.trim(),
     password: document.getElementById("new-password").value,
     starting_points: Number(document.getElementById("new-points").value || 0)
   };
+  state.actionLoading = "createUser";
+  renderApp();
   try {
     await safeFetchJson("/api/admin-create-user", {
       method: "POST",
@@ -4325,12 +4653,17 @@ async function createUser(event) {
   } catch (error) {
     state.error = error.message || "Không thể tạo user";
     state.message = "";
+  } finally {
+    state.actionLoading = "";
   }
   await loadData();
 }
 
 async function adjustWallet(event) {
   event.preventDefault();
+  if (state.actionLoading) return;
+  state.actionLoading = "wallet";
+  renderApp();
   const { error } = await state.client.rpc("admin_adjust_wallet", {
     p_user_id: document.getElementById("topup-user").value,
     p_amount: Number(document.getElementById("topup-amount").value || 0),
@@ -4338,6 +4671,7 @@ async function adjustWallet(event) {
   });
   state.message = error ? "" : "Đã cập nhật ví.";
   state.error = error ? error.message : "";
+  state.actionLoading = "";
   await loadData();
 }
 
@@ -4461,10 +4795,13 @@ async function updateOutrightControl(event) {
 
 async function resetPassword(event) {
   event.preventDefault();
+  if (state.actionLoading) return;
   const payload = {
     user_id: document.getElementById("reset-user").value,
     password: document.getElementById("reset-password").value
   };
+  state.actionLoading = "resetPassword";
+  renderApp();
   try {
     await safeFetchJson("/api/admin-reset-password", {
       method: "POST",
@@ -4479,6 +4816,8 @@ async function resetPassword(event) {
   } catch (error) {
     state.error = error.message || "Cannot reset password";
     state.message = "";
+  } finally {
+    state.actionLoading = "";
   }
   await loadData();
 }
@@ -4829,10 +5168,14 @@ function exportBetsCsv() {
     display_name: bet.user?.display_name || "",
     match: bet.match ? `${bet.match.home_team.name} vs ${bet.match.away_team.name}` : "",
     market_key: bet.market_key,
+    market_type: betMarketTitle(bet),
     selection: bet.selection_label,
+    actual_result: betActualText(bet),
+    outcome: betOutcome(bet).label,
     stake: bet.stake,
     locked_multiplier: bet.locked_multiplier,
     potential_payout: bet.potential_payout,
+    received: betReceivedAmount(bet),
     status: bet.status,
     points_delta: bet.points_delta,
     prediction_bonus: bet.prediction_bonus,

@@ -525,8 +525,16 @@ declare
   v_username text;
   v_display_name text;
   v_role text;
+  v_base_username text;
 begin
-  v_username := coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1));
+  v_base_username := lower(regexp_replace(coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1), 'player'), '[^a-z0-9._-]', '', 'g'));
+  if v_base_username = '' then
+    v_base_username := 'player';
+  end if;
+  v_username := v_base_username;
+  if exists (select 1 from public.profiles where username = v_username and id <> new.id) then
+    v_username := left(v_base_username, 24) || '-' || left(replace(new.id::text, '-', ''), 8);
+  end if;
   v_display_name := coalesce(new.raw_user_meta_data->>'display_name', v_username);
   v_role := coalesce(new.raw_user_meta_data->>'role', 'player');
 

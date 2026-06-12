@@ -2219,6 +2219,23 @@ select:focus {
   min-width: 980px;
 }
 
+.clickable-row {
+  width: 100%;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.clickable-row:hover,
+.clickable-row.active {
+  background: rgba(255, 215, 0, 0.08);
+}
+
 .table-row.leaderboard-row > * {
   min-width: 0;
   overflow: hidden;
@@ -2310,6 +2327,32 @@ select:focus {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.05);
+}
+
+.bet-detail-row {
+  grid-template-columns: minmax(160px, 1.05fr) minmax(130px, 0.8fr) minmax(150px, 0.9fr) minmax(190px, 1.25fr) minmax(150px, 0.85fr);
+}
+
+.bet-detail-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bet-detail-row b,
+.bet-detail-row strong,
+.bet-detail-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.leaderboard-detail-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.compact-stack {
+  gap: 10px;
 }
 
 .history-row.won {
@@ -2713,6 +2756,93 @@ select:focus {
   width: 44px;
   height: 44px;
   border-width: 4px;
+}
+
+.bouncing-ball-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.bouncing-ball-loader.large {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.bouncing-ball {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--gold-soft);
+  animation: ball-bounce 0.72s cubic-bezier(0.33, 0.02, 0.45, 0.98) infinite;
+}
+
+.bouncing-ball-loader.large .bouncing-ball {
+  width: 48px;
+  height: 48px;
+}
+
+.bouncing-ball::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  bottom: -8px;
+  left: 2px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(6, 63, 49, 0.18);
+  transform-origin: center;
+  animation: ball-shadow 0.72s ease-in-out infinite;
+}
+
+.bouncing-ball svg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.bouncing-ball circle {
+  fill: #ffffff;
+  stroke: currentColor;
+  stroke-width: 5;
+}
+
+.bouncing-ball path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+@keyframes ball-bounce {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  45% {
+    transform: translateY(-10px) rotate(22deg);
+  }
+}
+
+@keyframes ball-shadow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scaleX(0.95);
+  }
+  45% {
+    opacity: 0.22;
+    transform: scaleX(0.55);
+  }
 }
 
 @keyframes sync-spin {
