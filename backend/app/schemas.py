@@ -149,6 +149,12 @@ class AdminReport(BaseModel):
     top_markets: list[dict[str, Any]]
 
 
+class UpdateScoreRequest(BaseModel):
+    home_score: int | None = None
+    away_score: int | None = None
+    status: str | None = None
+
+
 class SyncRunOut(BaseModel):
     id: int
     provider: str

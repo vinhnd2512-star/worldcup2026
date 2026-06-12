@@ -85,5 +85,11 @@ export const api = {
     request<{ status: string; requests: number; message: string }>("/admin/sync/results", token, {
       method: "POST",
       body: JSON.stringify({})
-    })
+    }),
+  updateMatchScore: (token: string, matchId: number, payload: { home_score?: number | null; away_score?: number | null; status?: string }) =>
+    request<{ match_id: number; home_score: number | null; away_score: number | null; status: string; settled: number }>(
+      `/admin/matches/${matchId}/score`, token, {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      })
 };

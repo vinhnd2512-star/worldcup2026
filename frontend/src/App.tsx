@@ -220,11 +220,23 @@ export default function App() {
     if (!token) return;
     try {
       const result = await api.syncResults(token);
-      setMessage(result.message);
+      setMessage(result.status === "skipped" ? "Sync bị bỏ qua (chưa cấu hình API_FOOTBALL_KEY). Dùng \"Cập nhật tỷ số\" bên dưới để nhập thủ công." : result.message);
       setError(null);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể cập nhật kết quả");
+    }
+  }
+
+  async function handleUpdateScore(matchId: number, homeScore: number, awayScore: number, status: string) {
+    if (!token) return;
+    try {
+      const result = await api.updateMatchScore(token, matchId, { home_score: homeScore, away_score: awayScore, status });
+      setMessage(`Đã cập nhật tỷ số ${result.home_score}:${result.away_score} (${result.status}). Settle ${result.settled} cược.`);
+      setError(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể cập nhật tỷ số");
     }
   }
 
@@ -256,6 +268,7 @@ export default function App() {
       {activeTab === "admin" && user.role.name === "admin" && (
         <AdminView
           users={users}
+          matches={matches}
           report={report}
           syncRuns={syncRuns}
           onCreateUser={handleCreateUser}
@@ -265,6 +278,7 @@ export default function App() {
           onRetrySettlements={handleRetrySettlements}
           onMetadataSync={handleMetadataSync}
           onResultSync={handleResultSync}
+          onUpdateScore={handleUpdateScore}
         />
       )}
     </Shell>

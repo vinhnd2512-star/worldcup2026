@@ -5,10 +5,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from app.api.deps import AdminUser, DbSession
-from app.models import Bet, Role, SyncRun, User, WalletLedger
-from app.schemas import AdminReport, CreateUserRequest, ResetPasswordRequest, SyncRunOut, TopUpRequest, UserOut, UserStatusRequest
+from app.models import Bet, Match, Role, SyncRun, User, WalletLedger
+from app.schemas import AdminReport, CreateUserRequest, ResetPasswordRequest, SyncRunOut, TopUpRequest, UpdateScoreRequest, UserOut, UserStatusRequest
 from app.security import create_password_hash
-from app.services.settlement_service import settle_pending_bets
+from app.services.settlement_service import FINAL_OR_VOID_STATUSES, settle_pending_bets
 from app.services.sync_service import run_metadata_sync, run_result_sync
 
 
@@ -142,6 +142,29 @@ def sync_runs(db: DbSession, _: AdminUser) -> list[SyncRun]:
 def retry_settlements(db: DbSession, _: AdminUser) -> dict[str, int]:
     settled = settle_pending_bets(db)
     return {"settled": settled}
+
+
+@router.patch("/matches/{match_id}/score")
+def update_match_score(match_id: int, payload: UpdateScoreRequest, db: DbSession, _: AdminUser) -> dict:
+    match = db.get(Match, match_id)
+    if match is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+    if payload.home_score is not None:
+        match.home_score = payload.home_score
+    if payload.away_score is not None:
+        match.away_score = payload.away_score
+    if payload.status is not None:
+        match.status = payload.status
+    db.commit()
+    db.refresh(match)
+    settled = settle_pending_bets(db) if match.status in FINAL_OR_VOID_STATUSES else 0
+    return {
+        "match_id": match.id,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+        "status": match.status,
+        "settled": settled,
+    }
 
 
 @router.post("/sync/metadata")

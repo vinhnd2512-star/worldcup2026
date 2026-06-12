@@ -477,11 +477,9 @@ export function MatchDetailView({
                     }}
                     disabled={placing}
                   >
-                    <span>{market.label}</span>
                     <strong>{market.selection_label}</strong>
-                    <small>
-                      x{fmtOne.format(num(market.odds_multiplier))} · {market.source}
-                    </small>
+                    {market.line != null && <span>Chấp {market.line}</span>}
+                    <small>x{fmtOne.format(num(market.odds_multiplier))} · {market.source}</small>
                   </button>
                 ))}
               </div>
@@ -626,6 +624,7 @@ export function HistoryView({ history, matches }: { history: Bet[]; matches: Mat
 
 export function AdminView({
   users,
+  matches,
   report,
   syncRuns,
   onCreateUser,
@@ -634,9 +633,11 @@ export function AdminView({
   onResetPassword,
   onRetrySettlements,
   onMetadataSync,
-  onResultSync
+  onResultSync,
+  onUpdateScore
 }: {
   users: User[];
+  matches: Match[];
   report: AdminReport | null;
   syncRuns: SyncRun[];
   onCreateUser: (payload: { username: string; display_name: string; password: string; starting_points: number }) => Promise<void>;
@@ -646,10 +647,12 @@ export function AdminView({
   onRetrySettlements: () => Promise<void>;
   onMetadataSync: () => Promise<void>;
   onResultSync: () => Promise<void>;
+  onUpdateScore: (matchId: number, homeScore: number, awayScore: number, status: string) => Promise<void>;
 }) {
   const [createForm, setCreateForm] = useState({ username: "", display_name: "", password: "demo123", starting_points: 1000 });
   const [topUp, setTopUp] = useState({ userId: 0, amount: 500, reason: "Admin top-up" });
   const [resetPassword, setResetPassword] = useState("demo123");
+  const [scoreForm, setScoreForm] = useState({ matchId: 0, homeScore: 0, awayScore: 0, status: "FT" });
 
   const playerOptions = users.filter((user) => user.role.name === "player");
 
@@ -758,6 +761,84 @@ export function AdminView({
             </button>
           </div>
         ))}
+      </section>
+
+      <section className="glass-card score-update-panel">
+        <div className="section-heading inline">
+          <h2>Cập nhật tỷ số</h2>
+          <span>Settle tự động khi kết thúc</span>
+        </div>
+        <div className="score-update-grid">
+          <select
+            value={scoreForm.matchId}
+            onChange={(e) => {
+              const match = matches.find((m) => m.id === Number(e.target.value));
+              setScoreForm({
+                matchId: Number(e.target.value),
+                homeScore: match?.home_score ?? 0,
+                awayScore: match?.away_score ?? 0,
+                status: match?.status ?? "FT",
+              });
+            }}
+          >
+            <option value={0}>Chọn trận đấu</option>
+            {matches.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.home_team.name} vs {m.away_team.name} · {m.status} {m.home_score ?? "-"}:{m.away_score ?? "-"}
+              </option>
+            ))}
+          </select>
+          <div className="score-inputs">
+            <input
+              type="number"
+              min={0}
+              placeholder="Nhà"
+              value={scoreForm.homeScore}
+              onChange={(e) => setScoreForm({ ...scoreForm, homeScore: Number(e.target.value) })}
+            />
+            <span className="score-sep">-</span>
+            <input
+              type="number"
+              min={0}
+              placeholder="Khách"
+              value={scoreForm.awayScore}
+              onChange={(e) => setScoreForm({ ...scoreForm, awayScore: Number(e.target.value) })}
+            />
+          </div>
+          <select value={scoreForm.status} onChange={(e) => setScoreForm({ ...scoreForm, status: e.target.value })}>
+            <option value="SCHEDULED">SCHEDULED</option>
+            <option value="NS">NS (Not Started)</option>
+            <option value="1H">1H (Hiệp 1)</option>
+            <option value="HT">HT (Nghỉ giải lao)</option>
+            <option value="2H">2H (Hiệp 2)</option>
+            <option value="FT">FT (Kết thúc)</option>
+            <option value="AET">AET (Hiệp phụ)</option>
+            <option value="PEN">PEN (Penalty)</option>
+            <option value="PST">PST (Hoãn)</option>
+            <option value="CANC">CANC (Hủy)</option>
+          </select>
+          <button
+            className="primary-button"
+            disabled={!scoreForm.matchId}
+            onClick={() => void onUpdateScore(scoreForm.matchId, scoreForm.homeScore, scoreForm.awayScore, scoreForm.status)}
+          >
+            Cập nhật &amp; Settle
+          </button>
+        </div>
+
+        <div className="matches-score-table">
+          {matches.map((m) => (
+            <div key={m.id} className="match-score-row">
+              <span className="match-score-teams">
+                {m.home_team.name} <b>vs</b> {m.away_team.name}
+              </span>
+              <span className={`status-pill ${["FT","AET","PEN"].includes(m.status) ? "live" : ""}`}>{m.status}</span>
+              <strong className="match-score-result">
+                {m.home_score ?? "?"} : {m.away_score ?? "?"}
+              </strong>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="glass-card sync-table">
