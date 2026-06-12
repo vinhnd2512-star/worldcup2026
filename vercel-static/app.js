@@ -616,21 +616,25 @@ function renderFixtureTable(matches) {
 function renderFixtureRow(match) {
   const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
   const group = match.group_name ? formatGroupName(match.group_name) : "Knockout";
+  const done = isCompletedScore(match);
+  const scoreSep = done
+    ? `<b class="fixture-score">${match.home_score} - ${match.away_score}</b>`
+    : `<b>VS</b>`;
   return `
-    <article class="fixture-row" data-group="${escapeHtml(match.group_name || "knockout")}">
+    <article class="fixture-row${done ? " fixture-row--done" : ""}" data-group="${escapeHtml(match.group_name || "knockout")}">
       <span class="fixture-number">#${escapeHtml(fixtureNumber(match))}</span>
       <time>${dateText(match.starts_at)}</time>
       <div class="fixture-pair">
         ${fixtureTeam(match.home_team)}
-        <b>VS</b>
+        ${scoreSep}
         ${fixtureTeam(match.away_team)}
       </div>
       <div class="fixture-meta">
         <strong><span class="group-badge">${escapeHtml(group)}</span></strong>
         <small>${escapeHtml(matchLocation(match))}</small>
       </div>
-      <span class="fixture-market-count">${fmt.format(openMarkets)} open</span>
-      <button class="compact-button primary-button" data-open-bet-modal="${match.id}">Dự đoán</button>
+      <span class="fixture-market-count">${done ? escapeHtml(match.status) : `${fmt.format(openMarkets)} open`}</span>
+      <button class="compact-button${done ? "" : " primary-button"}" data-open-bet-modal="${match.id}">${done ? "Chi tiết" : "Dự đoán"}</button>
     </article>
   `;
 }
@@ -654,18 +658,22 @@ function fixtureNumber(match) {
 function renderMatchCard(match) {
   const odd = match.match_markets.find((market) => market.market_key === "match_result" && market.selection_key === "home")?.odds_multiplier || 1.8;
   const openMarkets = match.match_markets.filter((market) => market.is_open).length;
+  const done = isCompletedScore(match);
+  const separator = done
+    ? `<span class="match-score-result">${match.home_score} - ${match.away_score}</span>`
+    : `<span class="muted">VS</span>`;
   return `
-    <article class="match-card glass-card">
-      <div class="section-heading"><span>${dateText(match.starts_at)}</span><span>${escapeHtml(match.status)}</span></div>
-      <div class="match-teams">${teamLockup(match.home_team)}<span class="muted">VS</span>${teamLockup(match.away_team)}</div>
+    <article class="match-card glass-card${done ? " match-card--done" : ""}">
+      <div class="section-heading"><span>${dateText(match.starts_at)}</span><span class="status-badge status-${match.status.toLowerCase()}">${escapeHtml(match.status)}</span></div>
+      <div class="match-teams">${teamLockup(match.home_team)}${separator}${teamLockup(match.away_team)}</div>
       <div class="match-meta-grid">
         <span>${escapeHtml(scheduleLabel(match))}</span>
         <span>${escapeHtml(matchLocation(match))}</span>
-        <span>${fmt.format(openMarkets)} markets open</span>
-        <span>x${fmtOne.format(number(odd))}</span>
+        ${done ? `<span class="result-final">Kết quả chính thức</span>` : `<span>${fmt.format(openMarkets)} markets open</span>`}
+        ${done ? "" : `<span>x${fmtOne.format(number(odd))}</span>`}
       </div>
       <div class="consensus"><div style="width:58%"></div></div>
-      <p><button class="ghost-button wide" data-open-bet-modal="${match.id}">Dự đoán ngay</button></p>
+      <p><button class="ghost-button wide" data-open-bet-modal="${match.id}">${done ? "Xem chi tiết" : "Dự đoán ngay"}</button></p>
     </article>
   `;
 }
@@ -2956,7 +2964,8 @@ function renderAdmin() {
           <button class="ghost-button" id="export-audit-button">Export audit</button>
           <button class="ghost-button" id="export-reports-button">Export reports</button>
           <button class="ghost-button" id="export-odds-report-button">Export odds</button>
-          <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync providers"}</button>
+          <button class="primary-button" id="quick-results-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync kết quả nhanh"}</button>
+          <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync đầy đủ"}</button>
           <button class="ghost-button" id="transfermarkt-sync-button">Sync Transfermarkt</button>
           <button class="primary-button" id="refresh-button">Refresh</button>
         </div>
@@ -3890,6 +3899,7 @@ function bindShellEvents() {
   document.getElementById("tournament-winner-form")?.addEventListener("submit", settleTournamentWinner);
   document.getElementById("golden-boot-settle-form")?.addEventListener("submit", settleGoldenBoot);
   document.getElementById("refresh-button")?.addEventListener("click", () => loadData());
+  document.getElementById("quick-results-sync-button")?.addEventListener("click", syncResultsOnly);
   document.getElementById("provider-sync-button")?.addEventListener("click", syncProviders);
   document.getElementById("transfermarkt-sync-button")?.addEventListener("click", () => syncTransfermarktValues());
   document.getElementById("transfermarkt-import-form")?.addEventListener("submit", importTransfermarktValues);
@@ -4380,6 +4390,32 @@ async function settleGoldenBoot(event) {
   const { data, error } = await state.client.rpc("settle_golden_boot", { p_top_scorer_key: topScorerKey });
   state.message = error ? "" : `Settled ${data} Golden Boot bets.`;
   state.error = error ? error.message : "";
+  await loadData();
+}
+
+async function syncResultsOnly() {
+  if (state.providerSync.isRunning) return;
+  state.providerSync = { isRunning: true, startedAt: new Date().toISOString(), finishedAt: "", result: null, error: "" };
+  state.message = "";
+  state.error = "";
+  renderApp();
+  try {
+    const result = await safeFetchJson("/api/sync-football-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.session.access_token}` },
+      body: JSON.stringify({ includeOdds: false, includeRankings: false, includeFifaProfiles: false, includeSquads: false, includeStats: false })
+    });
+    state.providerSync = { isRunning: false, startedAt: state.providerSync.startedAt, finishedAt: new Date().toISOString(), result, error: "" };
+    const fixtureStatus = result.fixtureResult?.status || "unknown";
+    const footballDataStatus = result.footballDataResult?.status || "unknown";
+    state.message = `Sync kết quả xong. API-Football: ${fixtureStatus}; football-data.org: ${footballDataStatus}.`;
+    state.error = "";
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    state.providerSync = { isRunning: false, startedAt: state.providerSync.startedAt, finishedAt: new Date().toISOString(), result: null, error: errorMessage };
+    state.error = errorMessage;
+    state.message = "";
+  }
   await loadData();
 }
 

@@ -5,6 +5,11 @@
       "schedule": "0 6 * * *"
     }
   ],
+  "functions": {
+    "api/sync-football-data.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/((?!api/|.*\\..*).*)",

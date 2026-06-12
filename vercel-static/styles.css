@@ -4075,3 +4075,56 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Match result score display */
+.fixture-score {
+  color: var(--gold);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.fixture-row--done {
+  opacity: 0.85;
+}
+
+.fixture-row--done .fixture-team span:nth-child(2) {
+  color: var(--fg);
+}
+
+.match-score-result {
+  color: var(--gold);
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-align: center;
+}
+
+.match-card--done {
+  border-left: 3px solid var(--gold);
+}
+
+.result-final {
+  color: var(--gold-soft);
+  font-weight: 700;
+}
+
+.status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-badge.status-ft,
+.status-badge.status-aet,
+.status-badge.status-pen,
+.status-badge.status-ft_pen {
+  background: color-mix(in srgb, var(--gold) 20%, transparent);
+  color: var(--gold);
+}
