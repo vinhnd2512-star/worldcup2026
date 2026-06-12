@@ -7,6 +7,8 @@ const FOOTBALL_DATA_WORLD_CUP_CODE = "WC";
 const WORLD_CUP_SPORT_KEY = "soccer_fifa_world_cup";
 const WORLD_CUP_WINNER_SPORT_KEY = "soccer_fifa_world_cup_winner";
 const FIFA_RANKING_URL = "https://inside.fifa.com/fifa-world-ranking/men";
+const FIFA_FANTASY_ROUNDS_URL = "https://play.fifa.com/json/fantasy/rounds.json";
+const FIFA_CALENDAR_MATCHES_URL = `https://api.fifa.com/api/v3/calendar/matches`;
 const FIFA_RANKING_API_URL = "https://api.fifa.com/api/v3/fifarankings/rankings/live?gender=1&sportType=0&language=en";
 const FIFA_RANKING_SOURCE = "FIFA/Coca-Cola Men's World Ranking";
 const FIFA_API_BASE_URL = "https://api.fifa.com/api/v3";
@@ -1247,6 +1249,189 @@ async function upsertOutrightMarketFromOdds(candidate, closesAt) {
   return response.json();
 }
 
+// ── FIFA Fantasy + FIFA Calendar match result sync ──────────────────────────
+
+function extractFifaFantasyFixtures(payload) {
+  const rounds = payload?.rounds || payload?.data?.rounds || [];
+  const fixtures = [];
+  for (const round of rounds) {
+    const list = round.fixtures || round.matches || round.games || [];
+    for (const f of list) {
+      const home = f.homeTeam || f.home_team || f.home || {};
+      const away = f.awayTeam || f.away_team || f.away || {};
+      const homeCode = String(home.teamCode || home.code || home.abbreviation || home.tla || "").toUpperCase();
+      const awayCode = String(away.teamCode || away.code || away.abbreviation || away.tla || "").toUpperCase();
+      if (!homeCode || !awayCode) continue;
+      const rawStatus = String(f.status || f.matchStatus || f.state || "").toLowerCase();
+      const homeScore = f.homeScore ?? f.home_score ?? f.result?.home ?? f.score?.home ?? null;
+      const awayScore = f.awayScore ?? f.away_score ?? f.result?.away ?? f.score?.away ?? null;
+      const kickOff = f.kickOff || f.kickoff || f.matchDate || f.date || f.startDate || null;
+      let status = "SCHEDULED";
+      if (rawStatus.includes("finish") || rawStatus.includes("complet") || rawStatus === "ft" || rawStatus === "full_time") status = "FT";
+      else if (rawStatus.includes("live") || rawStatus.includes("progress") || rawStatus.includes("1h") || rawStatus.includes("2h")) status = "1H";
+      else if (rawStatus.includes("half")) status = "HT";
+      else if (rawStatus.includes("extra") || rawStatus === "et") status = "AET";
+      else if (rawStatus.includes("penalty") || rawStatus === "pen") status = "PEN";
+      else if (rawStatus.includes("postpone")) status = "PST";
+      else if (rawStatus.includes("cancel")) status = "CANC";
+      fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff });
+    }
+  }
+  return fixtures;
+}
+
+function extractFifaCalendarFixtures(payload) {
+  // FIFA API v3 /calendar/matches returns { Results: [{ IdMatch, HomeTeam: {TeamName, Abbreviation}, AwayTeam, HomeTeamScore, AwayTeamScore, MatchStatus, Date }] }
+  const results = payload?.Results || payload?.results || payload?.matches || [];
+  const fixtures = [];
+  for (const m of results) {
+    const home = m.HomeTeam || m.homeTeam || m.home || {};
+    const away = m.AwayTeam || m.awayTeam || m.away || {};
+    const homeCode = String(home.Abbreviation || home.abbreviation || home.TeamCode || home.code || "").toUpperCase();
+    const awayCode = String(away.Abbreviation || away.abbreviation || away.TeamCode || away.code || "").toUpperCase();
+    if (!homeCode || !awayCode) continue;
+    const rawStatus = String(m.MatchStatus || m.matchStatus || m.Status || m.status || "").toLowerCase();
+    const homeScore = m.HomeTeamScore ?? m.homeScore ?? m.score?.home ?? null;
+    const awayScore = m.AwayTeamScore ?? m.awayScore ?? m.score?.away ?? null;
+    const kickOff = m.Date || m.date || m.MatchDay || null;
+    let status = "SCHEDULED";
+    if ([0, "0"].includes(m.MatchStatus) || rawStatus.includes("schedul") || rawStatus.includes("upcoming")) status = "SCHEDULED";
+    else if ([1, "1", 3, "3"].includes(m.MatchStatus) || rawStatus.includes("live") || rawStatus.includes("progress")) status = "1H";
+    else if ([5, "5"].includes(m.MatchStatus) || rawStatus.includes("finish") || rawStatus.includes("complet") || rawStatus === "ft") status = "FT";
+    else if (rawStatus.includes("extra")) status = "AET";
+    else if (rawStatus.includes("penalty") || rawStatus === "pen") status = "PEN";
+    else if (rawStatus.includes("postpone")) status = "PST";
+    else if (rawStatus.includes("cancel")) status = "CANC";
+    fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff });
+  }
+  return fixtures;
+}
+
+async function upsertMatchResultsByCode(fixtures) {
+  if (!fixtures.length) return { updated: 0 };
+  const codes = [...new Set(fixtures.flatMap((f) => [f.homeCode, f.awayCode]))];
+  const teamsByCode = await getTeamsByCodes(codes);
+  const matchesRes = await supabaseFetch(
+    "/rest/v1/matches?select=id,provider_id,status,home_score,away_score,home_team_id,away_team_id,starts_at&order=starts_at.asc"
+  );
+  if (!matchesRes.ok) throw new Error(`Supabase read matches failed: ${matchesRes.status}`);
+  const dbMatches = await matchesRes.json();
+
+  let updated = 0;
+  const completedMatchIds = [];
+  for (const f of fixtures) {
+    const homeTeam = teamsByCode.get(f.homeCode);
+    const awayTeam = teamsByCode.get(f.awayCode);
+    if (!homeTeam || !awayTeam) continue;
+    const dbMatch = dbMatches.find((m) =>
+      Number(m.home_team_id) === Number(homeTeam.id) && Number(m.away_team_id) === Number(awayTeam.id)
+    );
+    if (!dbMatch) continue;
+    const wasCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(dbMatch.status);
+    const nowCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(f.status);
+    // Only update if score or status changed
+    if (
+      dbMatch.status === f.status &&
+      dbMatch.home_score === f.homeScore &&
+      dbMatch.away_score === f.awayScore
+    ) continue;
+    const patchRes = await supabaseFetch(
+      `/rest/v1/matches?id=eq.${dbMatch.id}`,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          status: f.status,
+          home_score: f.homeScore,
+          away_score: f.awayScore,
+          updated_at: new Date().toISOString()
+        })
+      }
+    );
+    if (!patchRes.ok) continue;
+    updated += 1;
+    if (!wasCompleted && nowCompleted) completedMatchIds.push(dbMatch.id);
+  }
+  return { updated, completedMatchIds };
+}
+
+async function autoSettleMatches(matchIds, accessToken) {
+  if (!matchIds.length || !accessToken) return 0;
+  const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
+  let totalSettled = 0;
+  for (const matchId of matchIds) {
+    try {
+      const res = await fetch(`${env("SUPABASE_URL")}/rest/v1/rpc/settle_match_bets`, {
+        method: "POST",
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ p_match_id: matchId })
+      });
+      if (res.ok) {
+        const count = await res.json();
+        totalSettled += Number(count) || 0;
+      }
+    } catch {
+      // Non-fatal: individual match settlement failure shouldn't abort others
+    }
+  }
+  return totalSettled;
+}
+
+async function syncFifaFantasyResults() {
+  let payload;
+  try {
+    const res = await fetch(FIFA_FANTASY_ROUNDS_URL, {
+      headers: { Accept: "application/json", "User-Agent": "WorldCup Predict result sync" }
+    });
+    if (!res.ok) throw new Error(`FIFA Fantasy rounds.json failed: ${res.status}`);
+    payload = await res.json();
+  } catch (err) {
+    await recordSyncRun({ provider: "fifa-fantasy", jobType: "results", status: "failed", requestCount: 1, message: String(err.message) });
+    return { provider: "fifa-fantasy", status: "failed", requests: 1, updated: 0, completedMatchIds: [] };
+  }
+  const fixtures = extractFifaFantasyFixtures(payload);
+  const { updated, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
+  await recordSyncRun({
+    provider: "fifa-fantasy",
+    jobType: "results",
+    status: "success",
+    requestCount: 1,
+    message: `Parsed ${fixtures.length} fixtures from FIFA Fantasy; updated ${updated} matches; ${completedMatchIds.length} newly completed.`
+  });
+  return { provider: "fifa-fantasy", status: "success", requests: 1, updated, completedMatchIds };
+}
+
+async function syncFifaCalendarResults() {
+  let payload;
+  try {
+    const res = await fetch(
+      `${FIFA_CALENDAR_MATCHES_URL}?idSeason=${FIFA_WORLD_CUP_SEASON_ID}&idCompetition=${FIFA_WORLD_CUP_COMPETITION_ID}&count=100&language=en`,
+      { headers: { Accept: "application/json", "User-Agent": "WorldCup Predict result sync" } }
+    );
+    if (!res.ok) throw new Error(`FIFA Calendar API failed: ${res.status}`);
+    payload = await res.json();
+  } catch (err) {
+    await recordSyncRun({ provider: "fifa-calendar", jobType: "results", status: "failed", requestCount: 1, message: String(err.message) });
+    return { provider: "fifa-calendar", status: "failed", requests: 1, updated: 0, completedMatchIds: [] };
+  }
+  const fixtures = extractFifaCalendarFixtures(payload);
+  const { updated, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
+  await recordSyncRun({
+    provider: "fifa-calendar",
+    jobType: "results",
+    status: "success",
+    requestCount: 1,
+    message: `Parsed ${fixtures.length} fixtures from FIFA Calendar API; updated ${updated} matches; ${completedMatchIds.length} newly completed.`
+  });
+  return { provider: "fifa-calendar", status: "success", requests: 1, updated, completedMatchIds };
+}
+
+// ── End FIFA result sync ─────────────────────────────────────────────────────
+
 async function syncApiFootballFixtures() {
   if (!env("API_FOOTBALL_KEY")) {
     await recordSyncRun({
@@ -2191,6 +2376,11 @@ export default async function handler(request, response) {
       return send(response, auth.status, { error: auth.error });
     }
 
+    // Extract caller token for auto-settlement (only works for admin-triggered calls)
+    const callerToken = auth.mode === "admin"
+      ? (request.headers.authorization || "").replace(/^Bearer\s+/i, "")
+      : null;
+
     let body = {};
     if (request.method === "POST") {
       body = await readJson(request);
@@ -2202,6 +2392,9 @@ export default async function handler(request, response) {
     const includeSquads = body.includeSquads !== false;
     const includeFifaProfiles = body.includeFifaProfiles !== false;
     const includeTransfermarkt = body.includeTransfermarkt === true;
+    const includeFifaResults = body.includeFifaResults !== false; // defaults to true
+    const includeFifaCalendar = body.includeFifaCalendar === true; // opt-in secondary FIFA source
+    const autoSettle = body.autoSettle !== false; // defaults to true when caller token is available
     const fifaTeamCode = String(body.fifaTeamCode || "").trim().toUpperCase();
     const maxStatsFixtures = Math.max(
       0,
@@ -2216,6 +2409,33 @@ export default async function handler(request, response) {
       Math.min(64, Number(body.maxTransfermarktTeams || env("MAX_TRANSFERMARKT_TEAMS") || DEFAULT_MAX_TRANSFERMARKT_TEAMS))
     );
 
+    // ── FIFA result sync (primary result source) ──────────────────────────
+    const fifaFantasyResult = includeFifaResults
+      ? await runProviderJob({
+          provider: "fifa-fantasy",
+          jobType: "results",
+          fallback: { updated: 0, completedMatchIds: [] },
+          task: syncFifaFantasyResults
+        })
+      : { provider: "fifa-fantasy", status: "skipped", requests: 0, updated: 0, completedMatchIds: [] };
+
+    // If FIFA Fantasy found nothing, try FIFA Calendar API as fallback
+    const fifaCalendarResult = (includeFifaResults && fifaFantasyResult.status !== "success") || includeFifaCalendar
+      ? await runProviderJob({
+          provider: "fifa-calendar",
+          jobType: "results",
+          fallback: { updated: 0, completedMatchIds: [] },
+          task: syncFifaCalendarResults
+        })
+      : { provider: "fifa-calendar", status: "skipped", requests: 0, updated: 0, completedMatchIds: [] };
+
+    // Collect all newly-completed match IDs from both FIFA sources
+    const newlyCompletedIds = [
+      ...(fifaFantasyResult.completedMatchIds || []),
+      ...(fifaCalendarResult.completedMatchIds || [])
+    ];
+
+    // ── API-Football fixture sync ────────────────────────────────────────
     const fixtureResult = includeFixtures
       ? await runProviderJob({
           provider: "api-football",
@@ -2232,6 +2452,17 @@ export default async function handler(request, response) {
           task: syncFootballDataFixtures
         })
       : { provider: "football-data.org", status: "skipped", requests: 0, teams: 0, matches: 0 };
+
+    // Also collect matches that API-Football marked as completed
+    if (fixtureResult.completedMatchIds) newlyCompletedIds.push(...fixtureResult.completedMatchIds);
+    if (footballDataResult.completedMatchIds) newlyCompletedIds.push(...footballDataResult.completedMatchIds);
+
+    // ── Auto-settle newly completed matches ───────────────────────────────
+    let settledBets = 0;
+    if (autoSettle && newlyCompletedIds.length && callerToken) {
+      settledBets = await autoSettleMatches([...new Set(newlyCompletedIds)], callerToken);
+    }
+
     const statsResult = includeStats
       ? await runProviderJob({
           provider: "api-football",
@@ -2281,9 +2512,23 @@ export default async function handler(request, response) {
         })
       : { provider: "the-odds-api", status: "skipped", requests: 0, events: 0 };
 
-    const results = [fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult];
+    const results = [fifaFantasyResult, fifaCalendarResult, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult];
     const status = results.some((result) => result.status === "failed" || result.status === "partial") ? "partial" : "ok";
-    return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult });
+    return send(response, 200, {
+      status,
+      settledBets,
+      newlyCompleted: newlyCompletedIds.length,
+      fifaFantasyResult,
+      fifaCalendarResult,
+      fixtureResult,
+      footballDataResult,
+      statsResult,
+      rankingResult,
+      fifaProfileResult,
+      squadResult,
+      transfermarktResult,
+      oddsResult
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return send(response, 500, { error: message });

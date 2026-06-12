@@ -434,6 +434,7 @@ async function loadData() {
   }
 }
 
+
 function applyAdminFilters(query, dateColumn, userColumn) {
   const { userId, dateFrom, dateTo } = state.adminFilters;
   let next = query;
@@ -964,11 +965,38 @@ function getNotificationItems() {
   const readIds = readNotificationIds();
   return [
     ...getReminderNotifications(),
-    ...getSettlementNotifications()
+    ...getSettlementNotifications(),
+    ...getMatchResultNotifications()
   ]
     .map((item) => ({ ...item, read: readIds.has(item.id) }))
     .sort((left, right) => right.priority - left.priority || right.sortTime - left.sortTime)
     .slice(0, 24);
+}
+
+function getMatchResultNotifications() {
+  const bettedMatchIds = new Set((state.bets || []).map((b) => b.match_id));
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000; // last 7 days
+  return (state.matches || [])
+    .filter((m) => {
+      if (!isCompletedScore(m)) return false;
+      if (bettedMatchIds.has(m.id)) return false; // has bet → already in settlement notifications
+      const updatedAt = new Date(m.updated_at || m.starts_at || 0).getTime();
+      return updatedAt >= cutoff;
+    })
+    .map((m) => {
+      const updatedAt = new Date(m.updated_at || m.starts_at || 0);
+      const home = m.home_team?.name || m.home_team?.code || "?";
+      const away = m.away_team?.name || m.away_team?.code || "?";
+      return {
+        id: `result:${m.id}:${m.home_score}-${m.away_score}`,
+        type: "match-result",
+        priority: 12,
+        sortTime: updatedAt.getTime(),
+        title: `Kết quả: ${home} ${m.home_score} – ${m.away_score} ${away}`,
+        body: `Trận đấu kết thúc (${m.status}). Bạn chưa đặt cược trận này.`,
+        timeText: dateText(updatedAt)
+      };
+    });
 }
 
 function getReminderNotifications() {
@@ -4403,12 +4431,22 @@ async function syncResultsOnly() {
     const result = await safeFetchJson("/api/sync-football-data", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.session.access_token}` },
-      body: JSON.stringify({ includeOdds: false, includeRankings: false, includeFifaProfiles: false, includeSquads: false, includeStats: false })
+      body: JSON.stringify({
+        includeOdds: false, includeRankings: false, includeFifaProfiles: false,
+        includeSquads: false, includeStats: false,
+        includeFifaResults: true, autoSettle: true
+      })
     });
     state.providerSync = { isRunning: false, startedAt: state.providerSync.startedAt, finishedAt: new Date().toISOString(), result, error: "" };
-    const fixtureStatus = result.fixtureResult?.status || "unknown";
-    const footballDataStatus = result.footballDataResult?.status || "unknown";
-    state.message = `Sync kết quả xong. API-Football: ${fixtureStatus}; football-data.org: ${footballDataStatus}.`;
+    const fantasy = result.fifaFantasyResult?.status || "skipped";
+    const calendar = result.fifaCalendarResult?.status || "skipped";
+    const updated = (result.fifaFantasyResult?.updated || 0) + (result.fifaCalendarResult?.updated || 0);
+    const settled = result.settledBets || 0;
+    const parts = [];
+    if (fantasy === "success" || calendar === "success") parts.push(`${updated} trận cập nhật`);
+    if (settled > 0) parts.push(`${settled} cược đã settle`);
+    if (!parts.length) parts.push("Không có dữ liệu mới");
+    state.message = `Sync kết quả xong. ${parts.join(", ")}.`;
     state.error = "";
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
