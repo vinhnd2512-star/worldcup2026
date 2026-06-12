@@ -8,7 +8,7 @@ Use this route when you want to deploy without installing Node, Python, or Postg
 2. Open SQL Editor and run `supabase/schema.sql`.
 3. Run `supabase/seed.sql`.
 4. Run `supabase/seed_bracket.sql`.
-   - `schema.sql` also creates read-path indexes for bets, markets, wallet ledger, audit logs, and sync runs.
+   - `schema.sql` also creates read-path indexes for bets, markets, match results, wallet ledger, audit logs, and sync runs.
 5. Go to Authentication and create the first admin user:
    - Email: `admin@worldcup.local`
    - Password: choose your own password
@@ -86,7 +86,7 @@ Use `docs/launch-smoke-test.md` for the full launch QA script. The short version
 8. Log back in as admin, set the match result to `FT`, and settle it.
 9. Check that History and Rankings update.
 10. Open Admin and confirm Audit log shows the user creation, bet placement, wallet, or settlement action.
-11. Check Player report and Market report, then filter Admin reports by one user/date range and export CSVs for rankings, reports, bets, ledger, and audit log.
+11. Check Player report and Market report, then filter Admin reports by one user/date range and export CSVs for rankings, match results, reports, bets, ledger, and audit log.
 
 ## 4. Provider Sync
 
@@ -96,13 +96,15 @@ The Vercel Function `/api/sync-football-data` currently:
 
 - upserts teams and fixtures from API-FOOTBALL World Cup 2026 (`league=1`, `season=2026`);
 - syncs API-FOOTBALL match statistics for live/recent matches into `match_stats`, capped by `MAX_STATS_FIXTURES`;
-- maps The Odds API 1X2 and total-goals odds into `match_markets` when event names and kickoff times match confidently;
+- maps The Odds API 1X2, total-goals, and spreads/handicap odds into `match_markets` when event names and kickoff times match confidently;
 - keeps provider total-goals lines per match instead of forcing 2.5, and only uses the internal 2.5 fallback when provider totals are missing;
+- keeps internal Asian handicap fallback lines open unless provider `spreads` exist for that match;
 - derives correct-score fair odds from synced 1X2 and total-goals lines because The Odds API rejects direct `correct_score` for this World Cup sport key;
 - prefers configured bookmaker odds from `ODDS_API_BOOKMAKERS`; otherwise it uses the best available odds from `ODDS_API_REGIONS`;
 - maps The Odds API tournament-winner outrights into `outright_markets` when team names match confidently;
 - falls back to football-data.org World Cup fixtures when API-FOOTBALL is unavailable on the current plan;
 - stores provider payloads in `odds_snapshots`;
+- stores completed scores in `match_results` for awards/statistics exports;
 - writes each sync attempt to `sync_runs`.
 
 Review the first live sync result in the Admin tab. Unmatched odds events are skipped instead of guessed.

@@ -28,7 +28,7 @@ References:
 Use The Odds API for bookmaker-style markets where available.
 
 - Sport key: `soccer_fifa_world_cup`.
-- Start the main match `/odds` sync with endpoint-supported markets: `h2h` and `totals`.
+- Start the main match `/odds` sync with endpoint-supported markets: `h2h`, `totals`, and `spreads`.
 - If the provider rejects the match-market combination for the current plan/region, retry with `h2h` only so 1X2 odds can still update.
 - Sync tournament-winner outrights separately from `soccer_fifa_world_cup_winner` with `outrights`, because outrights cannot be mixed with match markets for `soccer_fifa_world_cup`.
 - Keep `draw_no_bet` on internal/admin odds unless a separate event-odds sync is added, because The Odds API rejects `draw_no_bet` on the main `/odds` endpoint.
@@ -40,7 +40,7 @@ Current implementation:
 
 - `vercel-static/api/sync-football-data.js` fetches World Cup odds events.
 - Events map to Supabase matches only when both team names match after normalization and kickoff times are within a 36-hour window.
-- Matched events update `match_markets` for 1X2 (`h2h`) and total goals (`totals`).
+- Matched events update `match_markets` for 1X2 (`h2h`), total goals (`totals`), and Asian handicap (`spreads`).
 - Total-goals markets use the provider's line per match, for example 2.25, 2.5, 2.75, or 3.0. The internal 2.5 fallback is closed for matches where provider totals exist, and remains open only when the provider has no totals for that match.
 - Correct-score markets store a Poisson model in `match_markets.extra_json.score_odds`. The model normalizes 1X2 probabilities, estimates expected total goals from the closest balanced totals line, calibrates home/away expected goals, then locks the fair odds for the exact submitted score in `place_bet` and `update_bet`.
 - Outright outcomes update `outright_markets` for tournament winner when the provider team name matches a Supabase team.
@@ -62,6 +62,10 @@ Use football-data.org as a fallback for basic fixture/result coverage if API-FOO
 Reference:
 
 - https://www.football-data.org/coverage
+
+### Match results sheet
+
+Completed match scores are stored in Supabase `match_results` as the official awards/statistics sheet. Result sync reads ESPN first, then FIFA fallback sources when ESPN has no completed scores, and writes both `matches` and `match_results`.
 
 ### Team ranking and player roster sources
 
@@ -100,6 +104,7 @@ Reference:
 - Correct score
 - 1X2 match result
 - Draw no bet
+- Asian handicap
 - Over/under total goals
 - Both teams to score
 - Over/under total corners

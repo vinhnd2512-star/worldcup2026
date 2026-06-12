@@ -65,6 +65,7 @@ const requiredAppTokens = [
   "audit_logs",
   "exportAuditCsv",
   "exportReportsCsv",
+  "exportResultsCsv",
   "admin_user_report",
   "admin_market_report",
   "admin_report",
@@ -96,7 +97,7 @@ const requiredAppTokens = [
 ];
 
 const requiredSyncTokens = [
-  "ODDS_API_MAIN_MARKETS = \"h2h,totals\"",
+  "ODDS_API_MAIN_MARKETS = \"h2h,totals,spreads\"",
   "WORLD_CUP_WINNER_SPORT_KEY = \"soccer_fifa_world_cup_winner\"",
   "FIFA_RANKING_URL",
   "FIFA_RANKING_API_URL",
@@ -122,6 +123,9 @@ const requiredSyncTokens = [
   "updatedOutrights",
   "syncApiFootballStats",
   "syncFootballDataFixtures",
+  "match_results",
+  "asian_handicap",
+  "spreads",
   "ensureDefaultMarketsForMatches",
   "linkFootballDataBracketMatches",
   "FOOTBALL_DATA_API_TOKEN",
@@ -141,6 +145,7 @@ const requiredSqlTokens = [
   "create table if not exists public.profiles",
   "create table if not exists public.wallet_ledger",
   "create table if not exists public.matches",
+  "create table if not exists public.match_results",
   "create table if not exists public.match_markets",
   "create table if not exists public.bracket_matches",
   "match_id bigint references public.matches",
@@ -173,6 +178,8 @@ const requiredSqlTokens = [
   "create or replace view public.admin_market_report",
   "prediction_bonus",
   "draw_no_bet",
+  "asian_handicap",
+  "public_read_match_results",
   "public_read_bracket_matches",
   "selection does not match selected market",
   "v_selection_label := v_market.selection_label",

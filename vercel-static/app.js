@@ -15,6 +15,7 @@ const state = {
   users: [],
   report: null,
   syncRuns: [],
+  matchResults: [],
   adminBets: [],
   walletLedger: [],
   auditLogs: [],
@@ -386,6 +387,13 @@ async function loadData() {
       const syncResult = await state.client.from("sync_runs").select("*").order("started_at", { ascending: false }).limit(10);
       throwIfError(syncResult.error);
       state.syncRuns = syncResult.data || [];
+
+      const matchResultsResult = await state.client
+        .from("match_results")
+        .select("*,match:matches(*),home_team:teams!match_results_home_team_id_fkey(*),away_team:teams!match_results_away_team_id_fkey(*)")
+        .order("finished_at", { ascending: false })
+        .limit(200);
+      state.matchResults = matchResultsResult.error ? [] : matchResultsResult.data || [];
 
       let adminBetsQuery = state.client
         .from("bets")
@@ -2197,7 +2205,7 @@ function modalMarketGroups(markets, group) {
 
 function sortMarketsForDisplay(markets) {
   return [...(markets || [])].sort((left, right) => {
-    if (left.market_key === "total_goals" && right.market_key === "total_goals") {
+    if (["total_goals", "asian_handicap"].includes(left.market_key) && left.market_key === right.market_key) {
       return number(left.line) - number(right.line)
         || marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key)
         || Number(left.id) - Number(right.id);
@@ -2474,7 +2482,7 @@ function collectModalBetPayloads(match, options = {}) {
 
 function isBasicMarket(key, market = null) {
   if (key === "total_goals") return true;
-  return ["match_result", "draw_no_bet", "correct_score"].includes(key);
+  return ["match_result", "draw_no_bet", "correct_score", "asian_handicap"].includes(key);
 }
 
 function renderMarketButton(market) {
@@ -3027,7 +3035,10 @@ function renderAdmin() {
           <button class="ghost-button" id="export-ledger-button">Export ledger</button>
           <button class="ghost-button" id="export-audit-button">Export audit</button>
           <button class="ghost-button" id="export-reports-button">Export reports</button>
+          <button class="ghost-button" id="export-results-button">Export results</button>
           <button class="ghost-button" id="export-odds-report-button">Export odds</button>
+          <button class="ghost-button" id="sync-odds-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync odds"}</button>
+          <button class="ghost-button" id="sync-data-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync fixtures/FIFA"}</button>
           <button class="ghost-button" id="settle-all-button">Settle tất cả FT</button>
           <button class="primary-button" id="quick-results-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync kết quả nhanh"}</button>
           <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? "Syncing..." : "Sync đầy đủ"}</button>
@@ -3347,7 +3358,15 @@ function providerSyncStatusLabel(status = "") {
 
 function providerSyncResultItems(result) {
   const odds = result.oddsResult || {};
+  const resultRows = number(result.espnResult?.results) + number(result.fifaFantasyResult?.results) + number(result.fifaCalendarResult?.results);
+  const completedScores = number(result.espnResult?.completedScores) + number(result.fifaFantasyResult?.completedScores) + number(result.fifaCalendarResult?.completedScores);
   return [
+    {
+      label: "Results sheet",
+      value: fmt.format(resultRows),
+      copy: `${fmt.format(completedScores)} completed scores`,
+      kind: resultRows ? "ok" : "idle"
+    },
     {
       label: "API-FOOTBALL",
       value: result.fixtureResult?.status || "unknown",
@@ -3966,6 +3985,8 @@ function bindShellEvents() {
   document.getElementById("refresh-button")?.addEventListener("click", () => loadData());
   document.getElementById("settle-all-button")?.addEventListener("click", settleAllFt);
   document.getElementById("quick-results-sync-button")?.addEventListener("click", syncResultsOnly);
+  document.getElementById("sync-odds-button")?.addEventListener("click", syncOddsOnly);
+  document.getElementById("sync-data-button")?.addEventListener("click", syncFixturesAndFifaData);
   document.getElementById("provider-sync-button")?.addEventListener("click", syncProviders);
   document.getElementById("transfermarkt-sync-button")?.addEventListener("click", () => syncTransfermarktValues());
   document.getElementById("transfermarkt-import-form")?.addEventListener("submit", importTransfermarktValues);
@@ -3974,6 +3995,7 @@ function bindShellEvents() {
   document.getElementById("export-ledger-button")?.addEventListener("click", exportLedgerCsv);
   document.getElementById("export-audit-button")?.addEventListener("click", exportAuditCsv);
   document.getElementById("export-reports-button")?.addEventListener("click", exportReportsCsv);
+  document.getElementById("export-results-button")?.addEventListener("click", exportResultsCsv);
   document.getElementById("export-odds-report-button")?.addEventListener("click", exportOddsReportCsv);
   document.querySelectorAll("[data-toggle-user]").forEach((button) => {
     button.addEventListener("click", () => toggleUser(button.dataset.toggleUser, button.dataset.active === "true"));
@@ -4359,6 +4381,26 @@ async function updateResultAndSettle(event) {
     await loadData();
     return;
   }
+  const selectedMatch = state.matches.find((match) => Number(match.id) === matchId);
+  if (selectedMatch?.home_team_id || selectedMatch?.home_team?.id) {
+    await state.client
+      .from("match_results")
+      .upsert({
+        match_id: matchId,
+        home_team_id: selectedMatch.home_team_id || selectedMatch.home_team?.id,
+        away_team_id: selectedMatch.away_team_id || selectedMatch.away_team?.id,
+        status,
+        home_score: home,
+        away_score: away,
+        home_penalties: Number.isFinite(homePenalties) ? homePenalties : null,
+        away_penalties: Number.isFinite(awayPenalties) ? awayPenalties : null,
+        provider: "admin",
+        source: "admin",
+        provider_payload: { updated_by: state.profile?.id || null },
+        finished_at: new Date().toISOString(),
+        synced_at: new Date().toISOString()
+      }, { onConflict: "match_id" });
+  }
   const { data, error } = await state.client.rpc("settle_match_bets", { p_match_id: matchId });
   state.message = error ? "" : `Đã settle ${data} cược.`;
   state.error = error ? error.message : "";
@@ -4504,8 +4546,10 @@ async function syncResultsOnly() {
     state.providerSync = { isRunning: false, startedAt: state.providerSync.startedAt, finishedAt: new Date().toISOString(), result, error: "" };
     const espnOk = result.espnResult?.status === "success";
     const updated = (result.espnResult?.updated || 0) + (result.fifaFantasyResult?.updated || 0) + (result.fifaCalendarResult?.updated || 0);
+    const savedResults = (result.espnResult?.results || 0) + (result.fifaFantasyResult?.results || 0) + (result.fifaCalendarResult?.results || 0);
     const settled = result.settledBets || 0;
     const parts = [];
+    if (savedResults > 0) parts.push(`${savedResults} result rows saved`);
     if (espnOk || result.fifaFantasyResult?.status === "success" || result.fifaCalendarResult?.status === "success") parts.push(`${updated} trận cập nhật`);
     if (settled > 0) parts.push(`${settled} cược đã settle`);
     if (!parts.length) parts.push("Không có dữ liệu mới");
@@ -4518,6 +4562,57 @@ async function syncResultsOnly() {
     state.message = "";
   }
   await loadData();
+}
+
+async function runProviderSyncJob(body, toastBuilder) {
+  if (state.providerSync.isRunning) return;
+  state.providerSync = { isRunning: true, startedAt: new Date().toISOString(), finishedAt: "", result: null, error: "" };
+  state.message = "";
+  state.error = "";
+  renderApp();
+  try {
+    const result = await safeFetchJson("/api/sync-football-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.session.access_token}` },
+      body: JSON.stringify(body)
+    });
+    state.providerSync = { isRunning: false, startedAt: state.providerSync.startedAt, finishedAt: new Date().toISOString(), result, error: "" };
+    state.message = toastBuilder ? toastBuilder(result) : providerSyncToast(result);
+    state.error = "";
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    state.providerSync = { isRunning: false, startedAt: state.providerSync.startedAt, finishedAt: new Date().toISOString(), result: null, error: errorMessage };
+    state.error = errorMessage;
+    state.message = "";
+  }
+  await loadData();
+}
+
+async function syncOddsOnly() {
+  return runProviderSyncJob({
+    includeFixtures: false,
+    includeOdds: true,
+    includeStats: false,
+    includeRankings: false,
+    includeFifaProfiles: false,
+    includeSquads: false,
+    includeFifaResults: false
+  }, (result) => {
+    const odds = result.oddsResult || {};
+    return `Sync odds xong. ${providerOddsOutputCopy(odds)}`;
+  });
+}
+
+async function syncFixturesAndFifaData() {
+  return runProviderSyncJob({
+    includeFixtures: true,
+    includeOdds: false,
+    includeStats: true,
+    includeRankings: true,
+    includeFifaProfiles: true,
+    includeSquads: true,
+    includeFifaResults: false
+  }, providerSyncToast);
 }
 
 async function syncProviders() {
@@ -4807,6 +4902,30 @@ function exportReportsCsv() {
     roi: row.roi
   }));
   downloadCsv("worldcup-admin-reports.csv", [...userRows, ...marketRows]);
+}
+
+function exportResultsCsv() {
+  const rows = state.matchResults.map((row) => {
+    const home = row.home_team || row.match?.home_team || {};
+    const away = row.away_team || row.match?.away_team || {};
+    return {
+      match_id: row.match_id,
+      finished_at: row.finished_at || "",
+      synced_at: row.synced_at || "",
+      status: row.status,
+      home_code: home.code || "",
+      home_team: home.name || "",
+      home_score: row.home_score,
+      away_score: row.away_score,
+      away_code: away.code || "",
+      away_team: away.name || "",
+      home_penalties: row.home_penalties ?? "",
+      away_penalties: row.away_penalties ?? "",
+      provider: row.provider,
+      source: row.source
+    };
+  });
+  downloadCsv("worldcup-match-results.csv", rows);
 }
 
 function exportOddsReportCsv() {

@@ -155,6 +155,32 @@ alter table public.matches
   add column if not exists home_penalties integer,
   add column if not exists away_penalties integer;
 
+create table if not exists public.match_results (
+  id bigint generated always as identity primary key,
+  match_id bigint not null unique references public.matches(id) on delete cascade,
+  home_team_id bigint not null references public.teams(id),
+  away_team_id bigint not null references public.teams(id),
+  status text not null,
+  home_score integer,
+  away_score integer,
+  home_penalties integer,
+  away_penalties integer,
+  provider text not null default 'manual',
+  source text not null default 'manual',
+  provider_payload jsonb not null default '{}',
+  finished_at timestamptz,
+  synced_at timestamptz not null default now()
+);
+
+alter table public.match_results
+  add column if not exists home_penalties integer,
+  add column if not exists away_penalties integer,
+  add column if not exists provider text not null default 'manual',
+  add column if not exists source text not null default 'manual',
+  add column if not exists provider_payload jsonb not null default '{}',
+  add column if not exists finished_at timestamptz,
+  add column if not exists synced_at timestamptz not null default now();
+
 create table if not exists public.team_lineups (
   id bigint generated always as identity primary key,
   team_id bigint not null references public.teams(id) on delete cascade,
@@ -350,6 +376,12 @@ create index if not exists matches_home_team_id_idx
 create index if not exists matches_away_team_id_idx
   on public.matches (away_team_id);
 
+create index if not exists match_results_finished_at_idx
+  on public.match_results (finished_at desc);
+
+create index if not exists match_results_provider_synced_idx
+  on public.match_results (provider, synced_at desc);
+
 create index if not exists team_players_team_position_idx
   on public.team_players (team_id, position, shirt_number);
 
@@ -444,6 +476,45 @@ create index if not exists audit_logs_created_at_idx
 create index if not exists audit_logs_actor_created_at_idx
   on public.audit_logs (actor_id, created_at desc);
 
+insert into public.match_results (
+  match_id,
+  home_team_id,
+  away_team_id,
+  status,
+  home_score,
+  away_score,
+  home_penalties,
+  away_penalties,
+  provider,
+  source,
+  finished_at,
+  synced_at
+)
+select
+  m.id,
+  m.home_team_id,
+  m.away_team_id,
+  m.status,
+  m.home_score,
+  m.away_score,
+  m.home_penalties,
+  m.away_penalties,
+  'backfill',
+  'matches',
+  m.updated_at,
+  now()
+from public.matches m
+where m.status in ('FT', 'AET', 'PEN', 'FT_PEN')
+  and m.home_score is not null
+  and m.away_score is not null
+on conflict (match_id) do update
+set status = excluded.status,
+    home_score = excluded.home_score,
+    away_score = excluded.away_score,
+    home_penalties = excluded.home_penalties,
+    away_penalties = excluded.away_penalties,
+    synced_at = excluded.synced_at;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -493,6 +564,7 @@ alter table public.teams enable row level security;
 alter table public.team_players enable row level security;
 alter table public.team_lineups enable row level security;
 alter table public.matches enable row level security;
+alter table public.match_results enable row level security;
 alter table public.match_stats enable row level security;
 alter table public.bracket_matches enable row level security;
 alter table public.bracket_slots enable row level security;
@@ -539,6 +611,13 @@ create policy public_read_matches on public.matches for select to authenticated 
 
 drop policy if exists admin_write_matches on public.matches;
 create policy admin_write_matches on public.matches
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists public_read_match_results on public.match_results;
+create policy public_read_match_results on public.match_results for select to authenticated using (true);
+
+drop policy if exists admin_write_match_results on public.match_results;
+create policy admin_write_match_results on public.match_results
   for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists public_read_match_stats on public.match_stats;
@@ -1969,6 +2048,19 @@ begin
     (v_match.id, 'corners_total', 'Tổng phạt góc 8.5', 'under', 'Xỉu góc 8.5', 8.5, 1.90, 'internal', v_match.starts_at),
     (v_match.id, 'cards_total', 'Tổng thẻ 3.5', 'over', 'Tài thẻ 3.5', 3.5, 1.90, 'internal', v_match.starts_at),
     (v_match.id, 'cards_total', 'Tổng thẻ 3.5', 'under', 'Xỉu thẻ 3.5', 3.5, 1.90, 'internal', v_match.starts_at)
+  on conflict (match_id, market_key, selection_key, line_key) do update
+  set label = excluded.label,
+      selection_label = excluded.selection_label,
+      odds_multiplier = excluded.odds_multiplier,
+      closes_at = excluded.closes_at
+  where public.match_markets.source = 'internal';
+
+  insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
+  values
+    (v_match.id, 'asian_handicap', 'Keo Chau A -0.5', 'home', coalesce(v_home.name, 'Home') || ' -0.5', -0.5, greatest(1.28, least(3.50, v_home_win_odds)), 'internal', v_match.starts_at),
+    (v_match.id, 'asian_handicap', 'Keo Chau A -0.5', 'away', coalesce(v_away.name, 'Away') || ' +0.5', -0.5, greatest(1.35, least(2.80, round((v_home_win_odds / greatest(0.1, v_home_win_odds - 1)) * 0.97, 2))), 'internal', v_match.starts_at),
+    (v_match.id, 'asian_handicap', 'Keo Chau A +0.5', 'home', coalesce(v_home.name, 'Home') || ' +0.5', 0.5, greatest(1.35, least(2.80, round((v_away_win_odds / greatest(0.1, v_away_win_odds - 1)) * 0.97, 2))), 'internal', v_match.starts_at),
+    (v_match.id, 'asian_handicap', 'Keo Chau A +0.5', 'away', coalesce(v_away.name, 'Away') || ' -0.5', 0.5, greatest(1.28, least(3.50, v_away_win_odds)), 'internal', v_match.starts_at)
   on conflict (match_id, market_key, selection_key, line_key) do update
   set label = excluded.label,
       selection_label = excluded.selection_label,

@@ -254,6 +254,16 @@ set name = excluded.name,
     default_multiplier = excluded.default_multiplier,
     display_order = excluded.display_order;
 
+insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
+values ('asian_handicap', 'Keo Chau A', 'line', 'asian_handicap', false, 1.90, 8)
+on conflict (key) do update
+set name = excluded.name,
+    market_type = excluded.market_type,
+    settlement_rule = excluded.settlement_rule,
+    internal_only = excluded.internal_only,
+    default_multiplier = excluded.default_multiplier,
+    display_order = excluded.display_order;
+
 with t as (select code, id from public.teams)
 insert into public.matches (provider_id, stage, group_name, home_team_id, away_team_id, starts_at, status, venue, city)
 values
@@ -366,6 +376,37 @@ cross join lateral (
     ('corners_total', 'Tổng phạt góc 8.5', 'under', 'Xỉu góc 8.5', 8.5::numeric, 1.90, 'internal'),
     ('cards_total', 'Tổng thẻ 3.5', 'over', 'Tài thẻ 3.5', 3.5::numeric, 1.90, 'internal'),
     ('cards_total', 'Tổng thẻ 3.5', 'under', 'Xỉu thẻ 3.5', 3.5::numeric, 1.90, 'internal')
+) as x(market_key, label, selection_key, selection_label, line, odds_multiplier, source)
+where m.provider_id like 'fifa-2026-%'
+on conflict (match_id, market_key, selection_key, line_key) do update
+set label = excluded.label,
+    selection_label = excluded.selection_label,
+    odds_multiplier = excluded.odds_multiplier,
+    source = excluded.source,
+    closes_at = excluded.closes_at
+where public.match_markets.source = 'internal';
+
+insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
+select m.id, x.market_key, x.label, x.selection_key, x.selection_label, x.line, x.odds_multiplier, x.source, m.starts_at
+from public.matches m
+join public.teams ht on ht.id = m.home_team_id
+join public.teams at on at.id = m.away_team_id
+cross join lateral (
+  select
+    public.team_strength_score(ht.fifa_rank, ht.squad_market_value_eur, ht.squad_value_rank) as home_strength,
+    public.team_strength_score(at.fifa_rank, at.squad_market_value_eur, at.squad_value_rank) as away_strength
+) as s
+cross join lateral (
+  select
+    public.team_win_multiplier(s.home_strength, s.away_strength, 1.35, 4.50) as home_win_odds,
+    public.team_win_multiplier(s.away_strength, s.home_strength, 1.35, 4.50) as away_win_odds
+) as o
+cross join lateral (
+  values
+    ('asian_handicap', 'Keo Chau A -0.5', 'home', ht.name || ' -0.5', -0.5::numeric, greatest(1.28, least(3.50, o.home_win_odds)), 'internal'),
+    ('asian_handicap', 'Keo Chau A -0.5', 'away', at.name || ' +0.5', -0.5::numeric, greatest(1.35, least(2.80, round((o.home_win_odds / greatest(0.1, o.home_win_odds - 1)) * 0.97, 2))), 'internal'),
+    ('asian_handicap', 'Keo Chau A +0.5', 'home', ht.name || ' +0.5', 0.5::numeric, greatest(1.35, least(2.80, round((o.away_win_odds / greatest(0.1, o.away_win_odds - 1)) * 0.97, 2))), 'internal'),
+    ('asian_handicap', 'Keo Chau A +0.5', 'away', at.name || ' -0.5', 0.5::numeric, greatest(1.28, least(3.50, o.away_win_odds)), 'internal')
 ) as x(market_key, label, selection_key, selection_label, line, odds_multiplier, source)
 where m.provider_id like 'fifa-2026-%'
 on conflict (match_id, market_key, selection_key, line_key) do update

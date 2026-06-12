@@ -1,6 +1,7 @@
 ﻿const API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io";
 const ODDS_API_BASE_URL = "https://api.the-odds-api.com/v4";
 const FOOTBALL_DATA_BASE_URL = "https://api.football-data.org/v4";
+const ESPN_SOCCER_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world";
 const WORLD_CUP_LEAGUE_ID = 1;
 const WORLD_CUP_SEASON = 2026;
 const FOOTBALL_DATA_WORLD_CUP_CODE = "WC";
@@ -27,10 +28,11 @@ const TRANSFERMARKT_DELAY_MS = 650;
 const STAT_SYNC_WINDOW_HOURS = 96;
 const LIVE_STATUSES = new Set(["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"]);
 const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
-const ODDS_API_MAIN_MARKETS = "h2h,totals";
+const ODDS_API_MAIN_MARKETS = "h2h,totals,spreads";
+const ODDS_API_TOTALS_FALLBACK_MARKETS = "h2h,totals";
 const ODDS_API_MATCH_FALLBACK_MARKETS = "h2h";
 const ODDS_API_OUTRIGHT_MARKETS = "outrights";
-const PROVIDER_MANAGED_MARKETS = ["match_result", "total_goals", "correct_score"];
+const PROVIDER_MANAGED_MARKETS = ["match_result", "total_goals", "correct_score", "asian_handicap"];
 const DEFAULT_ODDS_API_REGIONS = "eu";
 const WORLD_CUP_TITLE_YEARS = {
   ARG: [1978, 1986, 2022],
@@ -754,6 +756,17 @@ function decimal(value) {
   return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : null;
 }
 
+function invertLine(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? decimal(-numeric) : null;
+}
+
+function formatSignedLine(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  return `${numeric > 0 ? "+" : ""}${Number(numeric.toFixed(2))}`;
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -1088,6 +1101,41 @@ function bestPricesForEvent(event, match, reversed) {
           });
         }
       }
+
+      if (market.key === "spreads") {
+        for (const outcome of market.outcomes || []) {
+          const outcomeName = normalizeTeamName(outcome.name);
+          const point = decimal(outcome.point);
+          let selectionKey = null;
+          let selectionLabel = outcome.name;
+          let line = null;
+          if (outcomeName === normalizeTeamName(event.home_team)) {
+            selectionKey = reversed ? "away" : "home";
+            selectionLabel = `${selectionKey === "home" ? "Home" : "Away"} ${formatSignedLine(point)}`;
+            line = reversed ? invertLine(point) : point;
+          } else if (outcomeName === normalizeTeamName(event.away_team)) {
+            selectionKey = reversed ? "home" : "away";
+            selectionLabel = `${selectionKey === "home" ? "Home" : "Away"} ${formatSignedLine(point)}`;
+            line = reversed ? point : invertLine(point);
+          }
+          if (!selectionKey || line === null) continue;
+
+          setBest(`asian_handicap:${selectionKey}:${line}`, {
+            match_id: match.id,
+            market_key: "asian_handicap",
+            label: `Keo Chau A ${formatSignedLine(line)}`,
+            selection_key: selectionKey,
+            selection_label: selectionLabel,
+            line,
+            odds_multiplier: decimal(outcome.price),
+            bookmaker: bookmaker.title || bookmaker.key,
+            bookmaker_key: bookmaker.key,
+            bookmaker_rank: bookmakerRank,
+            bookmaker_last_update: bookmaker.last_update,
+            payload_json: { event_id: event.id, market: market.key, outcome, bookmaker }
+          });
+        }
+      }
     }
   }
 
@@ -1251,6 +1299,24 @@ async function upsertOutrightMarketFromOdds(candidate, closesAt) {
 
 // ── FIFA Fantasy + FIFA Calendar match result sync ──────────────────────────
 
+function scoreOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function isFinalResultStatus(status) {
+  return ["FT", "AET", "PEN", "FT_PEN"].includes(String(status || ""));
+}
+
+function hasScoreFixture(fixture) {
+  return isFinalResultStatus(fixture?.status)
+    && fixture.homeScore !== null
+    && fixture.homeScore !== undefined
+    && fixture.awayScore !== null
+    && fixture.awayScore !== undefined;
+}
+
 function extractFifaFantasyFixtures(payload) {
   const rounds = payload?.rounds || payload?.data?.rounds || [];
   const fixtures = [];
@@ -1263,8 +1329,8 @@ function extractFifaFantasyFixtures(payload) {
       const awayCode = String(away.teamCode || away.code || away.abbreviation || away.tla || "").toUpperCase();
       if (!homeCode || !awayCode) continue;
       const rawStatus = String(f.status || f.matchStatus || f.state || "").toLowerCase();
-      const homeScore = f.homeScore ?? f.home_score ?? f.result?.home ?? f.score?.home ?? null;
-      const awayScore = f.awayScore ?? f.away_score ?? f.result?.away ?? f.score?.away ?? null;
+      const homeScore = scoreOrNull(f.homeScore ?? f.home_score ?? f.result?.home ?? f.score?.home ?? null);
+      const awayScore = scoreOrNull(f.awayScore ?? f.away_score ?? f.result?.away ?? f.score?.away ?? null);
       const kickOff = f.kickOff || f.kickoff || f.matchDate || f.date || f.startDate || null;
       let status = "SCHEDULED";
       if (rawStatus.includes("finish") || rawStatus.includes("complet") || rawStatus === "ft" || rawStatus === "full_time") status = "FT";
@@ -1274,7 +1340,7 @@ function extractFifaFantasyFixtures(payload) {
       else if (rawStatus.includes("penalty") || rawStatus === "pen") status = "PEN";
       else if (rawStatus.includes("postpone")) status = "PST";
       else if (rawStatus.includes("cancel")) status = "CANC";
-      fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff });
+      fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff, provider: "fifa-fantasy", payload: f });
     }
   }
   return fixtures;
@@ -1291,8 +1357,8 @@ function extractFifaCalendarFixtures(payload) {
     const awayCode = String(away.Abbreviation || away.abbreviation || away.TeamCode || away.code || "").toUpperCase();
     if (!homeCode || !awayCode) continue;
     const rawStatus = String(m.MatchStatus || m.matchStatus || m.Status || m.status || "").toLowerCase();
-    const homeScore = m.HomeTeamScore ?? m.homeScore ?? m.score?.home ?? null;
-    const awayScore = m.AwayTeamScore ?? m.awayScore ?? m.score?.away ?? null;
+    const homeScore = scoreOrNull(m.HomeTeamScore ?? m.homeScore ?? m.score?.home ?? null);
+    const awayScore = scoreOrNull(m.AwayTeamScore ?? m.awayScore ?? m.score?.away ?? null);
     const kickOff = m.Date || m.date || m.MatchDay || null;
     let status = "SCHEDULED";
     if ([0, "0"].includes(m.MatchStatus) || rawStatus.includes("schedul") || rawStatus.includes("upcoming")) status = "SCHEDULED";
@@ -1302,22 +1368,23 @@ function extractFifaCalendarFixtures(payload) {
     else if (rawStatus.includes("penalty") || rawStatus === "pen") status = "PEN";
     else if (rawStatus.includes("postpone")) status = "PST";
     else if (rawStatus.includes("cancel")) status = "CANC";
-    fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff });
+    fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff, provider: "fifa-calendar", payload: m });
   }
   return fixtures;
 }
 
 async function upsertMatchResultsByCode(fixtures) {
-  if (!fixtures || !fixtures.length) return { updated: 0, completedMatchIds: [] };
+  if (!fixtures || !fixtures.length) return { updated: 0, results: 0, completedScores: 0, completedMatchIds: [] };
   const codes = [...new Set(fixtures.flatMap((f) => [f.homeCode, f.awayCode]))];
   const teamsByCode = await getTeamsByCodes(codes);
   const matchesRes = await supabaseFetch(
-    "/rest/v1/matches?select=id,provider_id,status,home_score,away_score,home_team_id,away_team_id,starts_at&order=starts_at.asc"
+    "/rest/v1/matches?select=id,provider_id,status,home_score,away_score,home_penalties,away_penalties,home_team_id,away_team_id,starts_at,updated_at&order=starts_at.asc"
   );
   if (!matchesRes.ok) throw new Error(`Supabase read matches failed: ${matchesRes.status}`);
   const dbMatches = await matchesRes.json();
 
   let updated = 0;
+  const resultRows = [];
   const completedMatchIds = [];
   for (const f of fixtures) {
     const homeTeam = teamsByCode.get(f.homeCode);
@@ -1329,12 +1396,32 @@ async function upsertMatchResultsByCode(fixtures) {
     if (!dbMatch) continue;
     const wasCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(dbMatch.status);
     const nowCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(f.status);
+    const scoredResult = hasScoreFixture(f);
     // Only update if score or status changed
     if (
       dbMatch.status === f.status &&
       dbMatch.home_score === f.homeScore &&
       dbMatch.away_score === f.awayScore
-    ) continue;
+    ) {
+      if (scoredResult) {
+        resultRows.push({
+          match_id: dbMatch.id,
+          home_team_id: dbMatch.home_team_id,
+          away_team_id: dbMatch.away_team_id,
+          status: f.status,
+          home_score: f.homeScore,
+          away_score: f.awayScore,
+          home_penalties: f.homePenalties ?? null,
+          away_penalties: f.awayPenalties ?? null,
+          provider: f.provider || "unknown",
+          source: f.source || f.provider || "provider",
+          provider_payload: f.payload || {},
+          finished_at: f.finishedAt || f.kickOff || dbMatch.updated_at || new Date().toISOString(),
+          synced_at: new Date().toISOString()
+        });
+      }
+      continue;
+    }
     const patchRes = await supabaseFetch(
       `/rest/v1/matches?id=eq.${dbMatch.id}`,
       {
@@ -1344,15 +1431,40 @@ async function upsertMatchResultsByCode(fixtures) {
           status: f.status,
           home_score: f.homeScore,
           away_score: f.awayScore,
+          home_penalties: f.homePenalties ?? null,
+          away_penalties: f.awayPenalties ?? null,
           updated_at: new Date().toISOString()
         })
       }
     );
     if (!patchRes.ok) continue;
     updated += 1;
+    if (scoredResult) {
+      resultRows.push({
+        match_id: dbMatch.id,
+        home_team_id: dbMatch.home_team_id,
+        away_team_id: dbMatch.away_team_id,
+        status: f.status,
+        home_score: f.homeScore,
+        away_score: f.awayScore,
+        home_penalties: f.homePenalties ?? null,
+        away_penalties: f.awayPenalties ?? null,
+        provider: f.provider || "unknown",
+        source: f.source || f.provider || "provider",
+        provider_payload: f.payload || {},
+        finished_at: f.finishedAt || f.kickOff || new Date().toISOString(),
+        synced_at: new Date().toISOString()
+      });
+    }
     if (!wasCompleted && nowCompleted) completedMatchIds.push(dbMatch.id);
   }
-  return { updated, completedMatchIds };
+  const resultUpserts = await upsertJson("match_results", resultRows, "match_id");
+  return {
+    updated,
+    results: resultUpserts.length,
+    completedScores: resultRows.length,
+    completedMatchIds
+  };
 }
 
 async function autoSettleMatches(matchIds, accessToken) {
@@ -1403,9 +1515,9 @@ function extractEspnFixtures(payload) {
     else if (statusName === "STATUS_HALFTIME") status = "HT";
     else if (statusName === "STATUS_POSTPONED") status = "PST";
     else if (statusName === "STATUS_CANCELED" || statusName === "STATUS_CANCELLED") status = "CANC";
-    const homeScore = statusState === "post" || statusState === "in" ? Number(homeComp.score ?? null) : null;
-    const awayScore = statusState === "post" || statusState === "in" ? Number(awayComp.score ?? null) : null;
-    fixtures.push({ homeCode, awayCode, homeScore: isNaN(homeScore) ? null : homeScore, awayScore: isNaN(awayScore) ? null : awayScore, status, kickOff: ev.date || comp.date || null });
+    const homeScore = statusState === "post" || statusState === "in" ? scoreOrNull(homeComp.score) : null;
+    const awayScore = statusState === "post" || statusState === "in" ? scoreOrNull(awayComp.score) : null;
+    fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff: ev.date || comp.date || null, provider: "espn", payload: ev });
   }
   return fixtures;
 }
@@ -1425,15 +1537,15 @@ async function syncEspnResults() {
     return { provider: "espn", status: "failed", requests: 1, updated: 0, completedMatchIds: [] };
   }
   const fixtures = extractEspnFixtures(payload);
-  const { updated, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
+  const { updated, results, completedScores, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
   await recordSyncRun({
     provider: "espn",
     jobType: "results",
     status: "success",
     requestCount: 1,
-    message: `ESPN: ${fixtures.length} fixtures parsed, ${updated} updated, ${(completedMatchIds || []).length} newly completed.`
+    message: `ESPN: ${fixtures.length} fixtures parsed, ${updated} matches updated, ${results} result rows saved, ${completedScores} completed scores found, ${(completedMatchIds || []).length} newly completed.`
   });
-  return { provider: "espn", status: "success", requests: 1, updated, completedMatchIds };
+  return { provider: "espn", status: "success", requests: 1, updated, results, completedScores, completedMatchIds };
 }
 async function syncFifaFantasyResults() {
   let payload;
@@ -1451,15 +1563,15 @@ async function syncFifaFantasyResults() {
     return { provider: "fifa-fantasy", status: "failed", requests: 1, updated: 0, completedMatchIds: [] };
   }
   const fixtures = extractFifaFantasyFixtures(payload);
-  const { updated, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
+  const { updated, results, completedScores, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
   await recordSyncRun({
     provider: "fifa-fantasy",
     jobType: "results",
     status: "success",
     requestCount: 1,
-    message: `Parsed ${fixtures.length} fixtures from FIFA Fantasy; updated ${updated} matches; ${(completedMatchIds || []).length} newly completed.`
+    message: `Parsed ${fixtures.length} fixtures from FIFA Fantasy; updated ${updated} matches; saved ${results} result rows; ${completedScores} completed scores; ${(completedMatchIds || []).length} newly completed.`
   });
-  return { provider: "fifa-fantasy", status: "success", requests: 1, updated, completedMatchIds };
+  return { provider: "fifa-fantasy", status: "success", requests: 1, updated, results, completedScores, completedMatchIds };
 }
 
 async function syncFifaCalendarResults() {
@@ -1478,15 +1590,15 @@ async function syncFifaCalendarResults() {
     return { provider: "fifa-calendar", status: "failed", requests: 1, updated: 0, completedMatchIds: [] };
   }
   const fixtures = extractFifaCalendarFixtures(payload);
-  const { updated, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
+  const { updated, results, completedScores, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
   await recordSyncRun({
     provider: "fifa-calendar",
     jobType: "results",
     status: "success",
     requestCount: 1,
-    message: `Parsed ${fixtures.length} fixtures from FIFA Calendar API; updated ${updated} matches; ${(completedMatchIds || []).length} newly completed.`
+    message: `Parsed ${fixtures.length} fixtures from FIFA Calendar API; updated ${updated} matches; saved ${results} result rows; ${completedScores} completed scores; ${(completedMatchIds || []).length} newly completed.`
   });
-  return { provider: "fifa-calendar", status: "success", requests: 1, updated, completedMatchIds };
+  return { provider: "fifa-calendar", status: "success", requests: 1, updated, results, completedScores, completedMatchIds };
 }
 
 // ── End FIFA result sync ─────────────────────────────────────────────────────
@@ -1722,11 +1834,13 @@ async function resetProviderManagedMarketsToInternal(matches) {
   }
   await upsertJson("match_markets", rows, "match_id,market_key,selection_key,line_key");
   return rows.length;
-}async function closeInternalTotalGoalFallbacks(matchIds) {
+}
+
+async function closeInternalMarketFallbacks(matchIds, marketKey) {
   const ids = [...new Set((matchIds || []).map(Number).filter(Boolean))];
   if (!ids.length) return 0;
   const response = await supabaseFetch(
-    `/rest/v1/match_markets?match_id=in.(${ids.join(",")})&market_key=eq.total_goals&source=eq.internal`,
+    `/rest/v1/match_markets?match_id=in.(${ids.join(",")})&market_key=eq.${encodeURIComponent(marketKey)}&source=eq.internal`,
     {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
@@ -1734,9 +1848,17 @@ async function resetProviderManagedMarketsToInternal(matches) {
     }
   );
   if (!response.ok) {
-    throw new Error(`Supabase close internal total-goals fallback failed: ${response.status} ${await response.text()}`);
+    throw new Error(`Supabase close internal ${marketKey} fallback failed: ${response.status} ${await response.text()}`);
   }
   return ids.length;
+}
+
+async function closeInternalTotalGoalFallbacks(matchIds) {
+  return closeInternalMarketFallbacks(matchIds, "total_goals");
+}
+
+async function closeInternalHandicapFallbacks(matchIds) {
+  return closeInternalMarketFallbacks(matchIds, "asian_handicap");
 }
 
 async function fetchTeamsForDefaultMarkets(matches) {
@@ -2283,6 +2405,7 @@ async function syncOddsSummary() {
   let updatedMarkets = 0;
   let updatedOutrights = 0;
   const providerTotalMatchIds = new Set();
+  const providerHandicapMatchIds = new Set();
 
   for (const event of events) {
     const matched = matchOddsEvent(event, matches);
@@ -2301,11 +2424,15 @@ async function syncOddsSummary() {
       if (candidate.market_key === "total_goals") {
         providerTotalMatchIds.add(Number(candidate.match_id));
       }
+      if (candidate.market_key === "asian_handicap") {
+        providerHandicapMatchIds.add(Number(candidate.match_id));
+      }
       updatedMarkets += 1;
     }
   }
 
   await closeInternalTotalGoalFallbacks([...providerTotalMatchIds]);
+  await closeInternalHandicapFallbacks([...providerHandicapMatchIds]);
 
 
   const totalEvents = events.length + outrightOdds.events.length;
@@ -2364,19 +2491,31 @@ async function fetchOutrightOddsEvents() {
 
 async function fetchMatchOddsEvents() {
   try {
-    // The /odds endpoint rejects draw_no_bet and cannot mix outrights with match markets.
+    // The /odds endpoint cannot mix outrights with match markets.
     const result = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_MAIN_MARKETS));
     return { events: result.data, quota: result.quota, requests: 1, warning: "" };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!isOddsMarketCompatibilityError(message)) throw error;
-    const fallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_MATCH_FALLBACK_MARKETS));
-    return {
-      events: fallback.data,
-      quota: fallback.quota,
-      requests: 2,
-      warning: `Match odds request with ${ODDS_API_MAIN_MARKETS} failed; retried with ${ODDS_API_MATCH_FALLBACK_MARKETS}.`
-    };
+    try {
+      const totalsFallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_TOTALS_FALLBACK_MARKETS));
+      return {
+        events: totalsFallback.data,
+        quota: totalsFallback.quota,
+        requests: 2,
+        warning: `Match odds request with ${ODDS_API_MAIN_MARKETS} failed; retried with ${ODDS_API_TOTALS_FALLBACK_MARKETS}.`
+      };
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      if (!isOddsMarketCompatibilityError(fallbackMessage)) throw fallbackError;
+      const h2hFallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_MATCH_FALLBACK_MARKETS));
+      return {
+        events: h2hFallback.data,
+        quota: h2hFallback.quota,
+        requests: 3,
+        warning: `Match odds request with ${ODDS_API_MAIN_MARKETS} failed; retried with ${ODDS_API_TOTALS_FALLBACK_MARKETS}, then ${ODDS_API_MATCH_FALLBACK_MARKETS}.`
+      };
+    }
   }
 }
 
@@ -2499,30 +2638,30 @@ export default async function handler(request, response) {
       ? await runProviderJob({
           provider: "espn",
           jobType: "results",
-          fallback: { updated: 0, completedMatchIds: [] },
+          fallback: { updated: 0, results: 0, completedScores: 0, completedMatchIds: [] },
           task: syncEspnResults
         })
-      : { provider: "espn", status: "skipped", requests: 0, updated: 0, completedMatchIds: [] };
+      : { provider: "espn", status: "skipped", requests: 0, updated: 0, results: 0, completedScores: 0, completedMatchIds: [] };
 
     // FIFA Fantasy fallback (if ESPN found nothing)
-    const fifaFantasyResult = (includeFifaResults && espnResult.status !== "success")
+    const fifaFantasyResult = (includeFifaResults && (espnResult.status !== "success" || Number(espnResult.completedScores || 0) === 0))
       ? await runProviderJob({
           provider: "fifa-fantasy",
           jobType: "results",
-          fallback: { updated: 0, completedMatchIds: [] },
+          fallback: { updated: 0, results: 0, completedScores: 0, completedMatchIds: [] },
           task: syncFifaFantasyResults
         })
-      : { provider: "fifa-fantasy", status: "skipped", requests: 0, updated: 0, completedMatchIds: [] };
+      : { provider: "fifa-fantasy", status: "skipped", requests: 0, updated: 0, results: 0, completedScores: 0, completedMatchIds: [] };
 
     // FIFA Calendar fallback (if ESPN + FIFA Fantasy both failed)
-    const fifaCalendarResult = (includeFifaResults && espnResult.status !== "success" && fifaFantasyResult.status !== "success") || includeFifaCalendar
+    const fifaCalendarResult = (includeFifaResults && Number(espnResult.completedScores || 0) === 0 && Number(fifaFantasyResult.completedScores || 0) === 0) || includeFifaCalendar
       ? await runProviderJob({
           provider: "fifa-calendar",
           jobType: "results",
-          fallback: { updated: 0, completedMatchIds: [] },
+          fallback: { updated: 0, results: 0, completedScores: 0, completedMatchIds: [] },
           task: syncFifaCalendarResults
         })
-      : { provider: "fifa-calendar", status: "skipped", requests: 0, updated: 0, completedMatchIds: [] };
+      : { provider: "fifa-calendar", status: "skipped", requests: 0, updated: 0, results: 0, completedScores: 0, completedMatchIds: [] };
 
     // Collect all newly-completed match IDs from all result sources
     const newlyCompletedIds = [
@@ -2564,7 +2703,7 @@ export default async function handler(request, response) {
           const ftMatches = await ftRes.json();
           const ftIds = ftMatches.map((m) => m.id);
           if (ftIds.length) {
-            const betsRes = await supabaseFetch(`/rest/v1/bets?status=eq.placed&match_id=in.()&select=match_id`);
+            const betsRes = await supabaseFetch(`/rest/v1/bets?status=eq.placed&match_id=in.(${ftIds.join(",")})&select=match_id`);
             if (betsRes.ok) {
               const unsettled = await betsRes.json();
               const unsettledIds = [...new Set(unsettled.map((b) => b.match_id))];
