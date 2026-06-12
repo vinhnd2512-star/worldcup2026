@@ -21,7 +21,7 @@ class OddsApiClient:
         self.api_key = api_key
         self.timeout = timeout
 
-    async def get_world_cup_odds(self, regions: str = "eu", markets: str = "h2h,totals") -> OddsApiResponse:
+    async def get_world_cup_odds(self, regions: str = "eu", markets: str = "h2h,spreads,totals") -> OddsApiResponse:
         if not self.api_key:
             return OddsApiResponse(ok=False, message="ODDS_API_KEY is not configured")
         async with httpx.AsyncClient(timeout=self.timeout) as client:

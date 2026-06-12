@@ -35,6 +35,32 @@ class ApiFootballClient:
             payload = response.json()
             return ProviderResponse(ok=True, requests=1, message="fixtures fetched", data=payload.get("response", []))
 
+    async def get_fixture(self, fixture_id: int) -> ProviderResponse:
+        if not self.api_key:
+            return ProviderResponse(ok=False, message="API_FOOTBALL_KEY is not configured")
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(
+                f"{API_FOOTBALL_BASE_URL}/fixtures",
+                params={"id": fixture_id},
+                headers={"x-apisports-key": self.api_key},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return ProviderResponse(ok=True, requests=1, message="fixture fetched", data=payload.get("response", []))
+
+    async def get_fixture_statistics(self, fixture_id: int) -> ProviderResponse:
+        if not self.api_key:
+            return ProviderResponse(ok=False, message="API_FOOTBALL_KEY is not configured")
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(
+                f"{API_FOOTBALL_BASE_URL}/fixtures/statistics",
+                params={"fixture": fixture_id},
+                headers={"x-apisports-key": self.api_key},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return ProviderResponse(ok=True, requests=1, message="fixture statistics fetched", data=payload.get("response", []))
+
     async def get_odds_for_fixture(self, fixture_id: int) -> ProviderResponse:
         if not self.api_key:
             return ProviderResponse(ok=False, message="API_FOOTBALL_KEY is not configured")

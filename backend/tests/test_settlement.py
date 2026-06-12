@@ -40,6 +40,27 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(refund.payout, Decimal("100.00"))
         self.assertEqual(refund.net_points, Decimal("0.00"))
 
+    def test_handicap_win_loss_and_push(self) -> None:
+        home_minus_half = settle_bet(
+            BetSelection("handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-0.5"}),
+            MatchResult(status="FT", home_score=2, away_score=1),
+        )
+        away_plus_half = settle_bet(
+            BetSelection("handicap", "away", Decimal("100"), Decimal("1.91"), {"line": "0.5"}),
+            MatchResult(status="FT", home_score=2, away_score=1),
+        )
+        push = settle_bet(
+            BetSelection("handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-1"}),
+            MatchResult(status="FT", home_score=2, away_score=1),
+        )
+        self.assertEqual(home_minus_half.status, "won")
+        self.assertEqual(home_minus_half.payout, Decimal("191.00"))
+        self.assertEqual(home_minus_half.prediction_bonus, Decimal("8.00"))
+        self.assertEqual(away_plus_half.status, "lost")
+        self.assertEqual(push.status, "refunded")
+        self.assertEqual(push.result, "push")
+        self.assertEqual(push.payout, Decimal("100.00"))
+
     def test_over_under_goals(self) -> None:
         over = settle_bet(
             BetSelection("total_goals", "over", Decimal("50"), Decimal("1.90"), {"line": "2.5"}),

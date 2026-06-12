@@ -87,6 +87,7 @@ export interface LeaderboardRow {
 
 export interface PlaceBetPayload {
   match_id: number;
+  market_id?: number;
   market_key: string;
   selection_key: string;
   selection_label?: string;

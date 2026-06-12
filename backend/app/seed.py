@@ -10,6 +10,10 @@ from app.security import create_password_hash
 
 def seed_database(db: Session) -> None:
     if db.scalar(select(Role).limit(1)):
+        ensure_market_catalog(db)
+        for match in db.scalars(select(Match).where(Match.status.in_(["SCHEDULED", "NS", "TBD"]))).all():
+            _add_default_markets(db, match)
+        db.commit()
         return
 
     admin_role = Role(name="admin")
@@ -106,12 +110,14 @@ def seed_database(db: Session) -> None:
     market_defs = [
         ("correct_score", "Dự đoán tỷ số", "score", "correct_score", False, Decimal("2.45"), 1),
         ("match_result", "Kết quả 1X2", "single", "match_result", False, Decimal("1.80"), 2),
-        ("total_goals", "Tổng bàn thắng", "line", "total_goals", False, Decimal("1.90"), 3),
-        ("btts", "Hai đội cùng ghi bàn", "single", "btts", False, Decimal("1.95"), 4),
-        ("corners_total", "Tổng phạt góc", "line", "corners_total", True, Decimal("1.90"), 5),
-        ("cards_total", "Tổng thẻ", "line", "cards_total", True, Decimal("1.90"), 6),
-        ("tournament_winner", "Vô địch giải", "outright", "tournament_winner", False, Decimal("50.00"), 7),
-        ("golden_boot", "Dự đoán Vua phá lưới", "outright", "golden_boot", False, Decimal("120.00"), 8),
+        ("draw_no_bet", "Draw no bet", "single", "draw_no_bet", False, Decimal("1.65"), 3),
+        ("handicap", "Handicap", "line", "handicap", False, Decimal("1.90"), 4),
+        ("total_goals", "Tổng bàn thắng", "line", "total_goals", False, Decimal("1.90"), 5),
+        ("btts", "Hai đội cùng ghi bàn", "single", "btts", False, Decimal("1.95"), 6),
+        ("corners_total", "Tổng phạt góc", "line", "corners_total", True, Decimal("1.90"), 7),
+        ("cards_total", "Tổng thẻ", "line", "cards_total", True, Decimal("1.90"), 8),
+        ("tournament_winner", "Vô địch giải", "outright", "tournament_winner", False, Decimal("50.00"), 9),
+        ("golden_boot", "Dự đoán Vua phá lưới", "outright", "golden_boot", False, Decimal("120.00"), 10),
     ]
     db.add_all(
         [
@@ -175,6 +181,27 @@ def seed_database(db: Session) -> None:
     db.commit()
 
 
+def ensure_market_catalog(db: Session) -> None:
+    market_defs = [
+        ("draw_no_bet", "Draw no bet", "single", "draw_no_bet", False, Decimal("1.65"), 3),
+        ("handicap", "Handicap", "line", "handicap", False, Decimal("1.90"), 4),
+    ]
+    for key, name, market_type, rule, internal_only, multiplier, display_order in market_defs:
+        if db.scalar(select(MarketDefinition).where(MarketDefinition.key == key)):
+            continue
+        db.add(
+            MarketDefinition(
+                key=key,
+                name=name,
+                market_type=market_type,
+                settlement_rule=rule,
+                internal_only=internal_only,
+                default_multiplier=multiplier,
+                display_order=display_order,
+            )
+        )
+
+
 def _add_default_markets(db: Session, match: Match) -> None:
     closes_at = match.starts_at
     markets = [
@@ -182,6 +209,10 @@ def _add_default_markets(db: Session, match: Match) -> None:
         ("match_result", "Kết quả 1X2", "home", "Đội nhà thắng", None, Decimal("1.85"), "odds-api"),
         ("match_result", "Kết quả 1X2", "draw", "Hòa", None, Decimal("3.10"), "odds-api"),
         ("match_result", "Kết quả 1X2", "away", "Đội khách thắng", None, Decimal("2.05"), "odds-api"),
+        ("draw_no_bet", "Draw no bet", "home", "Đội nhà DNB", None, Decimal("1.58"), "internal"),
+        ("draw_no_bet", "Draw no bet", "away", "Đội khách DNB", None, Decimal("1.78"), "internal"),
+        ("handicap", "Handicap 0.5", "home", "Đội nhà -0.5", Decimal("-0.5"), Decimal("1.91"), "odds-api"),
+        ("handicap", "Handicap 0.5", "away", "Đội khách +0.5", Decimal("0.5"), Decimal("1.91"), "odds-api"),
         ("total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", Decimal("2.5"), Decimal("1.92"), "odds-api"),
         ("total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", Decimal("2.5"), Decimal("1.88"), "odds-api"),
         ("btts", "Hai đội cùng ghi bàn", "yes", "Có", None, Decimal("1.95"), "odds-api"),
@@ -191,8 +222,16 @@ def _add_default_markets(db: Session, match: Match) -> None:
         ("cards_total", "Tổng thẻ 3.5", "over", "Tài thẻ 3.5", Decimal("3.5"), Decimal("1.90"), "internal"),
         ("cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", Decimal("3.5"), Decimal("1.90"), "internal"),
     ]
-    db.add_all(
-        [
+    for market_key, label, selection_key, selection_label, line, multiplier, source in markets:
+        existing_statement = select(MatchMarket).where(
+            MatchMarket.match_id == match.id,
+            MatchMarket.market_key == market_key,
+            MatchMarket.selection_key == selection_key,
+        )
+        existing_statement = existing_statement.where(MatchMarket.line.is_(None) if line is None else MatchMarket.line == line)
+        if db.scalar(existing_statement):
+            continue
+        db.add(
             MatchMarket(
                 match_id=match.id,
                 market_key=market_key,
@@ -204,9 +243,7 @@ def _add_default_markets(db: Session, match: Match) -> None:
                 source=source,
                 closes_at=closes_at,
             )
-            for market_key, label, selection_key, selection_label, line, multiplier, source in markets
-        ]
-    )
+        )
 
 
 def _dt(value: str) -> datetime:

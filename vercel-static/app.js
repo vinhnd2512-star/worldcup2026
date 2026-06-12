@@ -4211,20 +4211,20 @@ async function createUser(event) {
     password: document.getElementById("new-password").value,
     starting_points: Number(document.getElementById("new-points").value || 0)
   };
-  const response = await fetch("/api/admin-create-user", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${state.session.access_token}`
-    },
-    body: JSON.stringify(payload)
-  });
-  const result = await response.json();
-  if (!response.ok) {
-    state.error = result.error || "Không thể tạo user";
-  } else {
+  try {
+    await safeFetchJson("/api/admin-create-user", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${state.session.access_token}`
+      },
+      body: JSON.stringify(payload)
+    });
     state.message = "Đã tạo tài khoản người chơi.";
     state.error = "";
+  } catch (error) {
+    state.error = error.message || "Không thể tạo user";
+    state.message = "";
   }
   await loadData();
 }
@@ -4345,21 +4345,20 @@ async function resetPassword(event) {
     user_id: document.getElementById("reset-user").value,
     password: document.getElementById("reset-password").value
   };
-  const response = await fetch("/api/admin-reset-password", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${state.session.access_token}`
-    },
-    body: JSON.stringify(payload)
-  });
-  const result = await response.json();
-  if (!response.ok) {
-    state.error = result.error || "Cannot reset password";
-    state.message = "";
-  } else {
+  try {
+    await safeFetchJson("/api/admin-reset-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${state.session.access_token}`
+      },
+      body: JSON.stringify(payload)
+    });
     state.message = "Password reset.";
     state.error = "";
+  } catch (error) {
+    state.error = error.message || "Cannot reset password";
+    state.message = "";
   }
   await loadData();
 }
@@ -4395,7 +4394,7 @@ async function syncProviders() {
   state.error = "";
   renderApp();
   try {
-    const response = await fetch("/api/sync-football-data", {
+    const result = await safeFetchJson("/api/sync-football-data", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -4403,29 +4402,15 @@ async function syncProviders() {
       },
       body: JSON.stringify({ includeOdds: true, includeRankings: true, includeFifaProfiles: true, includeSquads: true })
     });
-    const result = await response.json();
-    if (!response.ok) {
-      const errorMessage = result.error || "Provider sync failed";
-      state.providerSync = {
-        ...state.providerSync,
-        isRunning: false,
-        finishedAt: new Date().toISOString(),
-        result: null,
-        error: errorMessage
-      };
-      state.error = errorMessage;
-      state.message = "";
-    } else {
-      state.providerSync = {
-        ...state.providerSync,
-        isRunning: false,
-        finishedAt: new Date().toISOString(),
-        result,
-        error: ""
-      };
-      state.message = providerSyncToast(result);
-      state.error = "";
-    }
+    state.providerSync = {
+      ...state.providerSync,
+      isRunning: false,
+      finishedAt: new Date().toISOString(),
+      result,
+      error: ""
+    };
+    state.message = providerSyncToast(result);
+    state.error = "";
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     state.providerSync = {
@@ -4456,32 +4441,31 @@ function providerSyncToast(result) {
 async function syncTransfermarktValues(teamCode = "") {
   const maxInput = teamCode ? "1" : (prompt("Max Transfermarkt teams", "48") || "48");
   const maxTransfermarktTeams = Math.max(1, Math.min(64, Number(maxInput) || 48));
-  const response = await fetch("/api/sync-football-data", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${state.session.access_token}`
-    },
-    body: JSON.stringify({
-      includeFixtures: false,
-      includeOdds: false,
-      includeStats: false,
-      includeRankings: false,
-      includeFifaProfiles: false,
-      includeSquads: false,
-      includeTransfermarkt: true,
-      fifaTeamCode: teamCode,
-      maxTransfermarktTeams
-    })
-  });
-  const result = await response.json();
-  if (!response.ok) {
-    state.error = result.error || "Transfermarkt sync failed";
-    state.message = "";
-  } else {
+  try {
+    const result = await safeFetchJson("/api/sync-football-data", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${state.session.access_token}`
+      },
+      body: JSON.stringify({
+        includeFixtures: false,
+        includeOdds: false,
+        includeStats: false,
+        includeRankings: false,
+        includeFifaProfiles: false,
+        includeSquads: false,
+        includeTransfermarkt: true,
+        fifaTeamCode: teamCode,
+        maxTransfermarktTeams
+      })
+    });
     const tm = result.transfermarktResult || {};
     state.message = `Transfermarkt sync ${tm.status || "unknown"}: ${fmt.format(tm.teams || 0)} teams; ${fmt.format(tm.players || 0)} players; ${fmt.format(tm.errors || 0)} errors.`;
     state.error = tm.error || "";
+  } catch (error) {
+    state.error = error.message || "Transfermarkt sync failed";
+    state.message = "";
   }
   await loadData();
 }

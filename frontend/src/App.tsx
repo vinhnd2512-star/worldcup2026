@@ -13,6 +13,11 @@ import {
 import type { AdminReport, Bet, LeaderboardRow, Match, PlaceBetPayload, SyncRun, TabKey, User } from "./types";
 
 const TOKEN_STORAGE_KEY = "worldcup_predict_token";
+const AUTO_REFRESH_MS = 60_000;
+
+function isOpenUpcomingMatch(match: Match): boolean {
+  return ["SCHEDULED", "NS", "TBD"].includes(match.status) && new Date(match.starts_at).getTime() > Date.now();
+}
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_STORAGE_KEY));
@@ -31,7 +36,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const selectedMatch = useMemo(
-    () => matches.find((match) => match.id === selectedMatchId) ?? matches.find((match) => match.status === "SCHEDULED") ?? matches[0],
+    () => matches.find((match) => match.id === selectedMatchId) ?? matches.find(isOpenUpcomingMatch) ?? matches[0],
     [matches, selectedMatchId]
   );
 
@@ -45,7 +50,7 @@ export default function App() {
     setLeaderboard(leaderboardData);
     setHistory(historyData);
     if (!selectedMatchId && matchData.length) {
-      setSelectedMatchId(matchData.find((match) => match.status === "SCHEDULED")?.id ?? matchData[0].id);
+      setSelectedMatchId(matchData.find(isOpenUpcomingMatch)?.id ?? matchData[0].id);
     }
     if (nextUser.role.name === "admin") {
       const [usersData, reportData, syncData] = await Promise.all([
@@ -77,6 +82,16 @@ export default function App() {
       })
       .finally(() => setLoading(false));
   }, [loadPrivateData, token]);
+
+  useEffect(() => {
+    if (!token || !user) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadPrivateData(token, user).catch((err: Error) => setError(err.message));
+    }, AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [loadPrivateData, token, user]);
 
   async function handleLogin(username: string, password: string) {
     setLoading(true);
@@ -201,6 +216,18 @@ export default function App() {
     }
   }
 
+  async function handleResultSync() {
+    if (!token) return;
+    try {
+      const result = await api.syncResults(token);
+      setMessage(result.message);
+      setError(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể cập nhật kết quả");
+    }
+  }
+
   if (!user) {
     return <LoginScreen loading={loading} error={error} onLogin={handleLogin} />;
   }
@@ -237,6 +264,7 @@ export default function App() {
           onResetPassword={handleResetPassword}
           onRetrySettlements={handleRetrySettlements}
           onMetadataSync={handleMetadataSync}
+          onResultSync={handleResultSync}
         />
       )}
     </Shell>

@@ -2178,109 +2178,114 @@ async function runProviderJob({ provider, jobType, fallback, task }) {
 }
 
 export default async function handler(request, response) {
-  if (!["GET", "POST"].includes(request.method)) {
-    return send(response, 405, { error: "Method not allowed" });
-  }
-  if (!env("SUPABASE_URL") || !env("SUPABASE_SERVICE_ROLE_KEY")) {
-    return send(response, 500, { error: "Supabase service env vars are missing" });
-  }
+  try {
+    if (!["GET", "POST"].includes(request.method)) {
+      return send(response, 405, { error: "Method not allowed" });
+    }
+    if (!env("SUPABASE_URL") || !env("SUPABASE_SERVICE_ROLE_KEY")) {
+      return send(response, 500, { error: "Supabase service env vars are missing" });
+    }
 
-  const auth = await requireAdminOrSecret(request);
-  if (auth.error) {
-    return send(response, auth.status, { error: auth.error });
+    const auth = await requireAdminOrSecret(request);
+    if (auth.error) {
+      return send(response, auth.status, { error: auth.error });
+    }
+
+    let body = {};
+    if (request.method === "POST") {
+      body = await readJson(request);
+    }
+    const includeFixtures = body.includeFixtures !== false;
+    const includeOdds = body.includeOdds !== false;
+    const includeStats = body.includeStats !== false;
+    const includeRankings = body.includeRankings !== false;
+    const includeSquads = body.includeSquads !== false;
+    const includeFifaProfiles = body.includeFifaProfiles !== false;
+    const includeTransfermarkt = body.includeTransfermarkt === true;
+    const fifaTeamCode = String(body.fifaTeamCode || "").trim().toUpperCase();
+    const maxStatsFixtures = Math.max(
+      0,
+      Math.min(50, Number(body.maxStatsFixtures || env("MAX_STATS_FIXTURES") || DEFAULT_MAX_STATS_FIXTURES))
+    );
+    const maxSquadTeams = Math.max(
+      0,
+      Math.min(64, Number(body.maxSquadTeams || env("MAX_SQUAD_TEAMS") || DEFAULT_MAX_SQUAD_TEAMS))
+    );
+    const maxTransfermarktTeams = Math.max(
+      0,
+      Math.min(64, Number(body.maxTransfermarktTeams || env("MAX_TRANSFERMARKT_TEAMS") || DEFAULT_MAX_TRANSFERMARKT_TEAMS))
+    );
+
+    const fixtureResult = includeFixtures
+      ? await runProviderJob({
+          provider: "api-football",
+          jobType: "fixtures",
+          fallback: { teams: 0, matches: 0 },
+          task: syncApiFootballFixtures
+        })
+      : { provider: "api-football", status: "skipped", requests: 0, teams: 0, matches: 0 };
+    const footballDataResult = includeFixtures && fixtureResult.status === "failed"
+      ? await runProviderJob({
+          provider: "football-data.org",
+          jobType: "fixtures",
+          fallback: { teams: 0, matches: 0 },
+          task: syncFootballDataFixtures
+        })
+      : { provider: "football-data.org", status: "skipped", requests: 0, teams: 0, matches: 0 };
+    const statsResult = includeStats
+      ? await runProviderJob({
+          provider: "api-football",
+          jobType: "statistics",
+          fallback: { matches: 0, stats: 0 },
+          task: () => syncApiFootballStats(maxStatsFixtures)
+        })
+      : { provider: "api-football", status: "skipped", requests: 0, matches: 0, stats: 0 };
+    const rankingResult = includeRankings
+      ? await runProviderJob({
+          provider: "fifa",
+          jobType: "rankings",
+          fallback: { rankings: 0 },
+          task: syncFifaRankings
+        })
+      : { provider: "fifa", status: "skipped", requests: 0, rankings: 0 };
+    const fifaProfileResult = includeFifaProfiles
+      ? await runProviderJob({
+          provider: "fifa",
+          jobType: "team-profiles",
+          fallback: { teams: 0, matched: 0 },
+          task: () => syncFifaTeamProfiles(maxSquadTeams, fifaTeamCode)
+        })
+      : { provider: "fifa", status: "skipped", requests: 0, teams: 0, matched: 0 };
+    const squadResult = includeSquads
+      ? await runProviderJob({
+          provider: "fifa",
+          jobType: "squads",
+          fallback: { teams: 0, players: 0 },
+          task: () => syncFifaSquads(maxSquadTeams, fifaTeamCode)
+        })
+      : { provider: "fifa", status: "skipped", requests: 0, teams: 0, players: 0 };
+    const transfermarktResult = includeTransfermarkt
+      ? await runProviderJob({
+          provider: "transfermarkt",
+          jobType: "market-values",
+          fallback: { teams: 0, players: 0, errors: 0 },
+          task: () => syncTransfermarktValues(maxTransfermarktTeams, fifaTeamCode)
+        })
+      : { provider: "transfermarkt", status: "skipped", requests: 0, teams: 0, players: 0, errors: 0 };
+    const oddsResult = includeOdds
+      ? await runProviderJob({
+          provider: "the-odds-api",
+          jobType: "odds",
+          fallback: { events: 0, matchedEvents: 0, updatedMarkets: 0, updatedOutrights: 0 },
+          task: syncOddsSummary
+        })
+      : { provider: "the-odds-api", status: "skipped", requests: 0, events: 0 };
+
+    const results = [fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult];
+    const status = results.some((result) => result.status === "failed" || result.status === "partial") ? "partial" : "ok";
+    return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return send(response, 500, { error: message });
   }
-
-  let body = {};
-  if (request.method === "POST") {
-    body = await readJson(request);
-  }
-  const includeFixtures = body.includeFixtures !== false;
-  const includeOdds = body.includeOdds !== false;
-  const includeStats = body.includeStats !== false;
-  const includeRankings = body.includeRankings !== false;
-  const includeSquads = body.includeSquads !== false;
-  const includeFifaProfiles = body.includeFifaProfiles !== false;
-  const includeTransfermarkt = body.includeTransfermarkt === true;
-  const fifaTeamCode = String(body.fifaTeamCode || "").trim().toUpperCase();
-  const maxStatsFixtures = Math.max(
-    0,
-    Math.min(50, Number(body.maxStatsFixtures || env("MAX_STATS_FIXTURES") || DEFAULT_MAX_STATS_FIXTURES))
-  );
-  const maxSquadTeams = Math.max(
-    0,
-    Math.min(64, Number(body.maxSquadTeams || env("MAX_SQUAD_TEAMS") || DEFAULT_MAX_SQUAD_TEAMS))
-  );
-  const maxTransfermarktTeams = Math.max(
-    0,
-    Math.min(64, Number(body.maxTransfermarktTeams || env("MAX_TRANSFERMARKT_TEAMS") || DEFAULT_MAX_TRANSFERMARKT_TEAMS))
-  );
-
-  const fixtureResult = includeFixtures
-    ? await runProviderJob({
-        provider: "api-football",
-        jobType: "fixtures",
-        fallback: { teams: 0, matches: 0 },
-        task: syncApiFootballFixtures
-      })
-    : { provider: "api-football", status: "skipped", requests: 0, teams: 0, matches: 0 };
-  const footballDataResult = includeFixtures && fixtureResult.status === "failed"
-    ? await runProviderJob({
-        provider: "football-data.org",
-        jobType: "fixtures",
-        fallback: { teams: 0, matches: 0 },
-        task: syncFootballDataFixtures
-      })
-    : { provider: "football-data.org", status: "skipped", requests: 0, teams: 0, matches: 0 };
-  const statsResult = includeStats
-    ? await runProviderJob({
-        provider: "api-football",
-        jobType: "statistics",
-        fallback: { matches: 0, stats: 0 },
-        task: () => syncApiFootballStats(maxStatsFixtures)
-      })
-    : { provider: "api-football", status: "skipped", requests: 0, matches: 0, stats: 0 };
-  const rankingResult = includeRankings
-    ? await runProviderJob({
-        provider: "fifa",
-        jobType: "rankings",
-        fallback: { rankings: 0 },
-        task: syncFifaRankings
-      })
-    : { provider: "fifa", status: "skipped", requests: 0, rankings: 0 };
-  const fifaProfileResult = includeFifaProfiles
-    ? await runProviderJob({
-        provider: "fifa",
-        jobType: "team-profiles",
-        fallback: { teams: 0, matched: 0 },
-        task: () => syncFifaTeamProfiles(maxSquadTeams, fifaTeamCode)
-      })
-    : { provider: "fifa", status: "skipped", requests: 0, teams: 0, matched: 0 };
-  const squadResult = includeSquads
-    ? await runProviderJob({
-        provider: "fifa",
-        jobType: "squads",
-        fallback: { teams: 0, players: 0 },
-        task: () => syncFifaSquads(maxSquadTeams, fifaTeamCode)
-      })
-    : { provider: "fifa", status: "skipped", requests: 0, teams: 0, players: 0 };
-  const transfermarktResult = includeTransfermarkt
-    ? await runProviderJob({
-        provider: "transfermarkt",
-        jobType: "market-values",
-        fallback: { teams: 0, players: 0, errors: 0 },
-        task: () => syncTransfermarktValues(maxTransfermarktTeams, fifaTeamCode)
-      })
-    : { provider: "transfermarkt", status: "skipped", requests: 0, teams: 0, players: 0, errors: 0 };
-  const oddsResult = includeOdds
-    ? await runProviderJob({
-        provider: "the-odds-api",
-        jobType: "odds",
-        fallback: { events: 0, matchedEvents: 0, updatedMarkets: 0, updatedOutrights: 0 },
-        task: syncOddsSummary
-      })
-    : { provider: "the-odds-api", status: "skipped", requests: 0, events: 0 };
-
-  const results = [fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult];
-  const status = results.some((result) => result.status === "failed" || result.status === "partial") ? "partial" : "ok";
-  return send(response, 200, { status, fixtureResult, footballDataResult, statsResult, rankingResult, fifaProfileResult, squadResult, transfermarktResult, oddsResult });
 }

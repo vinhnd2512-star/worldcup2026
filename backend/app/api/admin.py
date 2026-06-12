@@ -9,7 +9,7 @@ from app.models import Bet, Role, SyncRun, User, WalletLedger
 from app.schemas import AdminReport, CreateUserRequest, ResetPasswordRequest, SyncRunOut, TopUpRequest, UserOut, UserStatusRequest
 from app.security import create_password_hash
 from app.services.settlement_service import settle_pending_bets
-from app.services.sync_service import run_metadata_sync
+from app.services.sync_service import run_metadata_sync, run_result_sync
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -147,4 +147,10 @@ def retry_settlements(db: DbSession, _: AdminUser) -> dict[str, int]:
 @router.post("/sync/metadata")
 def trigger_metadata_sync(db: DbSession, _: AdminUser) -> dict[str, str | int]:
     run = run_metadata_sync(db, now=datetime.now(timezone.utc))
+    return {"status": run.status, "requests": run.request_count, "message": run.message}
+
+
+@router.post("/sync/results")
+async def trigger_result_sync(db: DbSession, _: AdminUser) -> dict[str, str | int]:
+    run = await run_result_sync(db, now=datetime.now(timezone.utc))
     return {"status": run.status, "requests": run.request_count, "message": run.message}

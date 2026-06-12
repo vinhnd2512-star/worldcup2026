@@ -80,5 +80,10 @@ export const api = {
     request<{ status: string; requests: number; message: string }>("/admin/sync/metadata", token, {
       method: "POST",
       body: JSON.stringify({})
+    }),
+  syncResults: (token: string) =>
+    request<{ status: string; requests: number; message: string }>("/admin/sync/results", token, {
+      method: "POST",
+      body: JSON.stringify({})
     })
 };

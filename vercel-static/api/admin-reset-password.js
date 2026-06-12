@@ -55,46 +55,51 @@ async function requireAdmin(request) {
 }
 
 export default async function handler(request, response) {
-  if (request.method !== "POST") {
-    return send(response, 405, { error: "Method not allowed" });
+  try {
+    if (request.method !== "POST") {
+      return send(response, 405, { error: "Method not allowed" });
+    }
+
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return send(response, 500, { error: "Supabase service env vars are missing" });
+    }
+
+    const adminCheck = await requireAdmin(request);
+    if (adminCheck.error) {
+      return send(response, adminCheck.status, { error: adminCheck.error });
+    }
+
+    const body = await readJson(request);
+    const userId = String(body.user_id || "").trim();
+    const password = String(body.password || "");
+    if (!userId || password.length < 6) {
+      return send(response, 400, { error: "user_id and password length >= 6 are required" });
+    }
+
+    const resetResponse = await supabaseFetch(`/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ password })
+    });
+
+    if (!resetResponse.ok) {
+      const error = await resetResponse.text();
+      return send(response, 400, { error });
+    }
+
+    await supabaseFetch("/rest/v1/audit_logs", {
+      method: "POST",
+      body: JSON.stringify({
+        actor_id: adminCheck.caller.id,
+        action: "admin.password_reset",
+        entity_type: "profile",
+        entity_id: userId,
+        details_json: { user_id: userId }
+      })
+    });
+
+    return send(response, 200, { status: "ok" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return send(response, 500, { error: message });
   }
-
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return send(response, 500, { error: "Supabase service env vars are missing" });
-  }
-
-  const adminCheck = await requireAdmin(request);
-  if (adminCheck.error) {
-    return send(response, adminCheck.status, { error: adminCheck.error });
-  }
-
-  const body = await readJson(request);
-  const userId = String(body.user_id || "").trim();
-  const password = String(body.password || "");
-  if (!userId || password.length < 6) {
-    return send(response, 400, { error: "user_id and password length >= 6 are required" });
-  }
-
-  const resetResponse = await supabaseFetch(`/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
-    method: "PUT",
-    body: JSON.stringify({ password })
-  });
-
-  if (!resetResponse.ok) {
-    const error = await resetResponse.text();
-    return send(response, 400, { error });
-  }
-
-  await supabaseFetch("/rest/v1/audit_logs", {
-    method: "POST",
-    body: JSON.stringify({
-      actor_id: adminCheck.caller.id,
-      action: "admin.password_reset",
-      entity_type: "profile",
-      entity_id: userId,
-      details_json: { user_id: userId }
-    })
-  });
-
-  return send(response, 200, { status: "ok" });
 }

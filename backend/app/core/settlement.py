@@ -77,7 +77,21 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
             reason="Draw no bet market refunded because the match was drawn.",
         )
 
-    won = _is_winning_selection(bet, result)
+    if bet.market_key == "handicap":
+        handicap_result = _handicap_adjusted_result(bet, result)
+        if handicap_result == 0:
+            return SettlementOutcome(
+                status="refunded",
+                result="push",
+                payout=money(bet.stake),
+                net_points=Decimal("0.00"),
+                prediction_bonus=Decimal("0.00"),
+                reason="Handicap market pushed; stake refunded.",
+            )
+        won = handicap_result > 0
+    else:
+        won = _is_winning_selection(bet, result)
+
     if won:
         payout = money(bet.stake * bet.multiplier)
         return SettlementOutcome(
@@ -115,6 +129,7 @@ def prediction_bonus(market_key: str) -> Decimal:
         "correct_score": Decimal("50.00"),
         "match_result": Decimal("10.00"),
         "draw_no_bet": Decimal("8.00"),
+        "handicap": Decimal("8.00"),
         "total_goals": Decimal("8.00"),
         "btts": Decimal("8.00"),
         "corners_total": Decimal("6.00"),
@@ -149,6 +164,14 @@ def _is_winning_selection(bet: BetSelection, result: MatchResult) -> bool:
             bet.selection_key == "away" and result.away_score > result.home_score
         )
 
+    if bet.market_key == "handicap":
+        line = Decimal(str(bet.selection.get("line", "0")))
+        if bet.selection_key == "home":
+            return Decimal(result.home_score) + line > Decimal(result.away_score)
+        if bet.selection_key == "away":
+            return Decimal(result.away_score) + line > Decimal(result.home_score)
+        return False
+
     if bet.market_key == "total_goals":
         line = Decimal(str(bet.selection.get("line", "2.5")))
         return (bet.selection_key == "over" and Decimal(total_goals) > line) or (
@@ -178,3 +201,20 @@ def _is_winning_selection(bet: BetSelection, result: MatchResult) -> bool:
         return result.tournament_winner_team_code is not None and bet.selection_key == result.tournament_winner_team_code
 
     return False
+
+
+def _handicap_adjusted_result(bet: BetSelection, result: MatchResult) -> int:
+    line = Decimal(str(bet.selection.get("line", "0")))
+    if bet.selection_key == "home":
+        selected = Decimal(result.home_score or 0) + line
+        opponent = Decimal(result.away_score or 0)
+    elif bet.selection_key == "away":
+        selected = Decimal(result.away_score or 0) + line
+        opponent = Decimal(result.home_score or 0)
+    else:
+        return -1
+    if selected > opponent:
+        return 1
+    if selected == opponent:
+        return 0
+    return -1

@@ -79,6 +79,7 @@ class MatchOut(BaseModel):
 
 class PlaceBetRequest(BaseModel):
     match_id: int
+    market_id: int | None = None
     market_key: str
     selection_key: str
     selection_label: str | None = None

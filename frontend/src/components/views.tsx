@@ -46,6 +46,7 @@ type NavItem = {
 
 const fmt = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
 const fmtOne = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
+const marketOrder = ["match_result", "handicap", "total_goals", "draw_no_bet", "btts", "corners_total", "cards_total"];
 
 function num(value: string | number | null | undefined): number {
   return Number(value ?? 0);
@@ -58,6 +59,10 @@ function formatDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function isOpenUpcomingMatch(match: Match): boolean {
+  return ["SCHEDULED", "NS", "TBD"].includes(match.status) && new Date(match.starts_at).getTime() > Date.now();
 }
 
 function initials(name: string): string {
@@ -224,8 +229,8 @@ export function MatchesView({
   leaderboard: LeaderboardRow[];
   onSelectMatch: (match: Match) => void;
 }) {
-  const featured = matches.find((match) => match.status === "SCHEDULED") ?? matches[0];
-  const upcoming = matches.filter((match) => match.status === "SCHEDULED" && match.id !== featured?.id).slice(0, 3);
+  const featured = matches.find(isOpenUpcomingMatch) ?? matches[0];
+  const upcoming = matches.filter((match) => isOpenUpcomingMatch(match) && match.id !== featured?.id).slice(0, 3);
   const featuredOdd = featured?.markets.find((market) => market.market_key === "correct_score")?.odds_multiplier ?? "2.45";
 
   if (!featured) {
@@ -346,6 +351,28 @@ export function MatchDetailView({
   const selectedMarket = match.markets.find((market) => market.id === activeMarketId) ?? scoreMarket;
   const multiplier = num(selectedMarket?.odds_multiplier ?? 1);
   const potential = stake * multiplier;
+  const groupedMarkets = useMemo(() => {
+    const markets = match.markets.filter((market) => market.market_key !== "correct_score");
+    const knownGroups = marketOrder
+      .map((key) => {
+        const items = markets.filter((market) => market.market_key === key);
+        return items.length ? { key, label: items[0].label, items } : null;
+      })
+      .filter(Boolean) as Array<{ key: string; label: string; items: typeof markets }>;
+    const knownKeys = new Set(marketOrder);
+    const extraGroups = markets
+      .filter((market) => !knownKeys.has(market.market_key))
+      .reduce<Array<{ key: string; label: string; items: typeof markets }>>((groups, market) => {
+        const group = groups.find((item) => item.key === market.market_key);
+        if (group) {
+          group.items.push(market);
+        } else {
+          groups.push({ key: market.market_key, label: market.label, items: [market] });
+        }
+        return groups;
+      }, []);
+    return [...knownGroups, ...extraGroups];
+  }, [match.markets]);
 
   async function submitScoreBet() {
     await onPlaceBet({
@@ -363,6 +390,7 @@ export function MatchDetailView({
     if (!market) return;
     await onPlaceBet({
       match_id: match.id,
+      market_id: market.id,
       market_key: market.market_key,
       selection_key: market.selection_key,
       selection_label: market.selection_label,
@@ -431,26 +459,34 @@ export function MatchDetailView({
           <h2>Chọn kèo khác</h2>
           <span>90 phút chính thức</span>
         </div>
-        <div className="market-choice-grid">
-          {match.markets
-            .filter((market) => market.market_key !== "correct_score")
-            .map((market) => (
-              <button
-                key={market.id}
-                className={`market-choice ${activeMarketId === market.id ? "active" : ""}`}
-                onClick={() => {
-                  setActiveMarketId(market.id);
-                  void submitMarketBet(market.id);
-                }}
-                disabled={placing}
-              >
-                <span>{market.label}</span>
-                <strong>{market.selection_label}</strong>
-                <small>
-                  x{fmtOne.format(num(market.odds_multiplier))} · {market.source}
-                </small>
-              </button>
-            ))}
+        <div className="market-group-list">
+          {groupedMarkets.map((group) => (
+            <div className="market-group" key={group.key}>
+              <div className="market-group-title">
+                <h3>{group.label}</h3>
+                <span>{group.items.length} lựa chọn</span>
+              </div>
+              <div className={`market-options count-${Math.min(group.items.length, 3)}`}>
+                {group.items.map((market) => (
+                  <button
+                    key={market.id}
+                    className={`market-choice ${activeMarketId === market.id ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveMarketId(market.id);
+                      void submitMarketBet(market.id);
+                    }}
+                    disabled={placing}
+                  >
+                    <span>{market.label}</span>
+                    <strong>{market.selection_label}</strong>
+                    <small>
+                      x{fmtOne.format(num(market.odds_multiplier))} · {market.source}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </div>
@@ -597,7 +633,8 @@ export function AdminView({
   onToggleUser,
   onResetPassword,
   onRetrySettlements,
-  onMetadataSync
+  onMetadataSync,
+  onResultSync
 }: {
   users: User[];
   report: AdminReport | null;
@@ -608,6 +645,7 @@ export function AdminView({
   onResetPassword: (userId: number, password: string) => Promise<void>;
   onRetrySettlements: () => Promise<void>;
   onMetadataSync: () => Promise<void>;
+  onResultSync: () => Promise<void>;
 }) {
   const [createForm, setCreateForm] = useState({ username: "", display_name: "", password: "demo123", starting_points: 1000 });
   const [topUp, setTopUp] = useState({ userId: 0, amount: 500, reason: "Admin top-up" });
@@ -640,6 +678,10 @@ export function AdminView({
           <button className="ghost-button" onClick={() => void onMetadataSync()}>
             <Database size={16} />
             Sync metadata
+          </button>
+          <button className="ghost-button" onClick={() => void onResultSync()}>
+            <RotateCcw size={16} />
+            Sync results
           </button>
           <button className="primary-button" onClick={() => void onRetrySettlements()}>
             <RotateCcw size={16} />

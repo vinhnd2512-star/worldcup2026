@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 1440
     api_football_key: str = ""
     odds_api_key: str = ""
+    result_sync_enabled: bool = True
+    result_sync_interval_seconds: int = 900
+    result_sync_after_minutes: int = 150
     backend_cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

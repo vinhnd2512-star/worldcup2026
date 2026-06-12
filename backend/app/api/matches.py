@@ -13,6 +13,12 @@ from app.schemas import BetOut, LeaderboardRow, MatchOut, PlaceBetRequest
 router = APIRouter(tags=["player"])
 
 
+def as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 @router.get("/matches", response_model=list[MatchOut])
 def list_matches(db: DbSession) -> list[Match]:
     statement = (
@@ -47,13 +53,23 @@ def place_bet(payload: PlaceBetRequest, db: DbSession, user: CurrentUser) -> Bet
     if match.status not in {"SCHEDULED", "NS", "TBD"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This match is not open for pre-match bets")
 
-    market = db.scalar(
-        select(MatchMarket).where(
-            MatchMarket.match_id == payload.match_id,
-            MatchMarket.market_key == payload.market_key,
-            MatchMarket.selection_key == payload.selection_key,
+    if payload.market_id is not None:
+        market = db.scalar(
+            select(MatchMarket).where(
+                MatchMarket.id == payload.market_id,
+                MatchMarket.match_id == payload.match_id,
+                MatchMarket.market_key == payload.market_key,
+                MatchMarket.selection_key == payload.selection_key,
+            )
         )
-    )
+    else:
+        market = db.scalar(
+            select(MatchMarket).where(
+                MatchMarket.match_id == payload.match_id,
+                MatchMarket.market_key == payload.market_key,
+                MatchMarket.selection_key == payload.selection_key,
+            )
+        )
     if market is None and payload.market_key == "correct_score":
         market = db.scalar(
             select(MatchMarket).where(
@@ -63,7 +79,7 @@ def place_bet(payload: PlaceBetRequest, db: DbSession, user: CurrentUser) -> Bet
         )
     if market is None or not market.is_open:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Market is not available")
-    if market.closes_at <= datetime.now(timezone.utc):
+    if as_utc(market.closes_at) <= datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Betting is locked for this match")
 
     stake = Decimal(payload.stake)
