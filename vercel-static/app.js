@@ -4468,8 +4468,8 @@ async function syncResultsOnly() {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.session.access_token}` },
       body: JSON.stringify({
-        includeOdds: false, includeRankings: false, includeFifaProfiles: false,
-        includeSquads: false, includeStats: false,
+        includeFixtures: false, includeOdds: false, includeRankings: false,
+        includeFifaProfiles: false, includeSquads: false, includeStats: false,
         includeFifaResults: true, autoSettle: true
       })
     });

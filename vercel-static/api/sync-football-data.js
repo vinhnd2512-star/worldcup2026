@@ -1384,9 +1384,12 @@ async function autoSettleMatches(matchIds, accessToken) {
 async function syncFifaFantasyResults() {
   let payload;
   try {
+    const ctrl1 = new AbortController(); const t1 = setTimeout(() => ctrl1.abort(), 10000);
     const res = await fetch(FIFA_FANTASY_ROUNDS_URL, {
-      headers: { Accept: "application/json", "User-Agent": "WorldCup Predict result sync" }
+      headers: { Accept: "application/json", "User-Agent": "WorldCup Predict result sync" },
+      signal: ctrl1.signal
     });
+    clearTimeout(t1);
     if (!res.ok) throw new Error(`FIFA Fantasy rounds.json failed: ${res.status}`);
     payload = await res.json();
   } catch (err) {
@@ -1408,10 +1411,12 @@ async function syncFifaFantasyResults() {
 async function syncFifaCalendarResults() {
   let payload;
   try {
+    const ctrl2 = new AbortController(); const t2 = setTimeout(() => ctrl2.abort(), 10000);
     const res = await fetch(
       `${FIFA_CALENDAR_MATCHES_URL}?idSeason=${FIFA_WORLD_CUP_SEASON_ID}&idCompetition=${FIFA_WORLD_CUP_COMPETITION_ID}&count=100&language=en`,
-      { headers: { Accept: "application/json", "User-Agent": "WorldCup Predict result sync" } }
+      { headers: { Accept: "application/json", "User-Agent": "WorldCup Predict result sync" }, signal: ctrl2.signal }
     );
+    clearTimeout(t2);
     if (!res.ok) throw new Error(`FIFA Calendar API failed: ${res.status}`);
     payload = await res.json();
   } catch (err) {
