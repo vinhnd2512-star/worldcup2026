@@ -2092,7 +2092,7 @@ declare
   v_match_id bigint;
   v_starts_at timestamptz;
 begin
-  if not public.is_admin() then
+  if not (public.is_admin() or auth.role() = 'service_role') then
     raise exception 'admin role required';
   end if;
 
@@ -2282,7 +2282,7 @@ declare
   v_team_id bigint;
   v_count integer := 0;
 begin
-  if not public.is_admin() then
+  if not (public.is_admin() or auth.role() = 'service_role') then
     raise exception 'admin role required';
   end if;
 
@@ -2360,7 +2360,7 @@ declare
   v_advanced integer := 0;
   v_ah_adjusted numeric;
 begin
-  if not public.is_admin() then
+  if not (public.is_admin() or auth.role() = 'service_role') then
     raise exception 'admin role required';
   end if;
 

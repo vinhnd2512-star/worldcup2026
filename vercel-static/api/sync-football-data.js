@@ -457,6 +457,11 @@ async function upsertJson(table, rows, onConflict) {
   return response.json();
 }
 
+function isMissingRelationError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.includes("PGRST205") || message.includes("Could not find the table");
+}
+
 async function upsertJsonMinimal(table, rows, onConflict) {
   if (!rows.length) return 0;
   const response = await supabaseFetch(`/rest/v1/${table}?on_conflict=${encodeURIComponent(onConflict)}`, {
@@ -1162,27 +1167,7 @@ async function findExistingMarket(candidate) {
 }
 
 async function upsertMarketFromOdds(candidate) {
-  const row = {
-    match_id: candidate.match_id,
-    market_key: candidate.market_key,
-    label: candidate.label,
-    selection_key: candidate.selection_key,
-    selection_label: candidate.selection_label,
-    line: candidate.line,
-    odds_multiplier: candidate.odds_multiplier,
-    is_open: true,
-    source: candidate.source || (candidate.market_key === "correct_score" ? "odds-model" : "odds-api"),
-    closes_at: candidate.closes_at,
-    extra_json: {
-      provider: "the-odds-api",
-      bookmaker: candidate.bookmaker,
-      bookmaker_key: candidate.bookmaker_key,
-      bookmaker_last_update: candidate.bookmaker_last_update,
-      selection_mode: oddsApiBookmakers().length ? "preferred_bookmaker" : "best_available",
-      updated_at: new Date().toISOString(),
-      ...(candidate.extra_json || {})
-    }
-  };
+  const row = marketRowFromOddsCandidate(candidate);
 
   const existing = await findExistingMarket(candidate);
   if (existing) {
@@ -1208,6 +1193,52 @@ async function upsertMarketFromOdds(candidate) {
   return (await response.json())[0];
 }
 
+function marketRowFromOddsCandidate(candidate) {
+  return {
+    match_id: candidate.match_id,
+    market_key: candidate.market_key,
+    label: candidate.label,
+    selection_key: candidate.selection_key,
+    selection_label: candidate.selection_label,
+    line: candidate.line,
+    odds_multiplier: candidate.odds_multiplier,
+    is_open: true,
+    source: candidate.source || (candidate.market_key === "correct_score" ? "odds-model" : "odds-api"),
+    closes_at: candidate.closes_at,
+    extra_json: {
+      provider: "the-odds-api",
+      bookmaker: candidate.bookmaker,
+      bookmaker_key: candidate.bookmaker_key,
+      bookmaker_last_update: candidate.bookmaker_last_update,
+      selection_mode: oddsApiBookmakers().length ? "preferred_bookmaker" : "best_available",
+      updated_at: new Date().toISOString(),
+      ...(candidate.extra_json || {})
+    }
+  };
+}
+
+function marketIdentity(row) {
+  const line = row.line === null || row.line === undefined ? "" : String(Number(row.line));
+  return `${row.match_id}|${row.market_key}|${row.selection_key}|${line}`;
+}
+
+async function upsertMarketsFromOdds(candidates) {
+  if (!candidates.length) return [];
+  const rows = candidates.map(marketRowFromOddsCandidate);
+  const response = await supabaseFetch("/rest/v1/match_markets?on_conflict=match_id,market_key,selection_key,line_key", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(rows)
+  });
+  if (response.ok) {
+    const markets = await response.json();
+    const byIdentity = new Map(markets.map((market) => [marketIdentity(market), market]));
+    return candidates.map((candidate, index) => byIdentity.get(marketIdentity(candidate)) || markets[index]).filter(Boolean);
+  }
+
+  return Promise.all(candidates.map((candidate) => upsertMarketFromOdds(candidate)));
+}
+
 async function insertOddsSnapshot(market, candidate) {
   const response = await supabaseFetch("/rest/v1/odds_snapshots", {
     method: "POST",
@@ -1222,6 +1253,35 @@ async function insertOddsSnapshot(market, candidate) {
   if (!response.ok) {
     throw new Error(`Supabase insert odds_snapshot failed: ${response.status} ${await response.text()}`);
   }
+}
+
+async function insertOddsSnapshots(markets, candidates) {
+  const rows = markets.map((market, index) => {
+    const candidate = candidates[index];
+    if (!market || !candidate) return null;
+    return {
+      match_market_id: market.id,
+      provider: "the-odds-api",
+      bookmaker: candidate.bookmaker,
+      multiplier: candidate.odds_multiplier,
+      payload_json: candidate.payload_json
+    };
+  }).filter(Boolean);
+  if (!rows.length) return 0;
+
+  const response = await supabaseFetch("/rest/v1/odds_snapshots", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(rows)
+  });
+  if (response.ok) return rows.length;
+
+  let inserted = 0;
+  for (let index = 0; index < markets.length; index += 1) {
+    await insertOddsSnapshot(markets[index], candidates[index]);
+    inserted += 1;
+  }
+  return inserted;
 }
 
 function bestOutrightPrices(events, teams) {
@@ -1458,7 +1518,12 @@ async function upsertMatchResultsByCode(fixtures) {
     }
     if (!wasCompleted && nowCompleted) completedMatchIds.push(dbMatch.id);
   }
-  const resultUpserts = await upsertJson("match_results", resultRows, "match_id");
+  let resultUpserts = [];
+  try {
+    resultUpserts = await upsertJson("match_results", resultRows, "match_id");
+  } catch (error) {
+    if (!isMissingRelationError(error)) throw error;
+  }
   return {
     updated,
     results: resultUpserts.length,
@@ -1468,8 +1533,9 @@ async function upsertMatchResultsByCode(fixtures) {
 }
 
 async function autoSettleMatches(matchIds, accessToken) {
-  if (!matchIds.length || !accessToken) return 0;
+  if (!matchIds.length) return 0;
   const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
+  const settlementToken = accessToken || serviceKey;
   let totalSettled = 0;
   for (const matchId of matchIds) {
     try {
@@ -1477,7 +1543,7 @@ async function autoSettleMatches(matchIds, accessToken) {
         method: "POST",
         headers: {
           apikey: serviceKey,
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${settlementToken}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ p_match_id: matchId })
@@ -2418,9 +2484,9 @@ async function syncOddsSummary() {
       candidates.push({ ...correctScoreCandidate, closes_at: matched.match.starts_at });
     }
 
+    const markets = await upsertMarketsFromOdds(candidates);
+    await insertOddsSnapshots(markets, candidates);
     for (const candidate of candidates) {
-      const market = await upsertMarketFromOdds(candidate);
-      await insertOddsSnapshot(market, candidate);
       if (candidate.market_key === "total_goals") {
         providerTotalMatchIds.add(Number(candidate.match_id));
       }
@@ -2600,8 +2666,8 @@ export default async function handler(request, response) {
       return send(response, auth.status, { error: auth.error });
     }
 
-    // Extract caller token for auto-settlement (only works for admin-triggered calls)
-    const callerToken = auth.mode === "admin"
+    // Admin-triggered calls settle as the admin; cron/secret calls settle as service role.
+    const settlementToken = auth.mode === "admin"
       ? (request.headers.authorization || "").replace(/^Bearer\s+/i, "")
       : null;
 
@@ -2694,7 +2760,7 @@ export default async function handler(request, response) {
 
     // ── Auto-settle newly completed matches ───────────────────────────────
     let settledBets = 0;
-    if (autoSettle && callerToken) {
+    if (autoSettle) {
       // Settle newly-completed + any FT matches that still have unsettled bets
       const toSettle = [...new Set(newlyCompletedIds)];
       try {
@@ -2712,7 +2778,7 @@ export default async function handler(request, response) {
           }
         }
       } catch { /* non-fatal */ }
-      if (toSettle.length) settledBets = await autoSettleMatches(toSettle, callerToken);
+      if (toSettle.length) settledBets = await autoSettleMatches(toSettle, settlementToken);
     }
 
     const statsResult = includeStats

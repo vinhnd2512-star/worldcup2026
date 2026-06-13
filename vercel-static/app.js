@@ -2448,7 +2448,8 @@ function renderModalBetSection(match, group) {
                       ${scoreStepper("modal-score-home", match.home_team?.name || "Đội nhà", number(draft.homeScore ?? 1))}
                       <span class="vs-text">-</span>
                       ${scoreStepper("modal-score-away", match.away_team?.name || "Đội khách", number(draft.awayScore ?? 0))}
-                    </div>`
+                    </div>
+                    <small class="score-odds-hint">${escapeHtml(correctScoreOddsHint(selectedMarket, draft))}</small>`
                   : renderModalSelectionOptions(group, draft)
               }
               <div class="modal-stake-grid">
@@ -2564,6 +2565,16 @@ function correctScoreFairOdds(market, homeScore, awayScore) {
   return number(row?.fair_odds || market.odds_multiplier || 6);
 }
 
+function correctScoreOddsHint(market, draft = {}) {
+  const homeScore = Math.max(0, number(draft.homeScore ?? 0));
+  const awayScore = Math.max(0, number(draft.awayScore ?? 0));
+  const score = `${homeScore}-${awayScore}`;
+  const multiplier = correctScoreFairOdds(market, homeScore, awayScore);
+  const extra = marketExtra(market);
+  const source = extra.score_odds?.[score] ? "model" : "fallback";
+  return `Ty le ${score}: x${fmtOne.format(multiplier)} (${source})`;
+}
+
 function existingOpenBet(match, marketKey) {
   if (!match) return null;
   return state.bets
@@ -2616,6 +2627,8 @@ function updateModalDerivedValues() {
     if (payoutNode) payoutNode.textContent = money(number(draft.stake) * multiplier);
     const pillNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-market-card-head .pill`);
     if (pillNode) pillNode.textContent = `x${fmtOne.format(multiplier || number(selectedMarket?.odds_multiplier || 1))}`;
+    const scoreHintNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .score-odds-hint`);
+    if (scoreHintNode && group.marketKey === "correct_score") scoreHintNode.textContent = correctScoreOddsHint(selectedMarket, draft);
   }
   const summary = document.querySelector("#modal-bulk-bet-form .modal-submit-row span");
   if (summary) summary.textContent = modalSelectedSummary(match);

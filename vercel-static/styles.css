@@ -2133,6 +2133,13 @@ select:focus {
   gap: 12px;
 }
 
+.score-odds-hint {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .modal-selection-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

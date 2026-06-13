@@ -1,11 +1,18 @@
 {
   "crons": [
     {
+      "path": "/api/sync-results",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/sync-football-data",
       "schedule": "0 6 * * *"
     }
   ],
   "functions": {
+    "api/sync-results.js": {
+      "maxDuration": 60
+    },
     "api/sync-football-data.js": {
       "maxDuration": 60
     }
