@@ -744,7 +744,14 @@ drop view if exists public.admin_report;
 drop view if exists public.leaderboard;
 
 create or replace view public.leaderboard as
-with user_scores as (
+with ledger_equity as (
+  select
+    user_id,
+    coalesce(sum(amount) filter (where kind in ('admin_topup', 'admin_deduction')), 0)::numeric(12,2) as initial_equity
+  from public.wallet_ledger
+  group by user_id
+),
+user_scores as (
   select
     p.id as user_id,
     p.username,
@@ -757,14 +764,22 @@ with user_scores as (
     count(b.id) filter (where b.status in ('won', 'lost', 'refunded'))::integer as settled_bets,
     count(b.id) filter (where b.status = 'won')::integer as won_bets,
     count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
-    coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked
+    coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)::numeric(12,2) as open_staked,
+    coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked,
+    coalesce(
+      nullif(le.initial_equity, 0),
+      p.wallet_balance
+        + coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)
+        - coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.points_delta + b.prediction_bonus else 0 end), 0)
+    )::numeric(12,2) as initial_equity
   from public.profiles p
   left join public.bets b on b.user_id = p.id
+  left join ledger_equity le on le.user_id = p.id
   where p.role = 'player'
-  group by p.id, p.username, p.display_name, p.wallet_balance
+  group by p.id, p.username, p.display_name, p.wallet_balance, le.initial_equity
 )
 select
-  rank() over (order by score desc, won_bets desc) as rank,
+  rank() over (order by wallet_balance desc, score desc, won_bets desc) as rank,
   user_id,
   username,
   display_name,
@@ -778,9 +793,10 @@ select
   won_bets,
   correct_score_count,
   total_staked,
+  initial_equity,
   case when settled_bets = 0 then 0 else round((won_bets::numeric / settled_bets::numeric) * 100, 1) end as accuracy,
-  case when total_staked = 0 then 0 else round((score / total_staked) * 100, 1) end as roi,
-  case when total_staked = 0 then 0 else round((score / total_staked) * 100, 1) end as profit_loss_pct
+  case when initial_equity = 0 then 0 else round((score / initial_equity) * 100, 1) end as roi,
+  case when initial_equity = 0 then 0 else round((score / initial_equity) * 100, 1) end as profit_loss_pct
 from user_scores;
 
 create or replace view public.admin_report as
@@ -795,32 +811,64 @@ select
 where public.is_admin();
 
 create or replace view public.admin_user_report as
+with ledger_equity as (
+  select
+    user_id,
+    coalesce(sum(amount) filter (where kind in ('admin_topup', 'admin_deduction')), 0)::numeric(12,2) as initial_equity
+  from public.wallet_ledger
+  group by user_id
+),
+user_scores as (
+  select
+    p.id as user_id,
+    p.username,
+    p.display_name,
+    p.wallet_balance,
+    count(b.id)::integer as total_bets,
+    count(b.id) filter (where b.status = 'placed')::integer as open_bets,
+    count(b.id) filter (where b.status in ('won','lost','refunded'))::integer as settled_bets,
+    count(b.id) filter (where b.status = 'won')::integer as won_bets,
+    count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
+    coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked,
+    coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as net_points,
+    coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as bonus_points,
+    coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as score,
+    coalesce(
+      nullif(le.initial_equity, 0),
+      p.wallet_balance
+        + coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)
+        - coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)
+    )::numeric(12,2) as initial_equity
+  from public.profiles p
+  left join public.bets b on b.user_id = p.id
+  left join ledger_equity le on le.user_id = p.id
+  where p.role = 'player' and public.is_admin()
+  group by p.id, p.username, p.display_name, p.wallet_balance, le.initial_equity
+)
 select
-  p.id as user_id,
-  p.username,
-  p.display_name,
-  p.wallet_balance,
-  count(b.id)::integer as total_bets,
-  count(b.id) filter (where b.status = 'placed')::integer as open_bets,
-  count(b.id) filter (where b.status in ('won','lost','refunded'))::integer as settled_bets,
-  count(b.id) filter (where b.status = 'won')::integer as won_bets,
-  count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
-  coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked,
-  coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as net_points,
-  coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as bonus_points,
-  coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as score,
+  user_id,
+  username,
+  display_name,
+  wallet_balance,
+  total_bets,
+  open_bets,
+  settled_bets,
+  won_bets,
+  correct_score_count,
+  total_staked,
+  initial_equity,
+  net_points,
+  bonus_points,
+  score,
   case
-    when count(b.id) filter (where b.status in ('won','lost','refunded')) = 0 then 0
-    else round((count(b.id) filter (where b.status = 'won'))::numeric / (count(b.id) filter (where b.status in ('won','lost','refunded')))::numeric * 100, 1)
+    when settled_bets = 0 then 0
+    else round((won_bets::numeric / settled_bets::numeric) * 100, 1)
   end as accuracy,
   case
-    when coalesce(sum(b.stake) filter (where b.status in ('won','lost')), 0) = 0 then 0
-    else round(coalesce(sum(b.points_delta) filter (where b.status in ('won','lost')), 0)::numeric / coalesce(sum(b.stake) filter (where b.status in ('won','lost')), 0)::numeric * 100, 1)
+    when initial_equity = 0 then 0
+    else round((score / initial_equity) * 100, 1)
   end as roi
-from public.profiles p
-left join public.bets b on b.user_id = p.id
-where p.role = 'player' and public.is_admin()
-group by p.id, p.username, p.display_name, p.wallet_balance;
+from user_scores;
 
 create or replace view public.admin_market_report as
 select
