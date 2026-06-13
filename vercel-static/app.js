@@ -2989,8 +2989,12 @@ function renderLeaderboard() {
         <div class="table-row table-head leaderboard-row">
           <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền cược</span><span>Số tiền hiện tại</span><span>Lãi/Lỗ</span><span>% Lãi/Lỗ</span>
         </div>
-        ${state.leaderboard.map((row) => `
-          <button class="table-row leaderboard-row clickable-row ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" type="button" data-leaderboard-user="${escapeHtml(row.user_id)}">
+        ${state.leaderboard.map((row) => {
+          const canInspect = canInspectLeaderboardBets(row.user_id);
+          const tag = canInspect ? "button" : "div";
+          const attrs = canInspect ? `type="button" data-leaderboard-user="${escapeHtml(row.user_id)}"` : "";
+          return `
+          <${tag} class="table-row leaderboard-row ${canInspect ? "clickable-row" : ""} ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" ${attrs}>
             <strong>#${row.rank}</strong>
             <span>${escapeHtml(row.display_name)}</span>
             <span>${fmt.format(number(row.total_bets ?? row.settled_bets))}</span>
@@ -2999,20 +3003,21 @@ function renderLeaderboard() {
             <span>${money(row.wallet_balance)}</span>
             <b class="${number(row.profit_loss ?? row.score) >= 0 ? "success" : "error"}">${number(row.profit_loss ?? row.score) >= 0 ? "+" : ""}${money(row.profit_loss ?? row.score)}</b>
             <span>${fmtOne.format(number(row.profit_loss_pct ?? row.roi))}%</span>
-          </button>
-        `).join("")}
+          </${tag}>
+        `;
+        }).join("")}
       </section>
       ${selectedRow ? renderLeaderboardPlayerDetails(selectedRow) : ""}
     </div>
   `;
 }
 
+function canInspectLeaderboardBets(userId) {
+  return state.profile?.role === "admin" || state.profile?.id === userId;
+}
+
 function renderLeaderboardPlayerDetails(row) {
   const bets = state.selectedLeaderboardBets;
-  const isOwnProfile = state.profile?.id === row.user_id;
-  const readHint = state.profile?.role === "admin" || isOwnProfile
-    ? ""
-    : `<p class="empty-copy">Chi tiet bet co the bi an boi RLS; admin hoac chinh nguoi choi moi xem duoc day du.</p>`;
   return `
     <section class="glass-card panel leaderboard-detail-panel">
       <div class="section-heading">
@@ -3023,7 +3028,6 @@ function renderLeaderboardPlayerDetails(row) {
         <button class="ghost-button compact-button" data-clear-leaderboard-user>Close</button>
       </div>
       ${state.leaderboardDetailError ? `<p class="error">${escapeHtml(state.leaderboardDetailError)}</p>` : ""}
-      ${readHint}
       ${
         bets === null
           ? `<p>Loading player predictions...</p>`
@@ -4032,6 +4036,12 @@ function renderAuditRow(entry) {
 
 async function selectLeaderboardUser(userId) {
   if (!userId) return;
+  if (!canInspectLeaderboardBets(userId)) {
+    state.selectedLeaderboardUserId = "";
+    state.selectedLeaderboardBets = null;
+    state.leaderboardDetailError = "";
+    return;
+  }
   state.selectedLeaderboardUserId = userId;
   state.selectedLeaderboardBets = null;
   state.leaderboardDetailError = "";
@@ -4777,12 +4787,15 @@ async function createUser(event) {
 async function adjustWallet(event) {
   event.preventDefault();
   if (state.actionLoading) return;
+  const userId = document.getElementById("topup-user").value;
+  const amount = Number(document.getElementById("topup-amount").value || 0);
+  const reason = document.getElementById("topup-reason").value;
   state.actionLoading = "wallet";
   renderApp();
   const { error } = await state.client.rpc("admin_adjust_wallet", {
-    p_user_id: document.getElementById("topup-user").value,
-    p_amount: Number(document.getElementById("topup-amount").value || 0),
-    p_reason: document.getElementById("topup-reason").value
+    p_user_id: userId,
+    p_amount: amount,
+    p_reason: reason
   });
   state.message = error ? "" : "Đã cập nhật ví.";
   state.error = error ? error.message : "";

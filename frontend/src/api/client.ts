@@ -1,4 +1,5 @@
 import type {
+  AdminBet,
   AdminReport,
   Bet,
   LeaderboardRow,
@@ -49,6 +50,7 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   users: (token: string) => request<User[]>("/admin/users", token),
+  adminBets: (token: string) => request<AdminBet[]>("/admin/bets", token),
   createUser: (token: string, payload: { username: string; display_name: string; password: string; starting_points: number }) =>
     request<User>("/admin/users", token, {
       method: "POST",

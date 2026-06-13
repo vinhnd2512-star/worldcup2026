@@ -22,7 +22,7 @@ import { FormEvent, ReactNode, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 
 import { flagFor } from "../data/flags";
-import type { AdminReport, Bet, LeaderboardRow, Match, PlaceBetPayload, SyncRun, TabKey, User } from "../types";
+import type { AdminBet, AdminReport, Bet, LeaderboardRow, Match, PlaceBetPayload, SyncRun, TabKey, User } from "../types";
 
 type LoginScreenProps = {
   loading: boolean;
@@ -624,6 +624,7 @@ export function HistoryView({ history, matches }: { history: Bet[]; matches: Mat
 
 export function AdminView({
   users,
+  adminBets,
   matches,
   report,
   syncRuns,
@@ -637,6 +638,7 @@ export function AdminView({
   onUpdateScore
 }: {
   users: User[];
+  adminBets: AdminBet[];
   matches: Match[];
   report: AdminReport | null;
   syncRuns: SyncRun[];
@@ -761,6 +763,37 @@ export function AdminView({
             </button>
           </div>
         ))}
+      </section>
+
+      <section className="glass-card admin-bets-table">
+        <div className="section-heading inline">
+          <h2>Cược gần nhất</h2>
+          <span>{adminBets.length} bet</span>
+        </div>
+        {adminBets.slice(0, 20).map((bet) => {
+          const match = bet.match_id ? matches.find((item) => item.id === bet.match_id) : null;
+          return (
+            <div key={bet.id} className={`admin-bet-row ${bet.status}`}>
+              <div>
+                <strong>{bet.user.display_name}</strong>
+                <small>@{bet.user.username} · {formatDate(bet.placed_at)}</small>
+              </div>
+              <div>
+                <small>{match ? `${match.home_team.name} vs ${match.away_team.name}` : bet.market_key}</small>
+                <b>{bet.selection_label}</b>
+              </div>
+              <div>
+                <small>{bet.market_key}</small>
+                <b>{fmt.format(num(bet.stake))} pts · x{fmtOne.format(num(bet.locked_multiplier))}</b>
+              </div>
+              <div className="history-result">
+                <span>{bet.status}</span>
+                <strong>{num(bet.points_delta) >= 0 ? "+" : ""}{fmt.format(num(bet.points_delta))} pts</strong>
+              </div>
+            </div>
+          );
+        })}
+        {!adminBets.length && <p className="empty-copy">Chưa có cược nào.</p>}
       </section>
 
       <section className="glass-card score-update-panel">

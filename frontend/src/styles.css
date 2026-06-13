@@ -1060,6 +1060,32 @@ select:focus {
   display: block;
 }
 
+.admin-bets-table {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-bet-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr) minmax(0, 1fr) 120px;
+  align-items: center;
+  gap: 14px;
+  min-height: 78px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.admin-bet-row small,
+.admin-bet-row span {
+  display: block;
+  color: var(--muted);
+}
+
+.admin-bet-row b,
+.admin-bet-row strong {
+  overflow-wrap: anywhere;
+}
+
 .sync-row {
   grid-template-columns: 130px 120px 90px minmax(0, 1fr);
   gap: 12px;
@@ -1288,6 +1314,7 @@ select:focus {
   }
 
   .history-card,
+  .admin-bet-row,
   .user-row,
   .sync-row {
     grid-template-columns: 1fr;

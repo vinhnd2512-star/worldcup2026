@@ -3,10 +3,11 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import AdminUser, DbSession
 from app.models import Bet, Match, Role, SyncRun, User, WalletLedger
-from app.schemas import AdminReport, CreateUserRequest, ResetPasswordRequest, SyncRunOut, TopUpRequest, UpdateScoreRequest, UserOut, UserStatusRequest
+from app.schemas import AdminBetOut, AdminReport, CreateUserRequest, ResetPasswordRequest, SyncRunOut, TopUpRequest, UpdateScoreRequest, UserOut, UserStatusRequest
 from app.security import create_password_hash
 from app.services.settlement_service import FINAL_OR_VOID_STATUSES, settle_pending_bets
 from app.services.sync_service import run_metadata_sync, run_result_sync
@@ -18,6 +19,17 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/users", response_model=list[UserOut])
 def list_users(db: DbSession, _: AdminUser) -> list[User]:
     return list(db.scalars(select(User).order_by(User.created_at.desc())).all())
+
+
+@router.get("/bets", response_model=list[AdminBetOut])
+def list_bets(db: DbSession, _: AdminUser, limit: int = Query(default=100, ge=1, le=500)) -> list[Bet]:
+    statement = (
+        select(Bet)
+        .options(selectinload(Bet.user).selectinload(User.role))
+        .order_by(Bet.placed_at.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement).all())
 
 
 @router.post("/users", response_model=UserOut)

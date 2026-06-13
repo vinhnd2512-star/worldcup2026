@@ -73,6 +73,10 @@ export interface Bet {
   settled_at?: string | null;
 }
 
+export interface AdminBet extends Bet {
+  user: User;
+}
+
 export interface LeaderboardRow {
   rank: number;
   user_id: number;

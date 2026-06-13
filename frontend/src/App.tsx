@@ -10,7 +10,7 @@ import {
   MatchesView,
   Shell
 } from "./components/views";
-import type { AdminReport, Bet, LeaderboardRow, Match, PlaceBetPayload, SyncRun, TabKey, User } from "./types";
+import type { AdminBet, AdminReport, Bet, LeaderboardRow, Match, PlaceBetPayload, SyncRun, TabKey, User } from "./types";
 
 const TOKEN_STORAGE_KEY = "worldcup_predict_token";
 const AUTO_REFRESH_MS = 60_000;
@@ -25,6 +25,7 @@ export default function App() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [history, setHistory] = useState<Bet[]>([]);
+  const [adminBets, setAdminBets] = useState<AdminBet[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [report, setReport] = useState<AdminReport | null>(null);
   const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
@@ -53,12 +54,14 @@ export default function App() {
       setSelectedMatchId(matchData.find(isOpenUpcomingMatch)?.id ?? matchData[0].id);
     }
     if (nextUser.role.name === "admin") {
-      const [usersData, reportData, syncData] = await Promise.all([
+      const [usersData, adminBetsData, reportData, syncData] = await Promise.all([
         api.users(nextToken),
+        api.adminBets(nextToken),
         api.reports(nextToken),
         api.syncRuns(nextToken)
       ]);
       setUsers(usersData);
+      setAdminBets(adminBetsData);
       setReport(reportData);
       setSyncRuns(syncData);
     }
@@ -116,6 +119,7 @@ export default function App() {
     setMatches([]);
     setLeaderboard([]);
     setHistory([]);
+    setAdminBets([]);
     setActiveTab("matches");
   }
 
@@ -123,7 +127,9 @@ export default function App() {
     if (!token || !user) {
       return;
     }
-    await loadPrivateData(token, user);
+    const nextUser = await api.me(token);
+    setUser(nextUser);
+    await loadPrivateData(token, nextUser);
   }
 
   async function handlePlaceBet(payload: PlaceBetPayload) {
@@ -268,6 +274,7 @@ export default function App() {
       {activeTab === "admin" && user.role.name === "admin" && (
         <AdminView
           users={users}
+          adminBets={adminBets}
           matches={matches}
           report={report}
           syncRuns={syncRuns}

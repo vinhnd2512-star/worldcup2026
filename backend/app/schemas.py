@@ -105,6 +105,10 @@ class BetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AdminBetOut(BetOut):
+    user: UserOut
+
+
 class LeaderboardRow(BaseModel):
     rank: int
     user_id: int
