@@ -475,6 +475,51 @@ async function upsertJsonMinimal(table, rows, onConflict) {
   return rows.length;
 }
 
+function completedMatchResultRows(matches, provider, source) {
+  return (matches || [])
+    .filter((match) =>
+      match?.id &&
+      isFinalResultStatus(match.status) &&
+      match.home_score !== null &&
+      match.home_score !== undefined &&
+      match.away_score !== null &&
+      match.away_score !== undefined
+    )
+    .map((match) => ({
+      match_id: match.id,
+      home_team_id: match.home_team_id,
+      away_team_id: match.away_team_id,
+      status: match.status,
+      home_score: match.home_score,
+      away_score: match.away_score,
+      home_penalties: match.home_penalties ?? null,
+      away_penalties: match.away_penalties ?? null,
+      provider,
+      source,
+      provider_payload: {
+        provider_id: match.provider_id || null,
+        starts_at: match.starts_at || null
+      },
+      finished_at: match.updated_at || new Date().toISOString(),
+      synced_at: new Date().toISOString()
+    }));
+}
+
+async function upsertCompletedMatchResults(matches, provider, source) {
+  const rows = completedMatchResultRows(matches, provider, source);
+  if (!rows.length) return { resultRows: 0, completedMatchIds: [] };
+  try {
+    const saved = await upsertJson("match_results", rows, "match_id");
+    return {
+      resultRows: saved.length,
+      completedMatchIds: rows.map((row) => row.match_id)
+    };
+  } catch (error) {
+    if (!isMissingRelationError(error)) throw error;
+    return { resultRows: 0, completedMatchIds: rows.map((row) => row.match_id) };
+  }
+}
+
 async function patchJson(table, filters, row) {
   const response = await supabaseFetch(`/rest/v1/${table}?${filters.join("&")}`, {
     method: "PATCH",
@@ -1377,58 +1422,127 @@ function hasScoreFixture(fixture) {
     && fixture.awayScore !== undefined;
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function resultStatusFromDateAndScore({ rawStatus, resultType, homeScore, awayScore, kickOff }) {
+  const status = String(rawStatus ?? "").toLowerCase();
+  const numericStatus = Number(rawStatus);
+  if ([5, 10].includes(numericStatus)) return "FT";
+  if ([2, 3, 4].includes(numericStatus)) return "1H";
+  if (status.includes("finish") || status.includes("complet") || status === "ft" || status === "full_time") return "FT";
+  if (status.includes("penalty") || status === "pen") return "PEN";
+  if (status.includes("extra") || status === "et") return "AET";
+  if (status.includes("live") || status.includes("progress") || status.includes("playing") || status.includes("1h") || status.includes("2h")) return "1H";
+  if (status.includes("half")) return "HT";
+  if (status.includes("postpone")) return "PST";
+  if (status.includes("cancel")) return "CANC";
+
+  const hasScore = homeScore !== null && homeScore !== undefined && awayScore !== null && awayScore !== undefined;
+  const startedAt = Date.parse(kickOff || "");
+  const kickoffWasLongAgo = Number.isFinite(startedAt) && Date.now() - startedAt > 105 * 60 * 1000;
+  if ((Number(resultType) === 1 || kickoffWasLongAgo) && hasScore) return "FT";
+  return "SCHEDULED";
+}
+
+function matchDistanceMs(match, kickOff) {
+  const fixtureTime = Date.parse(kickOff || "");
+  const matchTime = Date.parse(match?.starts_at || "");
+  if (!Number.isFinite(fixtureTime) || !Number.isFinite(matchTime)) return Number.POSITIVE_INFINITY;
+  return Math.abs(matchTime - fixtureTime);
+}
+
+function findDbMatchForFixture(fixture, homeTeam, awayTeam, dbMatches) {
+  const candidates = dbMatches.filter((match) =>
+    Number(match.home_team_id) === Number(homeTeam.id) && Number(match.away_team_id) === Number(awayTeam.id)
+  );
+  if (!candidates.length) return null;
+  const ordered = candidates
+    .map((match) => ({ match, distance: matchDistanceMs(match, fixture.kickOff) }))
+    .sort((left, right) => left.distance - right.distance || Number(left.match.id) - Number(right.match.id));
+  return ordered[0].match;
+}
+
 function extractFifaFantasyFixtures(payload) {
-  const rounds = payload?.rounds || payload?.data?.rounds || [];
+  const rounds = Array.isArray(payload) ? payload : (payload?.rounds || payload?.data?.rounds || []);
   const fixtures = [];
   for (const round of rounds) {
-    const list = round.fixtures || round.matches || round.games || [];
+    const list = [
+      ...asArray(round.fixtures),
+      ...asArray(round.matches),
+      ...asArray(round.games),
+      ...asArray(round.tournaments)
+    ];
     for (const f of list) {
       const home = f.homeTeam || f.home_team || f.home || {};
       const away = f.awayTeam || f.away_team || f.away || {};
-      const homeCode = String(home.teamCode || home.code || home.abbreviation || home.tla || "").toUpperCase();
-      const awayCode = String(away.teamCode || away.code || away.abbreviation || away.tla || "").toUpperCase();
+      const homeCode = String(f.homeSquadAbbr || home.teamCode || home.code || home.abbreviation || home.tla || "").toUpperCase();
+      const awayCode = String(f.awaySquadAbbr || away.teamCode || away.code || away.abbreviation || away.tla || "").toUpperCase();
       if (!homeCode || !awayCode) continue;
-      const rawStatus = String(f.status || f.matchStatus || f.state || "").toLowerCase();
       const homeScore = scoreOrNull(f.homeScore ?? f.home_score ?? f.result?.home ?? f.score?.home ?? null);
       const awayScore = scoreOrNull(f.awayScore ?? f.away_score ?? f.result?.away ?? f.score?.away ?? null);
       const kickOff = f.kickOff || f.kickoff || f.matchDate || f.date || f.startDate || null;
-      let status = "SCHEDULED";
-      if (rawStatus.includes("finish") || rawStatus.includes("complet") || rawStatus === "ft" || rawStatus === "full_time") status = "FT";
-      else if (rawStatus.includes("live") || rawStatus.includes("progress") || rawStatus.includes("1h") || rawStatus.includes("2h")) status = "1H";
-      else if (rawStatus.includes("half")) status = "HT";
-      else if (rawStatus.includes("extra") || rawStatus === "et") status = "AET";
-      else if (rawStatus.includes("penalty") || rawStatus === "pen") status = "PEN";
-      else if (rawStatus.includes("postpone")) status = "PST";
-      else if (rawStatus.includes("cancel")) status = "CANC";
-      fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff, provider: "fifa-fantasy", payload: f });
+      const status = resultStatusFromDateAndScore({
+        rawStatus: f.status || f.matchStatus || f.state || f.period || "",
+        resultType: f.resultType,
+        homeScore,
+        awayScore,
+        kickOff
+      });
+      fixtures.push({
+        homeCode,
+        awayCode,
+        homeScore,
+        awayScore,
+        homePenalties: scoreOrNull(f.homePenaltyScore ?? f.homePenalties ?? f.penalties?.home ?? null),
+        awayPenalties: scoreOrNull(f.awayPenaltyScore ?? f.awayPenalties ?? f.penalties?.away ?? null),
+        status,
+        kickOff,
+        provider: "fifa-fantasy",
+        payload: f
+      });
     }
   }
   return fixtures;
 }
 
 function extractFifaCalendarFixtures(payload) {
-  // FIFA API v3 /calendar/matches returns { Results: [{ IdMatch, HomeTeam: {TeamName, Abbreviation}, AwayTeam, HomeTeamScore, AwayTeamScore, MatchStatus, Date }] }
+  // FIFA API v3 /calendar/matches returns { Results: [{ IdMatch, Home/Away, HomeTeamScore, AwayTeamScore, MatchStatus, Date }] }
   const results = payload?.Results || payload?.results || payload?.matches || [];
   const fixtures = [];
   for (const m of results) {
-    const home = m.HomeTeam || m.homeTeam || m.home || {};
-    const away = m.AwayTeam || m.awayTeam || m.away || {};
-    const homeCode = String(home.Abbreviation || home.abbreviation || home.TeamCode || home.code || "").toUpperCase();
-    const awayCode = String(away.Abbreviation || away.abbreviation || away.TeamCode || away.code || "").toUpperCase();
+    const home = m.HomeTeam || m.homeTeam || m.Home || m.home || {};
+    const away = m.AwayTeam || m.awayTeam || m.Away || m.away || {};
+    const homeCode = String(home.Abbreviation || home.abbreviation || home.TeamCode || home.code || home.IdCountry || "").toUpperCase();
+    const awayCode = String(away.Abbreviation || away.abbreviation || away.TeamCode || away.code || away.IdCountry || "").toUpperCase();
     if (!homeCode || !awayCode) continue;
-    const rawStatus = String(m.MatchStatus || m.matchStatus || m.Status || m.status || "").toLowerCase();
-    const homeScore = scoreOrNull(m.HomeTeamScore ?? m.homeScore ?? m.score?.home ?? null);
-    const awayScore = scoreOrNull(m.AwayTeamScore ?? m.awayScore ?? m.score?.away ?? null);
+    const rawStatus = m.MatchStatus ?? m.matchStatus ?? m.Status ?? m.status ?? "";
+    const homeScore = scoreOrNull(m.HomeTeamScore ?? m.homeScore ?? home.Score ?? m.score?.home ?? null);
+    const awayScore = scoreOrNull(m.AwayTeamScore ?? m.awayScore ?? away.Score ?? m.score?.away ?? null);
     const kickOff = m.Date || m.date || m.MatchDay || null;
-    let status = "SCHEDULED";
-    if ([0, "0"].includes(m.MatchStatus) || rawStatus.includes("schedul") || rawStatus.includes("upcoming")) status = "SCHEDULED";
-    else if ([1, "1", 3, "3"].includes(m.MatchStatus) || rawStatus.includes("live") || rawStatus.includes("progress")) status = "1H";
-    else if ([5, "5"].includes(m.MatchStatus) || rawStatus.includes("finish") || rawStatus.includes("complet") || rawStatus === "ft") status = "FT";
-    else if (rawStatus.includes("extra")) status = "AET";
-    else if (rawStatus.includes("penalty") || rawStatus === "pen") status = "PEN";
-    else if (rawStatus.includes("postpone")) status = "PST";
-    else if (rawStatus.includes("cancel")) status = "CANC";
-    fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff, provider: "fifa-calendar", payload: m });
+    let status = resultStatusFromDateAndScore({
+      rawStatus,
+      resultType: m.ResultType ?? m.resultType,
+      homeScore,
+      awayScore,
+      kickOff
+    });
+    if ([1, "1"].includes(m.MatchStatus) && status === "FT") status = "SCHEDULED";
+    if ([3, "3"].includes(m.MatchStatus)) status = "1H";
+    fixtures.push({
+      homeCode,
+      awayCode,
+      homeScore,
+      awayScore,
+      homePenalties: scoreOrNull(m.HomeTeamPenaltyScore ?? home.PenaltyScore ?? null),
+      awayPenalties: scoreOrNull(m.AwayTeamPenaltyScore ?? away.PenaltyScore ?? null),
+      status,
+      kickOff,
+      provider: "fifa-calendar",
+      source: `fifa-calendar:${m.IdMatch || m.id || ""}`,
+      payload: m
+    });
   }
   return fixtures;
 }
@@ -1450,9 +1564,7 @@ async function upsertMatchResultsByCode(fixtures) {
     const homeTeam = teamsByCode.get(f.homeCode);
     const awayTeam = teamsByCode.get(f.awayCode);
     if (!homeTeam || !awayTeam) continue;
-    const dbMatch = dbMatches.find((m) =>
-      Number(m.home_team_id) === Number(homeTeam.id) && Number(m.away_team_id) === Number(awayTeam.id)
-    );
+    const dbMatch = findDbMatchForFixture(f, homeTeam, awayTeam, dbMatches);
     if (!dbMatch) continue;
     const wasCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(dbMatch.status);
     const nowCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(f.status);
@@ -1702,6 +1814,8 @@ async function syncApiFootballFixtures() {
       status: normalizeStatus(fixture.fixture.status?.short),
       home_score: fixture.goals.home,
       away_score: fixture.goals.away,
+      home_penalties: fixture.score?.penalty?.home ?? null,
+      away_penalties: fixture.score?.penalty?.away ?? null,
       venue: fixture.fixture.venue?.name || null,
       city: fixture.fixture.venue?.city || null,
       current_minute: fixture.fixture.status?.elapsed || null,
@@ -1709,13 +1823,14 @@ async function syncApiFootballFixtures() {
     }))
     .filter((match) => match.home_team_id && match.away_team_id);
 
-  await upsertJson("matches", matches, "provider_id");
+  const syncedMatches = await upsertJson("matches", matches, "provider_id");
+  const completed = await upsertCompletedMatchResults(syncedMatches, "api-football", "fixtures");
   await recordSyncRun({
     provider: "api-football",
     jobType: "fixtures",
     status: "success",
     requestCount: 1,
-    message: `Synced ${matches.length} fixtures and ${teamsByProvider.size} teams for World Cup 2026; linked ${teamSync.linkedExisting} seeded teams by code.`
+    message: `Synced ${matches.length} fixtures and ${teamsByProvider.size} teams for World Cup 2026; linked ${teamSync.linkedExisting} seeded teams by code; saved ${completed.resultRows} completed results.`
   });
 
   return {
@@ -1723,7 +1838,9 @@ async function syncApiFootballFixtures() {
     status: "success",
     requests: 1,
     teams: teamsByProvider.size,
-    matches: matches.length
+    matches: matches.length,
+    results: completed.resultRows,
+    completedMatchIds: completed.completedMatchIds
   };
 }
 
@@ -1760,6 +1877,8 @@ async function syncFootballDataFixtures() {
       status: normalizeFootballDataStatus(match.status),
       home_score: match.score?.fullTime?.home ?? match.score?.regularTime?.home ?? null,
       away_score: match.score?.fullTime?.away ?? match.score?.regularTime?.away ?? null,
+      home_penalties: match.score?.penalties?.home ?? null,
+      away_penalties: match.score?.penalties?.away ?? null,
       venue: match.venue || null,
       city: null,
       current_minute: match.minute || null,
@@ -1768,6 +1887,7 @@ async function syncFootballDataFixtures() {
     .filter((match) => match.home_team_id && match.away_team_id && match.starts_at);
 
   const syncedMatches = await upsertJson("matches", matches, "provider_id");
+  const completed = await upsertCompletedMatchResults(syncedMatches, "football-data.org", "fixtures");
   const defaultMarkets = await ensureDefaultMarketsForMatches(syncedMatches);
   let bracketLinks = 0;
   try {
@@ -1786,7 +1906,7 @@ async function syncFootballDataFixtures() {
     jobType: "fixtures",
     status: "success",
     requestCount: 1,
-    message: `Synced ${matches.length} World Cup fixtures and ${teamsByProvider.size} teams from football-data.org; added ${defaultMarkets} default markets; linked ${bracketLinks} bracket matches.`
+    message: `Synced ${matches.length} World Cup fixtures and ${teamsByProvider.size} teams from football-data.org; saved ${completed.resultRows} completed results; added ${defaultMarkets} default markets; linked ${bracketLinks} bracket matches.`
   });
 
   return {
@@ -1795,6 +1915,8 @@ async function syncFootballDataFixtures() {
     requests: 1,
     teams: teamsByProvider.size,
     matches: matches.length,
+    results: completed.resultRows,
+    completedMatchIds: completed.completedMatchIds,
     bracketLinks,
     defaultMarkets
   };
