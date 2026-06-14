@@ -38,6 +38,9 @@ const state = {
     dateFrom: "",
     dateTo: ""
   },
+  adminPredictionUserId: "",
+  adminPredictionBets: null,
+  adminPredictionError: "",
   active: "matches",
   selectedMatchId: null,
   selectedTeamId: null,
@@ -64,6 +67,8 @@ const state = {
   scheduleSheet: "upcoming",
   groupResultsOpen: {},
   syncHelpOpen: false,
+  adminSyncMenuOpen: false,
+  adminExportMenuOpen: false,
   matchSearch: "",
   matchSearchPanelOpen: false,
   matchSearchQuery: "",
@@ -358,35 +363,28 @@ async function createPublicAccount(event) {
     renderLogin();
     return;
   }
-  const email = raw.includes("@") ? raw : `${username}@worldcup.local`;
+  const email = `${username}@worldcup.local`;
   state.authLoading = "signup";
   renderLogin();
-  const { data, error } = await state.client.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        username,
-        display_name: displayName,
-        role: "player"
-      }
-    }
-  });
-  if (error) {
+  try {
+    await safeFetchJson("/api/public-signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, display_name: displayName, password })
+    });
+    const { data, error } = await state.client.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    state.session = data.session;
+    state.authLoading = "";
+    state.message = "";
+    await loadData();
+    return;
+  } catch (error) {
     state.error = friendlyAuthError(error);
     state.authLoading = "";
     renderLogin();
     return;
   }
-  if (data.session) {
-    state.session = data.session;
-    state.authLoading = "";
-    await loadData();
-    return;
-  }
-  state.authLoading = "";
-  state.message = "Đã tạo tài khoản. Nếu Supabase bật xác nhận email, hãy xác nhận email rồi đăng nhập lại; nếu dùng tài khoản local, admin cần tắt email confirmation.";
-  renderLogin();
 }
 
 async function loadData() {
@@ -395,6 +393,17 @@ async function loadData() {
     const profileResult = await state.client.from("profiles").select("*").eq("id", state.session.user.id).single();
     throwIfError(profileResult.error);
     state.profile = profileResult.data;
+    if (state.profile.deleted_at || state.profile.is_active === false) {
+      const deleted = Boolean(state.profile.deleted_at);
+      await state.client.auth.signOut();
+      state.session = null;
+      state.profile = null;
+      state.error = deleted
+        ? "Tài khoản này đã bị xoá. Vui lòng liên hệ admin."
+        : "Tài khoản này đang bị khóa. Vui lòng liên hệ admin.";
+      renderLogin();
+      return;
+    }
 
     const teamsResult = await state.client.from("teams").select("*").order("group_name", { ascending: true }).order("group_slot", { ascending: true }).order("name", { ascending: true });
     throwIfError(teamsResult.error);
@@ -467,6 +476,11 @@ async function loadData() {
       const usersResult = await state.client.from("profiles").select("*").order("created_at", { ascending: false });
       throwIfError(usersResult.error);
       state.users = usersResult.data || [];
+      if (state.adminPredictionUserId && !state.users.some((user) => user.id === state.adminPredictionUserId && user.role === "player" && !user.deleted_at)) {
+        state.adminPredictionUserId = "";
+        state.adminPredictionBets = null;
+        state.adminPredictionError = "";
+      }
 
       const reportResult = await state.client.from("admin_report").select("*").single();
       throwIfError(reportResult.error);
@@ -3327,12 +3341,13 @@ function renderBetDetailCells(bet, { includeUser = false, allowVoid = false } = 
   const outcome = betOutcome(bet);
   const score = betScoreAmount(bet);
   const receivedLabel = bet.status === "placed" ? `Potential ${money(betReceivedAmount(bet))}` : money(betReceivedAmount(bet));
+  const outcomeClass = `outcome-${String(bet.status || "placed")}`;
   return `
     ${includeUser ? `<div><small>User</small><strong>${escapeHtml(bet.user?.display_name || bet.user_id)}</strong><small>${dateText(bet.placed_at)}</small></div>` : `<div><small>Match</small><strong>${escapeHtml(title)}</strong><small>${dateText(bet.placed_at)}</small></div>`}
     <div><small>Bet type</small><b>${escapeHtml(betMarketTitle(bet))}</b><small>${escapeHtml(bet.market_key)}</small></div>
-    <div><small>Prediction</small><b>${escapeHtml(bet.selection_label)}</b><small>${money(bet.stake)} · x${fmtOne.format(number(bet.locked_multiplier))}</small></div>
+    <div class="prediction-cell ${escapeHtml(outcomeClass)}"><small>Prediction</small><b>${escapeHtml(bet.selection_label)}</b><small>${money(bet.stake)} · x${fmtOne.format(number(bet.locked_multiplier))}</small></div>
     <div><small>Actual</small><b>${escapeHtml(betActualText(bet))}</b></div>
-    <div>
+    <div class="outcome-cell ${escapeHtml(outcomeClass)}">
       <small>Outcome</small>
       <b class="${escapeHtml(outcome.className)}">${escapeHtml(outcome.label)}</b>
       <small>Received: ${escapeHtml(receivedLabel)}</small>
@@ -3399,7 +3414,8 @@ function renderSyncHelpPanel() {
 }
 
 function renderAdmin() {
-  const players = state.users.filter((user) => user.role === "player");
+  const players = state.users.filter((user) => user.role === "player" && !user.deleted_at);
+  const deletedPlayers = state.users.filter((user) => user.role === "player" && user.deleted_at);
   const report = state.report || {};
   const marketOptions = adminMarketOptions();
   const outrightOptions = adminOutrightOptions();
@@ -3409,20 +3425,30 @@ function renderAdmin() {
       <div class="section-heading">
         <div><h1>Admin Dashboard</h1><p>Quản lý tài khoản, ví tiền và settlement.</p></div>
         <div class="admin-actions">
-          <button class="ghost-button" id="export-leaderboard-button">Export rankings</button>
-          <button class="ghost-button" id="export-bets-button">Export bets</button>
-          <button class="ghost-button" id="export-ledger-button">Export ledger</button>
-          <button class="ghost-button" id="export-audit-button">Export audit</button>
-          <button class="ghost-button" id="export-reports-button">Export reports</button>
-          <button class="ghost-button" id="export-results-button">Export results</button>
-          <button class="ghost-button" id="export-odds-report-button">Export odds</button>
-          <button class="icon-button sync-help-button" type="button" data-sync-help-toggle aria-label="Sync help">?</button>
-          <button class="ghost-button" id="sync-odds-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync odds"}</button>
-          <button class="ghost-button" id="sync-data-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync fixtures/FIFA"}</button>
-          <button class="ghost-button" id="settle-all-button">Settle tất cả FT</button>
-          <button class="primary-button" id="quick-results-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync kết quả nhanh"}</button>
-          <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync đầy đủ"}</button>
-          <button class="ghost-button" id="transfermarkt-sync-button">Sync Transfermarkt</button>
+          <details class="admin-action-menu">
+            <summary>Sync</summary>
+            <div class="admin-action-menu-panel">
+              <button class="primary-button" id="quick-results-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync kết quả nhanh"}</button>
+              <button class="ghost-button" id="sync-odds-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync odds"}</button>
+              <button class="ghost-button" id="sync-data-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync fixtures/FIFA"}</button>
+              <button class="ghost-button" id="provider-sync-button" ${state.providerSync.isRunning ? "disabled" : ""}>${state.providerSync.isRunning ? renderBouncingBall("Syncing...") : "Sync đầy đủ"}</button>
+              <button class="ghost-button" id="transfermarkt-sync-button">Sync Transfermarkt</button>
+              <button class="ghost-button" id="settle-all-button">Settle tất cả FT</button>
+              <button class="ghost-button" type="button" data-sync-help-toggle>Sync help</button>
+            </div>
+          </details>
+          <details class="admin-action-menu">
+            <summary>Export</summary>
+            <div class="admin-action-menu-panel">
+              <button class="ghost-button" id="export-leaderboard-button">Rankings</button>
+              <button class="ghost-button" id="export-bets-button">Bets</button>
+              <button class="ghost-button" id="export-ledger-button">Ledger</button>
+              <button class="ghost-button" id="export-audit-button">Audit</button>
+              <button class="ghost-button" id="export-reports-button">Reports</button>
+              <button class="ghost-button" id="export-results-button">Results</button>
+              <button class="ghost-button" id="export-odds-report-button">Odds</button>
+            </div>
+          </details>
           <button class="primary-button" id="refresh-button">Refresh</button>
         </div>
       </div>
@@ -3453,7 +3479,7 @@ function renderAdmin() {
           <h2>Tạo tài khoản</h2>
           <label>Username<input id="new-username" required></label>
           <label>Tên hiển thị<input id="new-display-name" required></label>
-          <label>Password<input id="new-password" value="demo123" required></label>
+          <label>Password<div class="input-action-row"><input id="new-password" value="demo123" required><button class="ghost-button compact-button" type="button" data-generate-pass="new-password">Generate</button></div></label>
           <label>Tiền ban đầu<input id="new-points" type="number" value="1000"></label>
           <button class="primary-button" ${state.actionLoading === "createUser" ? "disabled" : ""}>${state.actionLoading === "createUser" ? renderBouncingBall("Dang tao user...") : "Tạo user"}</button>
         </form>
@@ -3498,7 +3524,7 @@ function renderAdmin() {
         <form class="glass-card form-card form-grid" id="reset-password-form">
           <h2>Reset password</h2>
           <label>Player<select id="reset-user">${players.map((user) => `<option value="${user.id}">${escapeHtml(user.display_name)}</option>`).join("")}</select></label>
-          <label>New password<input id="reset-password" value="demo123" minlength="6" required></label>
+          <label>New password<div class="input-action-row"><input id="reset-password" value="demo123" minlength="6" required><button class="ghost-button compact-button" type="button" data-generate-pass="reset-password">Generate</button></div></label>
           <button class="primary-button" ${state.actionLoading === "resetPassword" ? "disabled" : ""}>${state.actionLoading === "resetPassword" ? renderBouncingBall("Dang reset...") : "Reset password"}</button>
         </form>
         <form class="glass-card form-card form-grid" id="tournament-winner-form">
@@ -3514,7 +3540,8 @@ function renderAdmin() {
       </section>
       <section class="glass-card panel">
         <div class="section-heading"><h2>Tài khoản</h2><span>${state.users.length} user</span></div>
-        ${state.users.map(renderUserRow).join("")}
+        ${players.map(renderUserRow).join("") || "<p>Chưa có tài khoản người chơi.</p>"}
+        ${deletedPlayers.length ? `<details class="deleted-users-panel"><summary>Deleted accounts (${fmt.format(deletedPlayers.length)})</summary>${deletedPlayers.map(renderUserRow).join("")}</details>` : ""}
       </section>
       <section class="glass-card table-card">
         <div class="section-heading"><h2>Player report</h2><span>profit · bonus · accuracy</span></div>
@@ -3530,6 +3557,7 @@ function renderAdmin() {
         <div class="section-heading"><h2>Recent predictions</h2><span>${state.adminBets.length} latest · ${escapeHtml(adminFilterLabel())}</span></div>
         ${state.adminBets.slice(0, 12).map(renderAdminBetRow).join("") || "<p>Chưa có dự đoán.</p>"}
       </section>
+      ${renderAdminPredictionExplorer(players)}
       <section class="glass-card table-card">
         <div class="section-heading"><h2>Wallet ledger</h2><span>${state.walletLedger.length} latest · ${escapeHtml(adminFilterLabel())}</span></div>
         <div class="table-row table-head"><span>Time</span><span>User</span><span>Kind</span><span>Amount</span><span>Balance</span></div>
@@ -3953,13 +3981,41 @@ function uniqueList(values) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
+function generatePassword(length = 10) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const values = new Uint32Array(length);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
+}
+
+function fillGeneratedPassword(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.value = generatePassword();
+  input.focus();
+  input.select();
+}
+
 function renderUserRow(user) {
+  const deleted = Boolean(user.deleted_at);
+  const canDelete = !deleted && user.id !== state.profile?.id;
   return `
-    <div class="user-row">
+    <div class="user-row ${deleted ? "deleted" : ""}">
       <div class="avatar small">${initials(user.display_name)}</div>
-      <div><strong>${escapeHtml(user.display_name)}</strong><small>@${escapeHtml(user.username)} · ${escapeHtml(user.role)}</small></div>
+      <div>
+        <strong>${escapeHtml(user.display_name)}</strong>
+        <small>@${escapeHtml(user.username)} · ${escapeHtml(user.role)}${deleted ? ` · deleted ${dateText(user.deleted_at)}` : ""}</small>
+        ${deleted && user.deleted_reason ? `<small>${escapeHtml(user.deleted_reason)}</small>` : ""}
+      </div>
       <b class="score-value">${money(user.wallet_balance)}</b>
-      <button class="ghost-button" data-toggle-user="${user.id}" data-active="${user.is_active ? "false" : "true"}">${user.is_active ? "Khóa" : "Mở"}</button>
+      <div class="user-actions">
+        ${
+          deleted
+            ? `<span class="pill muted">Deleted</span>`
+            : `<button class="ghost-button compact-button" data-toggle-user="${user.id}" data-active="${user.is_active ? "false" : "true"}">${user.is_active ? "Khóa" : "Mở"}</button>
+               ${canDelete ? `<button class="danger-button compact-button" data-delete-user="${user.id}">Xóa</button>` : ""}`
+        }
+      </div>
     </div>
   `;
 }
@@ -3997,29 +4053,41 @@ function renderMarketReportRows() {
 }
 
 function renderAdminBetRow(bet) {
-  const match = bet.match;
-  const title = match ? `${match.home_team.name} vs ${match.away_team.name}` : bet.market_key;
-  const delta = number(bet.points_delta);
-  const bonus = number(bet.prediction_bonus);
-  return `
-    <article class="history-row ${escapeHtml(bet.status)}">
-      <div><strong>${escapeHtml(bet.user?.display_name || bet.user_id)}</strong><small>${dateText(bet.placed_at)}</small></div>
-      <div><small>${escapeHtml(title)}</small><b>${escapeHtml(bet.selection_label)}</b></div>
-      <div><small>${escapeHtml(bet.market_key)}</small><b>${money(bet.stake)} · x${fmtOne.format(number(bet.locked_multiplier))}</b></div>
-      <div>
-        <small>${escapeHtml(bet.status)}${bonus ? ` · bonus ${money(bonus)}` : ""}</small>
-        <b class="${delta + bonus >= 0 ? "success" : "error"}">${delta + bonus >= 0 ? "+" : ""}${money(delta + bonus)}</b>
-        ${bet.status === "placed" ? `<button class="ghost-button compact-button" data-void-bet="${bet.id}">Void</button>` : ""}
-      </div>
-    </article>
-  `;
-}
-
-function renderAdminBetRow(bet) {
   return `
     <article class="history-row bet-detail-row ${escapeHtml(bet.status)}">
       ${renderBetDetailCells(bet, { includeUser: true, allowVoid: true })}
     </article>
+  `;
+}
+
+function renderAdminPredictionExplorer(players) {
+  const selectedUser = state.adminPredictionUserId;
+  const selectedProfile = players.find((user) => user.id === selectedUser);
+  const rows = state.adminPredictionBets;
+  return `
+    <section class="glass-card panel admin-prediction-explorer">
+      <div class="section-heading">
+        <div><h2>All player predictions</h2><p>Chọn tài khoản để xem toàn bộ dự đoán của người chơi.</p></div>
+        <span>${rows ? `${fmt.format(rows.length)} predictions` : "Chưa tải"}</span>
+      </div>
+      <div class="admin-prediction-controls">
+        <label>Player<select id="admin-prediction-user">
+          <option value="">Chọn người chơi</option>
+          ${players.map((user) => `<option value="${user.id}" ${selectedUser === user.id ? "selected" : ""}>${escapeHtml(user.display_name)} (@${escapeHtml(user.username)})</option>`).join("")}
+        </select></label>
+        <button class="ghost-button" id="refresh-admin-predictions" type="button" ${selectedUser ? "" : "disabled"}>Refresh predictions</button>
+      </div>
+      ${state.adminPredictionError ? `<p class="error">${escapeHtml(state.adminPredictionError)}</p>` : ""}
+      ${
+        !selectedUser
+          ? `<p>Chọn một người chơi để xem lịch sử dự đoán.</p>`
+          : rows === null
+            ? `<p>Loading predictions for ${escapeHtml(selectedProfile?.display_name || "player")}...</p>`
+            : rows.length
+              ? `<div class="stack compact-stack">${rows.map(renderAdminBetRow).join("")}</div>`
+              : `<p>Người chơi này chưa có dự đoán.</p>`
+      }
+    </section>
   `;
 }
 
@@ -4439,6 +4507,9 @@ function bindShellEvents() {
   document.getElementById("admin-outright-id")?.addEventListener("change", hydrateOutrightControlForm);
   hydrateOutrightControlForm();
   document.getElementById("reset-password-form")?.addEventListener("submit", resetPassword);
+  document.querySelectorAll("[data-generate-pass]").forEach((button) => {
+    button.addEventListener("click", () => fillGeneratedPassword(button.dataset.generatePass));
+  });
   document.getElementById("tournament-winner-form")?.addEventListener("submit", settleTournamentWinner);
   document.getElementById("golden-boot-settle-form")?.addEventListener("submit", settleGoldenBoot);
   document.getElementById("refresh-button")?.addEventListener("click", () => loadData());
@@ -4456,8 +4527,13 @@ function bindShellEvents() {
   document.getElementById("export-reports-button")?.addEventListener("click", exportReportsCsv);
   document.getElementById("export-results-button")?.addEventListener("click", exportResultsCsv);
   document.getElementById("export-odds-report-button")?.addEventListener("click", exportOddsReportCsv);
+  document.getElementById("admin-prediction-user")?.addEventListener("change", (event) => loadAdminPredictions(event.target.value));
+  document.getElementById("refresh-admin-predictions")?.addEventListener("click", () => loadAdminPredictions(state.adminPredictionUserId));
   document.querySelectorAll("[data-toggle-user]").forEach((button) => {
     button.addEventListener("click", () => toggleUser(button.dataset.toggleUser, button.dataset.active === "true"));
+  });
+  document.querySelectorAll("[data-delete-user]").forEach((button) => {
+    button.addEventListener("click", () => softDeleteUser(button.dataset.deleteUser));
   });
   document.querySelectorAll("[data-void-bet]").forEach((button) => {
     button.addEventListener("click", () => voidBet(Number(button.dataset.voidBet)));
@@ -4786,7 +4862,7 @@ async function createUser(event) {
       },
       body: JSON.stringify(payload)
     });
-    state.message = "Đã tạo tài khoản người chơi.";
+    state.message = `Đã tạo tài khoản người chơi. Mật khẩu mới: ${payload.password}`;
     state.error = "";
   } catch (error) {
     state.error = error.message || "Không thể tạo user";
@@ -4952,7 +5028,7 @@ async function resetPassword(event) {
       },
       body: JSON.stringify(payload)
     });
-    state.message = "Password reset.";
+    state.message = `Password reset. Mật khẩu mới: ${payload.password}`;
     state.error = "";
   } catch (error) {
     state.error = error.message || "Cannot reset password";
@@ -4961,6 +5037,37 @@ async function resetPassword(event) {
     state.actionLoading = "";
   }
   await loadData();
+}
+
+async function loadAdminPredictions(userId) {
+  if (!userId) {
+    state.adminPredictionUserId = "";
+    state.adminPredictionBets = null;
+    state.adminPredictionError = "";
+    renderApp();
+    return;
+  }
+  state.adminPredictionUserId = userId;
+  state.adminPredictionBets = null;
+  state.adminPredictionError = "";
+  renderApp();
+  try {
+    const { data, error } = await state.client
+      .from("bets")
+      .select(betDetailSelect)
+      .eq("user_id", userId)
+      .order("placed_at", { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    if (state.adminPredictionUserId !== userId) return;
+    state.adminPredictionBets = data || [];
+    state.adminPredictionError = "";
+  } catch (error) {
+    if (state.adminPredictionUserId !== userId) return;
+    state.adminPredictionBets = [];
+    state.adminPredictionError = error.message || String(error);
+  }
+  renderApp();
 }
 
 async function settleTournamentWinner(event) {
@@ -5272,6 +5379,26 @@ async function toggleUser(userId, isActive) {
   const { error } = await state.client.from("profiles").update({ is_active: isActive }).eq("id", userId);
   state.message = error ? "" : isActive ? "Đã mở tài khoản." : "Đã khóa tài khoản.";
   state.error = error ? error.message : "";
+  await loadData();
+}
+
+async function softDeleteUser(userId) {
+  const user = state.users.find((item) => item.id === userId);
+  const label = user ? `${user.display_name} (@${user.username})` : userId;
+  const confirmed = confirm(`Xóa mềm tài khoản ${label}? Người chơi sẽ không đăng nhập được, nhưng lịch sử cược/ví vẫn được giữ.`);
+  if (!confirmed) return;
+  const reason = prompt("Lý do xoá tài khoản", "Admin deleted account");
+  if (!reason) return;
+  const { error } = await state.client.rpc("admin_soft_delete_user", {
+    p_user_id: userId,
+    p_reason: reason
+  });
+  state.message = error ? "" : "Đã xoá mềm tài khoản. Lịch sử cược và ví vẫn được giữ.";
+  state.error = error ? error.message : "";
+  if (!error && state.adminPredictionUserId === userId) {
+    state.adminPredictionUserId = "";
+    state.adminPredictionBets = null;
+  }
   await loadData();
 }
 

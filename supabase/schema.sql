@@ -10,8 +10,16 @@ create table if not exists public.profiles (
   role text not null default 'player' check (role in ('admin', 'player')),
   is_active boolean not null default true,
   wallet_balance numeric(12, 2) not null default 0,
+  deleted_at timestamptz,
+  deleted_by uuid references public.profiles(id) on delete set null,
+  deleted_reason text,
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  add column if not exists deleted_at timestamptz,
+  add column if not exists deleted_by uuid references public.profiles(id) on delete set null,
+  add column if not exists deleted_reason text;
 
 create table if not exists public.wallet_ledger (
   id bigint generated always as identity primary key,
@@ -354,6 +362,10 @@ create table if not exists public.audit_logs (
 
 create index if not exists profiles_role_created_at_idx
   on public.profiles (role, created_at desc);
+
+create index if not exists profiles_deleted_at_idx
+  on public.profiles (deleted_at)
+  where deleted_at is not null;
 
 create index if not exists wallet_ledger_user_created_at_idx
   on public.wallet_ledger (user_id, created_at desc);
@@ -776,6 +788,7 @@ user_scores as (
   left join public.bets b on b.user_id = p.id
   left join ledger_equity le on le.user_id = p.id
   where p.role = 'player'
+    and p.deleted_at is null
   group by p.id, p.username, p.display_name, p.wallet_balance, le.initial_equity
 )
 select
@@ -801,8 +814,8 @@ from user_scores;
 
 create or replace view public.admin_report as
 select
-  (select count(*) from public.profiles where role = 'player')::integer as players,
-  (select coalesce(sum(wallet_balance), 0)::numeric(12,2) from public.profiles) as total_wallet_balance,
+  (select count(*) from public.profiles where role = 'player' and deleted_at is null)::integer as players,
+  (select coalesce(sum(wallet_balance), 0)::numeric(12,2) from public.profiles where deleted_at is null) as total_wallet_balance,
   (select coalesce(sum(stake), 0)::numeric(12,2) from public.bets) as total_staked,
   (select coalesce(sum(points_delta), 0)::numeric(12,2) from public.bets where status in ('won','lost','refunded')) as settled_net_points,
   (select coalesce(sum(prediction_bonus), 0)::numeric(12,2) from public.bets where status in ('won','lost','refunded')) as prediction_bonus_points,
@@ -842,7 +855,7 @@ user_scores as (
   from public.profiles p
   left join public.bets b on b.user_id = p.id
   left join ledger_equity le on le.user_id = p.id
-  where p.role = 'player' and public.is_admin()
+  where p.role = 'player' and p.deleted_at is null and public.is_admin()
   group by p.id, p.username, p.display_name, p.wallet_balance, le.initial_equity
 )
 select
@@ -1640,6 +1653,62 @@ begin
     'profile',
     p_user_id::text,
     jsonb_build_object('amount', p_amount, 'reason', p_reason, 'balance_after', v_profile.wallet_balance)
+  );
+
+  return v_profile;
+end;
+$$;
+
+create or replace function public.admin_soft_delete_user(
+  p_user_id uuid,
+  p_reason text default 'Admin deleted account'
+)
+returns public.profiles
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile public.profiles%rowtype;
+begin
+  if not public.is_admin() then
+    raise exception 'admin role required';
+  end if;
+  if p_user_id = auth.uid() then
+    raise exception 'cannot delete your own account';
+  end if;
+
+  select * into v_profile
+  from public.profiles
+  where id = p_user_id
+  for update;
+
+  if not found then
+    raise exception 'user not found';
+  end if;
+  if v_profile.deleted_at is not null then
+    return v_profile;
+  end if;
+
+  update public.profiles
+  set is_active = false,
+      deleted_at = now(),
+      deleted_by = auth.uid(),
+      deleted_reason = coalesce(nullif(p_reason, ''), 'Admin deleted account')
+  where id = p_user_id
+  returning * into v_profile;
+
+  insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
+  values (
+    auth.uid(),
+    'admin.user_delete',
+    'profile',
+    p_user_id::text,
+    jsonb_build_object(
+      'username', v_profile.username,
+      'display_name', v_profile.display_name,
+      'reason', v_profile.deleted_reason
+    )
   );
 
   return v_profile;
