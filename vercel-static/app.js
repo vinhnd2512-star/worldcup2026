@@ -57,7 +57,7 @@ const state = {
   isSubmittingBet: false,
   authLoading: "",
   authDraft: {
-    loginUsername: "demo",
+    loginUsername: "",
     signupUsername: "",
     signupDisplayName: ""
   },
@@ -283,8 +283,8 @@ function renderLogin() {
         ${state.message ? `<p class="success">${escapeHtml(state.message)}</p>` : ""}
         ${state.error ? `<p class="error">${escapeHtml(state.error)}</p>` : ""}
         <form class="form-grid" id="login-form">
-          <label>Tài khoản<input id="login-username" value="demo" autocomplete="username"></label>
-          <label>Mật khẩu<input id="login-password" type="password" value="demo123" autocomplete="current-password"></label>
+          <label>Tài khoản<input id="login-username" autocomplete="username"></label>
+          <label>Mật khẩu<input id="login-password" type="password" autocomplete="current-password"></label>
           <button class="primary-button wide">Đăng nhập</button>
         </form>
         <div class="auth-divider"><span>hoặc</span></div>
@@ -305,7 +305,7 @@ function renderLogin() {
   const loginUsername = document.getElementById("login-username");
   const signupUsername = document.getElementById("signup-username");
   const signupDisplayName = document.getElementById("signup-display-name");
-  if (loginUsername) loginUsername.value = state.authDraft.loginUsername || "demo";
+  if (loginUsername) loginUsername.value = state.authDraft.loginUsername || "";
   if (signupUsername) signupUsername.value = state.authDraft.signupUsername || "";
   if (signupDisplayName) signupDisplayName.value = state.authDraft.signupDisplayName || "";
   if (isAuthLoading) {

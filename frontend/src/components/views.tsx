@@ -75,8 +75,8 @@ function initials(name: string): string {
 }
 
 export function LoginScreen({ loading, error, onLogin }: LoginScreenProps) {
-  const [username, setUsername] = useState("demo");
-  const [password, setPassword] = useState("demo123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -117,10 +117,6 @@ export function LoginScreen({ loading, error, onLogin }: LoginScreenProps) {
         </form>
 
         {error && <div className="form-error">{error}</div>}
-        <div className="demo-credentials">
-          <span>demo / demo123</span>
-          <span>admin / admin123</span>
-        </div>
       </section>
 
       <section className="login-visual">
