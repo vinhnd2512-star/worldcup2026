@@ -109,6 +109,8 @@ The Vercel Function `/api/sync-football-data` currently:
 
 Review the first live sync result in the Admin tab. Unmatched odds events are skipped instead of guessed.
 
+On Vercel free/Hobby plans, keep cron schedules daily-compatible. The `/api/sync-results` endpoint is intentionally available for manual Admin use instead of being scheduled every 15 minutes. After a match finishes, open Admin → Sync → **Sync kết quả nhanh** to update scores and settle bets.
+
 ## 5. Free-First Notes
 
 This project is designed for a small private group and keeps polling server-side to protect quotas. Before launch, check the current free-tier limits for Supabase, Vercel, API-FOOTBALL, and The Odds API because provider pricing can change.

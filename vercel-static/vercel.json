@@ -1,10 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/sync-results",
-      "schedule": "*/15 * * * *"
-    },
-    {
       "path": "/api/sync-football-data",
       "schedule": "0 6 * * *"
     }
