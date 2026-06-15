@@ -46,13 +46,75 @@ const WORLD_CUP_TITLE_YEARS = {
 
 const ODDS_TEAM_ALIASES = {
   "bosnia herzegovina": "bosnia and herzegovina",
+  "cabo verde": "cape verde",
   "cote d ivoire": "ivory coast",
   "czech republic": "czechia",
+  "congo dr": "democratic republic of the congo",
+  "democratic republic of congo": "democratic republic of the congo",
   "dr congo": "democratic republic of the congo",
   "iran": "ir iran",
   "korea republic": "south korea",
   "turkiye": "turkey",
   "united states": "usa"
+};
+
+const ODDS_TEAM_CODE_ALIASES = {
+  "argentina": "ARG",
+  "australia": "AUS",
+  "austria": "AUT",
+  "belgium": "BEL",
+  "bosnia and herzegovina": "BIH",
+  "bosnia herzegovina": "BIH",
+  "brazil": "BRA",
+  "cabo verde": "CPV",
+  "cape verde": "CPV",
+  "canada": "CAN",
+  "colombia": "COL",
+  "congo dr": "COD",
+  "cote d ivoire": "CIV",
+  "curacao": "CUW",
+  "czechia": "CZE",
+  "czech republic": "CZE",
+  "democratic republic of congo": "COD",
+  "democratic republic of the congo": "COD",
+  "dr congo": "COD",
+  "ecuador": "ECU",
+  "egypt": "EGY",
+  "england": "ENG",
+  "france": "FRA",
+  "germany": "GER",
+  "ghana": "GHA",
+  "haiti": "HAI",
+  "iran": "IRN",
+  "ir iran": "IRN",
+  "iraq": "IRQ",
+  "ivory coast": "CIV",
+  "japan": "JPN",
+  "jordan": "JOR",
+  "mexico": "MEX",
+  "morocco": "MAR",
+  "netherlands": "NED",
+  "new zealand": "NZL",
+  "norway": "NOR",
+  "panama": "PAN",
+  "paraguay": "PAR",
+  "portugal": "POR",
+  "qatar": "QAT",
+  "saudi arabia": "KSA",
+  "scotland": "SCO",
+  "senegal": "SEN",
+  "south africa": "RSA",
+  "south korea": "KOR",
+  "spain": "ESP",
+  "sweden": "SWE",
+  "switzerland": "SUI",
+  "tunisia": "TUN",
+  "turkey": "TUR",
+  "turkiye": "TUR",
+  "united states": "USA",
+  "uruguay": "URU",
+  "usa": "USA",
+  "uzbekistan": "UZB"
 };
 
 async function readJson(request) {
@@ -587,7 +649,7 @@ async function upsertProviderTeamsByCode(teams) {
 
 async function getMatchesForOddsMapping() {
   const response = await supabaseFetch(
-    "/rest/v1/matches?select=id,starts_at,status,home_team:teams!matches_home_team_id_fkey(id,code,name),away_team:teams!matches_away_team_id_fkey(id,code,name)&order=starts_at.asc"
+    "/rest/v1/matches?select=id,starts_at,status,home_team_id,away_team_id,home_team:teams!matches_home_team_id_fkey(id,code,name),away_team:teams!matches_away_team_id_fkey(id,code,name)&order=starts_at.asc"
   );
   if (!response.ok) {
     throw new Error(`Supabase read matches failed: ${response.status} ${await response.text()}`);
@@ -694,6 +756,21 @@ function normalizeTeamName(value) {
   return ODDS_TEAM_ALIASES[normalized] || normalized;
 }
 
+function oddsTeamCode(value) {
+  return ODDS_TEAM_CODE_ALIASES[normalizeTeamName(value)] || "";
+}
+
+function teamCodeOrAlias(team) {
+  return String(team?.code || "").toUpperCase() || oddsTeamCode(team?.name);
+}
+
+function sameOddsTeam(providerName, localTeam) {
+  const providerCode = oddsTeamCode(providerName);
+  const localCode = teamCodeOrAlias(localTeam);
+  if (providerCode && localCode) return providerCode === localCode;
+  return normalizeTeamName(providerName) === normalizeTeamName(localTeam?.name);
+}
+
 function fifaRankingDescription(row) {
   const names = Array.isArray(row?.TeamName) ? row.TeamName : [];
   return names.find((item) => item.Locale === "en-GB")?.Description
@@ -780,18 +857,14 @@ function hoursBetween(left, right) {
 }
 
 function matchOddsEvent(event, matches) {
-  const eventHome = normalizeTeamName(event.home_team);
-  const eventAway = normalizeTeamName(event.away_team);
   const candidates = [];
 
   for (const match of matches) {
-    const matchHome = normalizeTeamName(match.home_team?.name);
-    const matchAway = normalizeTeamName(match.away_team?.name);
     const timeDelta = hoursBetween(event.commence_time, match.starts_at);
     if (timeDelta > ODDS_MATCH_WINDOW_HOURS) continue;
 
-    const sameOrder = eventHome === matchHome && eventAway === matchAway;
-    const reversed = eventHome === matchAway && eventAway === matchHome;
+    const sameOrder = sameOddsTeam(event.home_team, match.home_team) && sameOddsTeam(event.away_team, match.away_team);
+    const reversed = sameOddsTeam(event.home_team, match.away_team) && sameOddsTeam(event.away_team, match.home_team);
     if (sameOrder || reversed) {
       candidates.push({ match, reversed, timeDelta });
     }
@@ -1997,13 +2070,23 @@ async function resetProviderManagedMarketsToInternal(matches) {
     const homeWinOdds = teamWinMultiplier(homeStrength, awayStrength, 1.35, 4.50);
     const awayWinOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
     const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
+    const homeDnbOdds = teamWinMultiplier(homeStrength, awayStrength, 1.15, 3.20);
+    const awayDnbOdds = teamWinMultiplier(awayStrength, homeStrength, 1.15, 3.20);
     rows.push(defaultMarket(match, "correct_score", "Dự đoán tỷ số", "exact", "Tỷ số chính xác", null, 6.00, "internal"));
     rows.push(
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "home", `${homeTeam.name || "Äá»™i nhÃ "} tháº¯ng`, null, homeWinOdds, "internal"),
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "draw", "HÃ²a", null, drawOdds, "internal"),
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "away", `${awayTeam.name || "Äá»™i khÃ¡ch"} tháº¯ng`, null, awayWinOdds, "internal"),
+      defaultMarket(match, "draw_no_bet", "Draw no bet", "home", `${homeTeam.name || "Đội nhà"} DNB`, null, homeDnbOdds, "internal"),
+      defaultMarket(match, "draw_no_bet", "Draw no bet", "away", `${awayTeam.name || "Đội khách"} DNB`, null, awayDnbOdds, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", 2.5, 1.92, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", 2.5, 1.88, "internal"),
+      defaultMarket(match, "btts", "Hai đội cùng ghi bàn", "yes", "Có", null, 1.95, "internal"),
+      defaultMarket(match, "btts", "Hai đội cùng ghi bàn", "no", "Không", null, 1.82, "internal"),
+      defaultMarket(match, "corners_total", "Tổng phạt góc 8.5", "over", "Tài góc 8.5", 8.5, 1.90, "internal"),
+      defaultMarket(match, "corners_total", "Tổng phạt góc 8.5", "under", "Xỉu góc 8.5", 8.5, 1.90, "internal"),
+      defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "over", "Tài thẻ 3.5", 3.5, 1.90, "internal"),
+      defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal"),
       // Asian Handicap -0.5: home must win; away wins or draws
       defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "home",
         `${homeTeam.name || "Đội nhà"} -0.5`, -0.5,
