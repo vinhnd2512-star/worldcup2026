@@ -51,6 +51,13 @@ const state = {
   confirmRebetMatchId: null,
   notificationPanelOpen: false,
   profileMenuOpen: false,
+  passwordChange: {
+    open: false,
+    loading: false,
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: ""
+  },
   goldenBootSearch: "",
   winnerSearch: "",
   lastPredictionBetId: null,
@@ -614,6 +621,9 @@ function renderApp() {
 }
 
 function renderProfileMenu(items) {
+  const passwordDraft = state.passwordChange || {};
+  const showPasswordForm = Boolean(passwordDraft.open);
+  const isChangingPassword = Boolean(passwordDraft.loading);
   return `
     <div class="profile-menu ${state.profileMenuOpen ? "open" : ""}">
       <button class="profile-button" type="button" data-profile-toggle aria-label="Tài khoản">
@@ -629,12 +639,105 @@ function renderProfileMenu(items) {
               <div class="profile-menu-nav">
                 ${items.map(([key, label]) => `<button class="${state.active === key ? "active" : ""}" data-tab="${key}">${label}</button>`).join("")}
               </div>
+              <button class="ghost-button wide" type="button" data-password-toggle>${showPasswordForm ? "Đóng đổi mật khẩu" : "Đổi mật khẩu"}</button>
+              ${
+                showPasswordForm
+                  ? `<form class="profile-password-form" id="change-password-form">
+                      <label>Mật khẩu hiện tại<input id="current-password" name="currentPassword" type="password" autocomplete="current-password" value="${escapeHtml(passwordDraft.currentPassword || "")}" required></label>
+                      <label>Mật khẩu mới<input id="new-self-password" name="newPassword" type="password" autocomplete="new-password" minlength="6" value="${escapeHtml(passwordDraft.newPassword || "")}" required></label>
+                      <label>Xác nhận mật khẩu mới<input id="confirm-self-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="6" value="${escapeHtml(passwordDraft.confirmPassword || "")}" required></label>
+                      <button class="primary-button wide" type="submit" ${isChangingPassword ? "disabled" : ""}>${isChangingPassword ? renderBouncingBall("Dang doi mat khau...") : "Lưu mật khẩu mới"}</button>
+                    </form>`
+                  : ""
+              }
               <button class="ghost-button wide profile-logout" id="profile-logout-button">Logout</button>
             </section>`
           : ""
       }
     </div>
   `;
+}
+
+function currentUserEmail() {
+  return state.session?.user?.email || (state.profile?.username ? `${state.profile.username}@worldcup.local` : "");
+}
+
+function readPasswordChangeForm(form) {
+  return {
+    open: true,
+    loading: false,
+    currentPassword: form?.elements?.currentPassword?.value || document.getElementById("current-password")?.value || "",
+    newPassword: form?.elements?.newPassword?.value || document.getElementById("new-self-password")?.value || "",
+    confirmPassword: form?.elements?.confirmPassword?.value || document.getElementById("confirm-self-password")?.value || ""
+  };
+}
+
+function resetPasswordChangeState(open = false) {
+  state.passwordChange = {
+    open,
+    loading: false,
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: ""
+  };
+}
+
+async function changeOwnPassword(event) {
+  event.preventDefault();
+  if (state.passwordChange?.loading) return;
+  const form = event.currentTarget;
+  const draft = readPasswordChangeForm(form);
+  state.passwordChange = draft;
+  state.message = "";
+  state.error = "";
+
+  if (!draft.currentPassword) {
+    state.error = "Vui lòng nhập mật khẩu hiện tại.";
+    renderApp();
+    return;
+  }
+  if (draft.newPassword.length < 6) {
+    state.error = "Mật khẩu mới cần tối thiểu 6 ký tự.";
+    renderApp();
+    return;
+  }
+  if (draft.newPassword !== draft.confirmPassword) {
+    state.error = "Xác nhận mật khẩu mới chưa khớp.";
+    renderApp();
+    return;
+  }
+
+  const email = currentUserEmail();
+  if (!email) {
+    state.error = "Không tìm thấy email đăng nhập để xác thực mật khẩu hiện tại.";
+    renderApp();
+    return;
+  }
+
+  state.passwordChange = { ...draft, loading: true };
+  renderApp();
+  try {
+    const verifyResult = await state.client.auth.signInWithPassword({
+      email,
+      password: draft.currentPassword
+    });
+    if (verifyResult.error) {
+      throw new Error("Mật khẩu hiện tại không đúng.");
+    }
+    const updateResult = await state.client.auth.updateUser({ password: draft.newPassword });
+    if (updateResult.error) {
+      throw updateResult.error;
+    }
+    resetPasswordChangeState(false);
+    state.profileMenuOpen = true;
+    state.message = "Đã đổi mật khẩu. Bạn vẫn đang đăng nhập.";
+    state.error = "";
+  } catch (error) {
+    state.passwordChange = { ...draft, loading: false };
+    state.message = "";
+    state.error = error instanceof Error ? error.message : String(error);
+  }
+  renderApp();
 }
 
 function renderActiveView() {
@@ -671,9 +774,9 @@ function renderMatches() {
         <section class="hero stadium-surface">
           <span class="kicker">Trận đấu tâm điểm</span>
           <div class="hero-versus">
-            ${teamLockup(featured.home_team, true)}
+            ${teamLockup(featured.home_team, true, "home")}
             <span class="vs-text">VS</span>
-            ${teamLockup(featured.away_team, true)}
+            ${teamLockup(featured.away_team, true, "away")}
           </div>
           <div class="hero-meta">
             <span>${dateText(featured.starts_at)}</span>
@@ -761,9 +864,9 @@ function renderFixtureRow(match) {
       <span class="fixture-number">#${escapeHtml(fixtureNumber(match))}</span>
       <time>${dateText(match.starts_at)}</time>
       <div class="fixture-pair">
-        ${fixtureTeam(match.home_team)}
+        ${fixtureTeam(match.home_team, "home")}
         ${scoreSep}
-        ${fixtureTeam(match.away_team)}
+        ${fixtureTeam(match.away_team, "away")}
       </div>
       <div class="fixture-meta">
         <strong><span class="group-badge">${escapeHtml(group)}</span></strong>
@@ -808,12 +911,13 @@ function renderFixtureBetSummaryItem(bet) {
   `;
 }
 
-function fixtureTeam(team) {
+function fixtureTeam(team, side = "") {
   return `
     <span class="fixture-team">
       <span class="fixture-flag">${teamFlagContent(team)}</span>
       <span>${escapeHtml(team?.name || "TBA")}</span>
       <small>${escapeHtml(team?.code || "TBA")}</small>
+      ${homeAwayBadge(side)}
     </span>
   `;
 }
@@ -834,7 +938,7 @@ function renderMatchCard(match) {
   return `
     <article class="match-card glass-card${done ? " match-card--done" : ""}">
       <div class="section-heading"><span>${dateText(match.starts_at)}</span><span class="status-badge status-${match.status.toLowerCase()}">${escapeHtml(match.status)}</span></div>
-      <div class="match-teams">${teamLockup(match.home_team)}${separator}${teamLockup(match.away_team)}</div>
+      <div class="match-teams">${teamLockup(match.home_team, false, "home")}${separator}${teamLockup(match.away_team, false, "away")}</div>
       <div class="match-meta-grid">
         <span>${escapeHtml(scheduleLabel(match))}</span>
         <span>${escapeHtml(matchLocation(match))}</span>
@@ -1612,8 +1716,8 @@ function renderMatchValueForecast(match) {
         <span class="pill">${escapeHtml(scheduleLabel(match))}</span>
       </div>
       <div class="forecast-team-grid">
-        ${renderForecastTeamPanel(match.home_team, homePct, leader === "home")}
-        ${renderForecastTeamPanel(match.away_team, awayPct, leader === "away")}
+        ${renderForecastTeamPanel(match.home_team, homePct, leader === "home", "home")}
+        ${renderForecastTeamPanel(match.away_team, awayPct, leader === "away", "away")}
       </div>
       <div class="win-rate-block">
         <div class="win-rate-labels">
@@ -1638,12 +1742,13 @@ function matchLeader(match, homePct, awayPct) {
   return homePct > awayPct ? "home" : "away";
 }
 
-function renderForecastTeamPanel(team, pct, isWinner = false) {
+function renderForecastTeamPanel(team, pct, isWinner = false, side = "") {
   return `
     <article class="forecast-team-panel ${isWinner ? "forecast-winner" : ""}">
       <div class="forecast-team-title">
         <span class="fixture-flag">${teamFlagContent(team)}</span>
         <h3>${escapeHtml(team?.name || "TBA")}</h3>
+        ${homeAwayBadge(side)}
       </div>
       <p>${escapeHtml(teamRankingText(team))}</p>
       <p>Giá trị đội hình: <strong>${escapeHtml(eurValueText(team?.squad_market_value_eur, team?.squad_market_value_label))}</strong></p>
@@ -2380,8 +2485,8 @@ function renderModalMatchForecast(match) {
         </div>
       </div>
       <div class="forecast-team-grid">
-        ${renderForecastTeamPanel(match.home_team, homePct, leader === "home")}
-        ${renderForecastTeamPanel(match.away_team, awayPct, leader === "away")}
+        ${renderForecastTeamPanel(match.home_team, homePct, leader === "home", "home")}
+        ${renderForecastTeamPanel(match.away_team, awayPct, leader === "away", "away")}
       </div>
       <div class="win-rate-block">
         <div class="win-rate-labels">
@@ -2467,7 +2572,7 @@ function renderModalBetSection(match, group) {
                   : renderModalSelectionOptions(group, draft)
               }
               <div class="modal-stake-grid">
-                <label>Tiền cược<input data-modal-market-stake="${escapeHtml(group.marketKey)}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(stake)}"></label>
+                <label>Tiền cược<input data-modal-market-stake="${escapeHtml(group.marketKey)}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(stake)}">${renderStakeWalletShare(stake, { marketKey: group.marketKey })}</label>
                 <div>
                   <small>Payout dự kiến</small>
                   <strong>${money(payout)}</strong>
@@ -2626,6 +2731,7 @@ function prepareStakeInput(input) {
 function handleStakeInput(event) {
   const input = event.currentTarget;
   input.value = formatStakeInput(parseStakeInput(input.value));
+  updateStakeShareForInput(input);
 }
 
 function updateModalDerivedValues() {
@@ -2639,6 +2745,11 @@ function updateModalDerivedValues() {
     const multiplier = modalMarketMultiplier(group.marketKey, selectedMarket, draft);
     const payoutNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-stake-grid strong`);
     if (payoutNode) payoutNode.textContent = money(number(draft.stake) * multiplier);
+    const shareNode = document.querySelector(`[data-stake-wallet-share="${group.marketKey}"]`);
+    if (shareNode) {
+      shareNode.textContent = stakeWalletShare(draft.stake);
+      shareNode.classList.toggle("over", stakeWalletShareClass(draft.stake) === "over");
+    }
     const pillNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-market-card-head .pill`);
     if (pillNode) pillNode.textContent = `x${fmtOne.format(multiplier || number(selectedMarket?.odds_multiplier || 1))}`;
     const scoreHintNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .score-odds-hint`);
@@ -2759,6 +2870,7 @@ function renderOutrightSearchCard(marketKey) {
       <label>
         Tiền cược
         <input id="${stakeId}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(100)}">
+        ${renderStakeWalletShare(100, { forId: stakeId })}
       </label>
       <button class="primary-button wide" type="submit" ${filtered.length && !state.isSubmittingBet ? "" : "disabled"}>${state.isSubmittingBet ? renderBouncingBall("Dang dat cuoc...") : (isGoldenBoot ? "Đặt Vua phá lưới" : "Đặt vô địch")}</button>
     </form>
@@ -3219,7 +3331,7 @@ function renderUpcomingBetRow(bet) {
                      <label>Away<input name="away_score" type="number" min="0" step="1" value="${awayScore}"></label>`
                   : `<label>Selection<input value="${escapeHtml(bet.selection_label)}" disabled></label>`
               }
-              <label>Stake<input name="stake" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(bet.stake)}"></label>
+              <label>Stake<input id="update-stake-${bet.id}" name="stake" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(bet.stake)}">${renderStakeWalletShare(bet.stake, { forId: `update-stake-${bet.id}` })}</label>
               <button class="primary-button compact-button" ${state.isSubmittingBet ? "disabled" : ""}>${state.isSubmittingBet ? renderBouncingBall("Dang cap nhat...") : "Cập nhật"}</button>
             </form>`
           : `<div class="locked-copy"><small>Không thể sửa</small><b>${match ? escapeHtml(match.status) : "Outright"}</b></div>`
@@ -4184,6 +4296,18 @@ function bindShellEvents() {
     renderApp();
   });
 
+  document.querySelector("[data-password-toggle]")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    resetPasswordChangeState(!state.passwordChange?.open);
+    state.profileMenuOpen = true;
+    state.notificationPanelOpen = false;
+    state.message = "";
+    state.error = "";
+    renderApp();
+  });
+
+  document.getElementById("change-password-form")?.addEventListener("submit", changeOwnPassword);
+
   document.querySelector("[data-notification-toggle]")?.addEventListener("click", (event) => {
     event.stopPropagation();
     const opening = !state.notificationPanelOpen;
@@ -4442,6 +4566,7 @@ function bindShellEvents() {
     state.session = null;
     state.profile = null;
     state.profileMenuOpen = false;
+    resetPasswordChangeState(false);
     renderLogin();
   }));
 
@@ -5676,12 +5801,18 @@ function teamFlagContent(team) {
   return flags[code] || "🏆";
 }
 
-function teamLockup(team, large = false) {
+function homeAwayBadge(side = "") {
+  if (side !== "home" && side !== "away") return "";
+  return `<span class="home-away-badge ${side}">${side === "home" ? "Home" : "Away"}</span>`;
+}
+
+function teamLockup(team, large = false, side = "") {
   const rating = teamRatingLabel(team);
   return `
     <div class="team-lockup">
       <div class="flag-orb ${large ? "large" : ""}">${teamFlagContent(team)}</div>
       <strong>${escapeHtml(team?.name || "TBA")}</strong>
+      ${homeAwayBadge(side)}
       <small>${escapeHtml(team?.code || "TBA")}${large ? ` · ${escapeHtml(rating)}` : ""}</small>
     </div>
   `;
@@ -5789,6 +5920,34 @@ function metric(label, value) {
 
 function money(value) {
   return moneyFmt.format(number(value));
+}
+
+function stakeWalletShare(stake, wallet = state.profile?.wallet_balance) {
+  const walletValue = number(wallet);
+  const stakeValue = number(stake);
+  if (walletValue <= 0) return "0% ví hiện có";
+  return `${((stakeValue / walletValue) * 100).toFixed(1)}% ví hiện có`;
+}
+
+function stakeWalletShareClass(stake, wallet = state.profile?.wallet_balance) {
+  const walletValue = number(wallet);
+  const stakeValue = number(stake);
+  return stakeValue > walletValue ? "over" : "";
+}
+
+function renderStakeWalletShare(stake, options = {}) {
+  const id = options.forId ? ` data-stake-share-for="${escapeHtml(options.forId)}"` : "";
+  const marketKey = options.marketKey ? ` data-stake-wallet-share="${escapeHtml(options.marketKey)}"` : "";
+  return `<small class="stake-wallet-share ${stakeWalletShareClass(stake)}"${id}${marketKey}>${escapeHtml(stakeWalletShare(stake))}</small>`;
+}
+
+function updateStakeShareForInput(input) {
+  if (!input?.id) return;
+  const node = document.querySelector(`[data-stake-share-for="${input.id}"]`);
+  if (!node) return;
+  const stake = parseStakeInput(input.value);
+  node.textContent = stakeWalletShare(stake);
+  node.classList.toggle("over", stakeWalletShareClass(stake) === "over");
 }
 
 function parseStakeInput(value) {

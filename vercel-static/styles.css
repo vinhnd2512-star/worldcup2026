@@ -608,6 +608,23 @@ select:focus {
   display: none;
 }
 
+.profile-password-form {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f6fbf8;
+}
+
+.profile-password-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .profile-logout {
   min-height: 40px;
 }
@@ -1129,6 +1146,36 @@ select:focus {
   background: rgba(255, 255, 255, 0.05);
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
+}
+
+.home-away-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--gold-soft);
+  background: rgba(255, 255, 255, 0.08);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.home-away-badge.home {
+  border-color: rgba(0, 126, 92, 0.34);
+  color: var(--green);
+  background: rgba(0, 126, 92, 0.12);
+}
+
+.home-away-badge.away {
+  border-color: rgba(146, 7, 3, 0.24);
+  color: var(--danger);
+  background: rgba(146, 7, 3, 0.08);
 }
 
 .fixture-table {
@@ -2022,6 +2069,20 @@ select:focus {
 .modal-stake-grid strong {
   color: var(--gold-soft);
   font-size: 18px;
+}
+
+.stake-wallet-share {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.stake-wallet-share.over {
+  color: var(--red);
 }
 
 .segmented-control {
