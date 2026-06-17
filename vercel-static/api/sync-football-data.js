@@ -1171,36 +1171,7 @@ function bestPricesForEvent(event, match, reversed) {
         }
       }
 
-      if (market.key === "draw_no_bet") {
-        for (const outcome of market.outcomes || []) {
-          const outcomeName = normalizeTeamName(outcome.name);
-          let selectionKey = null;
-          let selectionLabel = outcome.name;
-          if (outcomeName === normalizeTeamName(event.home_team)) {
-            selectionKey = reversed ? "away" : "home";
-            selectionLabel = reversed ? "Away DNB" : "Home DNB";
-          } else if (outcomeName === normalizeTeamName(event.away_team)) {
-            selectionKey = reversed ? "home" : "away";
-            selectionLabel = reversed ? "Home DNB" : "Away DNB";
-          }
-          if (!selectionKey) continue;
-
-          setBest(`draw_no_bet:${selectionKey}:`, {
-            match_id: match.id,
-            market_key: "draw_no_bet",
-            label: "Draw no bet",
-            selection_key: selectionKey,
-            selection_label: selectionLabel,
-            line: null,
-            odds_multiplier: decimal(outcome.price),
-            bookmaker: bookmaker.title || bookmaker.key,
-            bookmaker_key: bookmaker.key,
-            bookmaker_rank: bookmakerRank,
-            bookmaker_last_update: bookmaker.last_update,
-            payload_json: { event_id: event.id, market: market.key, outcome, bookmaker }
-          });
-        }
-      }
+      if (market.key === "draw_no_bet") continue;
 
       if (market.key === "totals") {
         for (const outcome of market.outcomes || []) {
@@ -2007,15 +1978,10 @@ async function ensureDefaultMarketsForMatches(matches) {
     const homeWinOdds = teamWinMultiplier(homeStrength, awayStrength, 1.35, 4.50);
     const awayWinOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
     const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
-    const homeDnbOdds = teamWinMultiplier(homeStrength, awayStrength, 1.15, 3.20);
-    const awayDnbOdds = teamWinMultiplier(awayStrength, homeStrength, 1.15, 3.20);
     rows.push(
-      defaultMarket(match, "correct_score", "Dự đoán tỷ số", "exact", "Tỷ số chính xác", null, 6.00, "internal"),
       defaultMarket(match, "match_result", "Kết quả 1X2", "home", `${homeTeam.name || "Đội nhà"} thắng`, null, homeWinOdds, "internal"),
       defaultMarket(match, "match_result", "Kết quả 1X2", "draw", "Hòa", null, drawOdds, "internal"),
       defaultMarket(match, "match_result", "Kết quả 1X2", "away", `${awayTeam.name || "Đội khách"} thắng`, null, awayWinOdds, "internal"),
-      defaultMarket(match, "draw_no_bet", "Draw no bet", "home", `${homeTeam.name || "Đội nhà"} DNB`, null, homeDnbOdds, "internal"),
-      defaultMarket(match, "draw_no_bet", "Draw no bet", "away", `${awayTeam.name || "Đội khách"} DNB`, null, awayDnbOdds, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", 2.5, 1.92, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", 2.5, 1.88, "internal"),
       defaultMarket(match, "btts", "Hai đội cùng ghi bàn", "yes", "Có", null, 1.95, "internal"),
@@ -2023,21 +1989,7 @@ async function ensureDefaultMarketsForMatches(matches) {
       defaultMarket(match, "corners_total", "Tổng phạt góc 8.5", "over", "Tài góc 8.5", 8.5, 1.90, "internal"),
       defaultMarket(match, "corners_total", "Tổng phạt góc 8.5", "under", "Xỉu góc 8.5", 8.5, 1.90, "internal"),
       defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "over", "Tài thẻ 3.5", 3.5, 1.90, "internal"),
-      defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal"),
-      // Asian Handicap -0.5: home must win; away wins or draws
-      defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "home",
-        `${homeTeam.name || "Đội nhà"} -0.5`, -0.5,
-        roundOdds(Math.max(1.28, Math.min(3.50, homeWinOdds))), "internal"),
-      defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "away",
-        `${awayTeam.name || "Đội khách"} +0.5`, -0.5,
-        roundOdds(Math.max(1.35, Math.min(2.80, (homeWinOdds / Math.max(0.1, homeWinOdds - 1)) * 0.97))), "internal"),
-      // Asian Handicap +0.5: home wins or draws; away must win
-      defaultMarket(match, "asian_handicap", "Kèo Châu Á +0.5", "home",
-        `${homeTeam.name || "Đội nhà"} +0.5`, 0.5,
-        roundOdds(Math.max(1.35, Math.min(2.80, (awayWinOdds / Math.max(0.1, awayWinOdds - 1)) * 0.97))), "internal"),
-      defaultMarket(match, "asian_handicap", "Kèo Châu Á +0.5", "away",
-        `${awayTeam.name || "Đội khách"} -0.5`, 0.5,
-        roundOdds(Math.max(1.28, Math.min(3.50, awayWinOdds))), "internal")
+      defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal")
     );
   }
   return upsertJsonMinimal("match_markets", rows, "match_id,market_key,selection_key,line_key");
@@ -2070,15 +2022,10 @@ async function resetProviderManagedMarketsToInternal(matches) {
     const homeWinOdds = teamWinMultiplier(homeStrength, awayStrength, 1.35, 4.50);
     const awayWinOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
     const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
-    const homeDnbOdds = teamWinMultiplier(homeStrength, awayStrength, 1.15, 3.20);
-    const awayDnbOdds = teamWinMultiplier(awayStrength, homeStrength, 1.15, 3.20);
-    rows.push(defaultMarket(match, "correct_score", "Dự đoán tỷ số", "exact", "Tỷ số chính xác", null, 6.00, "internal"));
     rows.push(
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "home", `${homeTeam.name || "Äá»™i nhÃ "} tháº¯ng`, null, homeWinOdds, "internal"),
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "draw", "HÃ²a", null, drawOdds, "internal"),
       defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "away", `${awayTeam.name || "Äá»™i khÃ¡ch"} tháº¯ng`, null, awayWinOdds, "internal"),
-      defaultMarket(match, "draw_no_bet", "Draw no bet", "home", `${homeTeam.name || "Đội nhà"} DNB`, null, homeDnbOdds, "internal"),
-      defaultMarket(match, "draw_no_bet", "Draw no bet", "away", `${awayTeam.name || "Đội khách"} DNB`, null, awayDnbOdds, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", 2.5, 1.92, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", 2.5, 1.88, "internal"),
       defaultMarket(match, "btts", "Hai đội cùng ghi bàn", "yes", "Có", null, 1.95, "internal"),
@@ -2086,21 +2033,7 @@ async function resetProviderManagedMarketsToInternal(matches) {
       defaultMarket(match, "corners_total", "Tổng phạt góc 8.5", "over", "Tài góc 8.5", 8.5, 1.90, "internal"),
       defaultMarket(match, "corners_total", "Tổng phạt góc 8.5", "under", "Xỉu góc 8.5", 8.5, 1.90, "internal"),
       defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "over", "Tài thẻ 3.5", 3.5, 1.90, "internal"),
-      defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal"),
-      // Asian Handicap -0.5: home must win; away wins or draws
-      defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "home",
-        `${homeTeam.name || "Đội nhà"} -0.5`, -0.5,
-        roundOdds(Math.max(1.28, Math.min(3.50, homeWinOdds))), "internal"),
-      defaultMarket(match, "asian_handicap", "Kèo Châu Á -0.5", "away",
-        `${awayTeam.name || "Đội khách"} +0.5`, -0.5,
-        roundOdds(Math.max(1.35, Math.min(2.80, (homeWinOdds / Math.max(0.1, homeWinOdds - 1)) * 0.97))), "internal"),
-      // Asian Handicap +0.5: home wins or draws; away must win
-      defaultMarket(match, "asian_handicap", "Kèo Châu Á +0.5", "home",
-        `${homeTeam.name || "Đội nhà"} +0.5`, 0.5,
-        roundOdds(Math.max(1.35, Math.min(2.80, (awayWinOdds / Math.max(0.1, awayWinOdds - 1)) * 0.97))), "internal"),
-      defaultMarket(match, "asian_handicap", "Kèo Châu Á +0.5", "away",
-        `${awayTeam.name || "Đội khách"} -0.5`, 0.5,
-        roundOdds(Math.max(1.28, Math.min(3.50, awayWinOdds))), "internal")
+      defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal")
     );
   }
   await upsertJson("match_markets", rows, "match_id,market_key,selection_key,line_key");
@@ -2124,12 +2057,49 @@ async function closeInternalMarketFallbacks(matchIds, marketKey) {
   return ids.length;
 }
 
+async function closeMatchMarketByKey(matchIds, marketKey) {
+  const ids = [...new Set((matchIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) return 0;
+  const response = await supabaseFetch(
+    `/rest/v1/match_markets?match_id=in.(${ids.join(",")})&market_key=eq.${encodeURIComponent(marketKey)}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ is_open: false })
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase close ${marketKey} markets failed: ${response.status} ${await response.text()}`);
+  }
+  return ids.length;
+}
+
+async function closeOutrightMarkets(marketKey, sourceFilter = "") {
+  const filters = [`market_key=eq.${encodeURIComponent(marketKey)}`];
+  if (sourceFilter) filters.push(`source=${sourceFilter}`);
+  const response = await supabaseFetch(`/rest/v1/outright_markets?${filters.join("&")}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ is_open: false })
+  });
+  if (!response.ok) {
+    throw new Error(`Supabase close ${marketKey} outrights failed: ${response.status} ${await response.text()}`);
+  }
+  return 1;
+}
+
 async function closeInternalTotalGoalFallbacks(matchIds) {
   return closeInternalMarketFallbacks(matchIds, "total_goals");
 }
 
 async function closeInternalHandicapFallbacks(matchIds) {
   return closeInternalMarketFallbacks(matchIds, "asian_handicap");
+}
+
+async function closeLockedMarketFallbacks(matchIds) {
+  await closeMatchMarketByKey(matchIds, "draw_no_bet");
+  await closeInternalMarketFallbacks(matchIds, "correct_score");
+  await closeInternalMarketFallbacks(matchIds, "asian_handicap");
 }
 
 async function fetchTeamsForDefaultMarkets(matches) {
@@ -2663,15 +2633,13 @@ async function syncOddsSummary() {
   const matchOdds = await fetchMatchOddsEvents();
   const events = matchOdds.events;
   const matchQuota = matchOdds.quota;
-  const outrightOdds = {
-    events: [],
-    quota: null,
-    attempted: false,
-    error: "Tournament winner odds are managed internally by game rules."
-  };
+  const outrightOdds = await fetchOutrightOddsEvents();
 
   const matches = await getMatchesForOddsMapping();
   await resetProviderManagedMarketsToInternal(matches);
+  await closeLockedMarketFallbacks(matches.map((match) => match.id));
+  await closeOutrightMarkets("tournament_winner", "eq.internal");
+  await closeOutrightMarkets("golden_boot", "neq.odds-api");
   let matchedEvents = 0;
   let updatedMarkets = 0;
   let updatedOutrights = 0;
@@ -2705,6 +2673,16 @@ async function syncOddsSummary() {
   await closeInternalTotalGoalFallbacks([...providerTotalMatchIds]);
   await closeInternalHandicapFallbacks([...providerHandicapMatchIds]);
 
+  const teams = await getTeamsForOutrightMapping();
+  const outrightCandidates = bestOutrightPrices(outrightOdds.events, teams);
+  const outrightClosesAt = matches
+    .map((match) => match.starts_at)
+    .filter(Boolean)
+    .sort()[0] || "2026-06-11T19:00:00+00:00";
+  for (const candidate of outrightCandidates) {
+    const rows = await upsertOutrightMarketFromOdds(candidate, outrightClosesAt);
+    updatedOutrights += Array.isArray(rows) ? rows.length : 1;
+  }
 
   const totalEvents = events.length + outrightOdds.events.length;
   const quota = mergeOddsQuota(matchQuota, outrightOdds.quota);

@@ -79,6 +79,17 @@ def place_bet(payload: PlaceBetRequest, db: DbSession, user: CurrentUser) -> Bet
         )
     if market is None or not market.is_open:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Market is not available")
+    if market.market_key == "draw_no_bet":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Draw no bet is temporarily locked")
+    if market.market_key in {"handicap", "asian_handicap"} and market.source != "odds-api":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Handicap requires bookmaker odds")
+    locked_multiplier = market.odds_multiplier
+    if market.market_key == "correct_score":
+        score_odds = (market.extra_json or {}).get("score_odds") or {}
+        score_row = score_odds.get(payload.selection_key)
+        if market.source != "odds-model" or not score_row or score_row.get("fair_odds") is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Correct score requires bookmaker-derived odds")
+        locked_multiplier = Decimal(str(score_row["fair_odds"]))
     if as_utc(market.closes_at) <= datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Betting is locked for this match")
 
@@ -87,7 +98,7 @@ def place_bet(payload: PlaceBetRequest, db: DbSession, user: CurrentUser) -> Bet
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient point balance")
 
     selection_label = payload.selection_label or market.selection_label
-    potential_payout = (stake * market.odds_multiplier).quantize(Decimal("0.01"))
+    potential_payout = (stake * locked_multiplier).quantize(Decimal("0.01"))
     user.wallet_balance = (user.wallet_balance - stake).quantize(Decimal("0.01"))
     bet = Bet(
         user_id=user.id,
@@ -96,7 +107,7 @@ def place_bet(payload: PlaceBetRequest, db: DbSession, user: CurrentUser) -> Bet
         selection_key=payload.selection_key,
         selection_label=selection_label,
         stake=stake,
-        locked_multiplier=market.odds_multiplier,
+        locked_multiplier=locked_multiplier,
         potential_payout=potential_payout,
         status="placed",
         selection_json={**payload.selection, "line": str(market.line) if market.line is not None else payload.selection.get("line")},

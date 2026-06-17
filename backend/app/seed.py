@@ -205,14 +205,9 @@ def ensure_market_catalog(db: Session) -> None:
 def _add_default_markets(db: Session, match: Match) -> None:
     closes_at = match.starts_at
     markets = [
-        ("correct_score", "Dự đoán tỷ số", "exact", "Tỷ số chính xác", None, Decimal("2.45"), "internal"),
         ("match_result", "Kết quả 1X2", "home", "Đội nhà thắng", None, Decimal("1.85"), "odds-api"),
         ("match_result", "Kết quả 1X2", "draw", "Hòa", None, Decimal("3.10"), "odds-api"),
         ("match_result", "Kết quả 1X2", "away", "Đội khách thắng", None, Decimal("2.05"), "odds-api"),
-        ("draw_no_bet", "Draw no bet", "home", "Đội nhà DNB", None, Decimal("1.58"), "internal"),
-        ("draw_no_bet", "Draw no bet", "away", "Đội khách DNB", None, Decimal("1.78"), "internal"),
-        ("handicap", "Handicap 0.5", "home", "Đội nhà -0.5", Decimal("-0.5"), Decimal("1.91"), "odds-api"),
-        ("handicap", "Handicap 0.5", "away", "Đội khách +0.5", Decimal("0.5"), Decimal("1.91"), "odds-api"),
         ("total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", Decimal("2.5"), Decimal("1.92"), "odds-api"),
         ("total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", Decimal("2.5"), Decimal("1.88"), "odds-api"),
         ("btts", "Hai đội cùng ghi bàn", "yes", "Có", None, Decimal("1.95"), "odds-api"),

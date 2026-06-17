@@ -968,6 +968,16 @@ begin
   if not found then
     raise exception 'market is not open';
   end if;
+  if v_market.market_key = 'draw_no_bet' then
+    raise exception 'draw no bet is temporarily locked';
+  end if;
+  if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
+    raise exception 'handicap requires bookmaker odds';
+  end if;
+  if v_market.market_key = 'correct_score'
+     and (v_market.source <> 'odds-model' or not (v_market.extra_json ? 'score_odds')) then
+    raise exception 'correct score requires bookmaker-derived odds';
+  end if;
   if v_market.market_key = 'correct_score' then
     if not (p_selection_json ? 'home_score') or not (p_selection_json ? 'away_score') then
       raise exception 'correct score requires home_score and away_score';
@@ -982,6 +992,9 @@ begin
       'away_score', (p_selection_json->>'away_score')::integer,
       'line', v_market.line
     );
+    if not ((v_market.extra_json->'score_odds') ? v_selection_key) then
+      raise exception 'correct score odds are not available for selected score';
+    end if;
   elsif p_selection_key <> v_market.selection_key then
     raise exception 'selection does not match selected market';
   else
@@ -1199,6 +1212,16 @@ begin
   if not found then
     raise exception 'market is not open';
   end if;
+  if v_market.market_key = 'draw_no_bet' then
+    raise exception 'draw no bet is temporarily locked';
+  end if;
+  if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
+    raise exception 'handicap requires bookmaker odds';
+  end if;
+  if v_market.market_key = 'correct_score'
+     and (v_market.source <> 'odds-model' or not (v_market.extra_json ? 'score_odds')) then
+    raise exception 'correct score requires bookmaker-derived odds';
+  end if;
   if now() >= coalesce(v_market.closes_at, v_match.starts_at) then
     raise exception 'betting is locked for this match';
   end if;
@@ -1217,6 +1240,9 @@ begin
       'away_score', (p_selection_json->>'away_score')::integer,
       'line', v_market.line
     );
+    if not ((v_market.extra_json->'score_odds') ? v_selection_key) then
+      raise exception 'correct score odds are not available for selected score';
+    end if;
   elsif p_selection_key <> v_market.selection_key then
     raise exception 'selection does not match selected market';
   else
@@ -1299,47 +1325,11 @@ begin
     raise exception 'admin role required';
   end if;
 
-  insert into public.outright_markets (
-    market_key, label, selection_key, selection_label, odds_multiplier, source, closes_at, extra_json
-  )
-  select
-    'golden_boot',
-    'Dự đoán Vua phá lưới',
-    'player:' || ranked.id::text,
-    ranked.name || ' (' || ranked.team_code || ')',
-    120.00,
-    'internal',
-    coalesce(
-      (select min(starts_at) from public.matches where status in ('SCHEDULED', 'NS', 'TBD')),
-      '2026-06-11 19:00:00+00'::timestamptz
-    ),
-    jsonb_build_object(
-      'player_id', ranked.id,
-      'team_id', ranked.team_id,
-      'team_code', ranked.team_code,
-      'position', ranked.position,
-      'club', ranked.club
-    )
-  from (
-    select
-      p.*,
-      t.code as team_code,
-      row_number() over (
-        order by
-          coalesce(p.market_value_eur, 0) desc,
-          coalesce(p.overall_rating, 0) desc,
-          p.name
-      ) as player_rank
-    from public.team_players p
-    join public.teams t on t.id = p.team_id
-    where t.provider_id like 'fifa-2026-team-%'
-  ) ranked
-  on conflict (market_key, selection_key) do update
-  set selection_label = excluded.selection_label,
-      odds_multiplier = excluded.odds_multiplier,
-      closes_at = excluded.closes_at,
-      extra_json = excluded.extra_json
-  where public.outright_markets.source = 'internal';
+  update public.outright_markets
+  set is_open = false
+  where market_key = 'golden_boot'
+    and source <> 'odds-api';
+
 
   get diagnostics v_count = row_count;
   return v_count;
@@ -1929,6 +1919,9 @@ begin
   if not found then
     raise exception 'outright market is not open';
   end if;
+  if v_market.market_key in ('tournament_winner', 'golden_boot') and v_market.source <> 'odds-api' then
+    raise exception 'outright market requires bookmaker odds';
+  end if;
   if now() >= v_market.closes_at then
     raise exception 'outright market is locked';
   end if;
@@ -2192,6 +2185,14 @@ begin
       odds_multiplier = excluded.odds_multiplier,
       closes_at = excluded.closes_at
   where public.match_markets.source = 'internal';
+
+  update public.match_markets
+  set is_open = false
+  where match_id = v_match.id
+    and (
+      market_key in ('draw_no_bet', 'asian_handicap')
+      or (market_key = 'correct_score' and source = 'internal')
+    );
 
   get diagnostics v_count = row_count;
   return v_count;

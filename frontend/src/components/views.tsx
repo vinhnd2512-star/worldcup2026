@@ -46,7 +46,7 @@ type NavItem = {
 
 const fmt = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
 const fmtOne = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
-const marketOrder = ["match_result", "handicap", "total_goals", "draw_no_bet", "btts", "corners_total", "cards_total"];
+const marketOrder = ["match_result", "handicap", "asian_handicap", "total_goals", "btts", "corners_total", "cards_total"];
 
 function num(value: string | number | null | undefined): number {
   return Number(value ?? 0);
@@ -63,6 +63,14 @@ function formatDate(value: string): string {
 
 function isOpenUpcomingMatch(match: Match): boolean {
   return ["SCHEDULED", "NS", "TBD"].includes(match.status) && new Date(match.starts_at).getTime() > Date.now();
+}
+
+function isBettableMarket(market: Match["markets"][number]): boolean {
+  if (!market.is_open) return false;
+  if (market.market_key === "draw_no_bet") return false;
+  if (["handicap", "asian_handicap"].includes(market.market_key)) return market.source === "odds-api";
+  if (market.market_key === "correct_score") return market.source === "odds-model";
+  return true;
 }
 
 function initials(name: string): string {
@@ -343,12 +351,13 @@ export function MatchDetailView({
   const [stake, setStake] = useState(100);
   const [activeMarketId, setActiveMarketId] = useState<number | null>(null);
 
-  const scoreMarket = match.markets.find((market) => market.market_key === "correct_score");
-  const selectedMarket = match.markets.find((market) => market.id === activeMarketId) ?? scoreMarket;
+  const bettableMarkets = match.markets.filter(isBettableMarket);
+  const scoreMarket = bettableMarkets.find((market) => market.market_key === "correct_score");
+  const selectedMarket = bettableMarkets.find((market) => market.id === activeMarketId) ?? scoreMarket;
   const multiplier = num(selectedMarket?.odds_multiplier ?? 1);
   const potential = stake * multiplier;
   const groupedMarkets = useMemo(() => {
-    const markets = match.markets.filter((market) => market.market_key !== "correct_score");
+    const markets = bettableMarkets.filter((market) => market.market_key !== "correct_score");
     const knownGroups = marketOrder
       .map((key) => {
         const items = markets.filter((market) => market.market_key === key);
@@ -368,7 +377,7 @@ export function MatchDetailView({
         return groups;
       }, []);
     return [...knownGroups, ...extraGroups];
-  }, [match.markets]);
+  }, [bettableMarkets]);
 
   async function submitScoreBet() {
     await onPlaceBet({
@@ -382,7 +391,7 @@ export function MatchDetailView({
   }
 
   async function submitMarketBet(marketId: number) {
-    const market = match.markets.find((item) => item.id === marketId);
+    const market = bettableMarkets.find((item) => item.id === marketId);
     if (!market) return;
     await onPlaceBet({
       match_id: match.id,
@@ -424,7 +433,7 @@ export function MatchDetailView({
             Điểm cược
             <input type="number" min={10} step={10} value={stake} onChange={(event) => setStake(Number(event.target.value))} />
           </label>
-          <button className="primary-button wide" disabled={placing} onClick={submitScoreBet}>
+          <button className="primary-button wide" disabled={placing || !scoreMarket} onClick={submitScoreBet}>
             <CheckCircle2 size={18} />
             Xác nhận dự đoán
           </button>

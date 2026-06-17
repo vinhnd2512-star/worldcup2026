@@ -482,6 +482,19 @@ set selection_label = excluded.selection_label,
     extra_json = excluded.extra_json
 where public.outright_markets.source = 'internal';
 
+update public.match_markets
+set is_open = false
+where source = 'internal'
+  and (
+    market_key in ('draw_no_bet', 'asian_handicap')
+    or market_key = 'correct_score'
+  );
+
+update public.outright_markets
+set is_open = false
+where source = 'internal'
+  and market_key in ('tournament_winner', 'golden_boot');
+
 insert into public.sync_runs (provider, job_type, status, finished_at, request_count, message)
 values ('fifa', 'seed', 'success', now(), 0, 'Seeded FIFA World Cup 2026 group teams, fixtures, and default internal markets.')
 on conflict do nothing;

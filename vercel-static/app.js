@@ -766,7 +766,7 @@ function renderMatches() {
   }
   const visibleMatches = activeMatches.filter((match) => match.id !== featured.id);
   const summaryMatches = visibleMatches.slice(0, 6);
-  const odd = featured.match_markets.find((market) => market.market_key === "correct_score")?.odds_multiplier || 6.00;
+  const odd = featured.match_markets.find((market) => market.market_key === "correct_score" && isBettableMarket(market))?.odds_multiplier || 6.00;
   return `
     <div class="dashboard-grid">
       <div class="stack">
@@ -853,7 +853,7 @@ function renderScheduleSheetTabs(activeSheet, options = {}) {
 }
 
 function renderFixtureRow(match) {
-  const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  const openMarkets = (match.match_markets || []).filter(isBettableMarket).length;
   const group = match.group_name ? formatGroupName(match.group_name) : "Knockout";
   const done = isCompletedScore(match);
   const scoreSep = done
@@ -930,7 +930,7 @@ function fixtureNumber(match) {
 
 function renderMatchCard(match) {
   const odd = match.match_markets.find((market) => market.market_key === "match_result" && market.selection_key === "home")?.odds_multiplier || 1.8;
-  const openMarkets = match.match_markets.filter((market) => market.is_open).length;
+  const openMarkets = match.match_markets.filter(isBettableMarket).length;
   const done = isCompletedScore(match);
   const separator = done
     ? `<span class="match-score-result">${match.home_score} - ${match.away_score}</span>`
@@ -1172,7 +1172,7 @@ function groupMatchesByGroup(matches) {
 }
 
 function renderMatchSearchRow(match) {
-  const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  const openMarkets = (match.match_markets || []).filter(isBettableMarket).length;
   const betSummary = matchBetSummary(match);
   const urgency = matchUrgency(match);
   return `
@@ -2300,7 +2300,7 @@ function renderPredictionDayGroup(dateKey, matches) {
 }
 
 function renderPredictionMatchRow(match) {
-  const openMarkets = (match.match_markets || []).filter((market) => market.is_open).length;
+  const openMarkets = (match.match_markets || []).filter(isBettableMarket).length;
   const betSummary = matchBetSummary(match);
   const urgency = matchUrgency(match);
   return `
@@ -2431,10 +2431,10 @@ function renderRebetConfirmModal() {
 function renderBetModal() {
   const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
   if (!match) return "";
-  const allOpenMarkets = (match.match_markets || []).filter((market) => market.is_open);
+  if (state.betModalMarketGroup === "advanced") state.betModalMarketGroup = "basic";
+  const allOpenMarkets = (match.match_markets || []).filter(isBettableMarket);
   const basicMarkets = allOpenMarkets.filter((market) => isBasicMarket(market.market_key, market));
-  const advancedMarkets = allOpenMarkets.filter((market) => !isBasicMarket(market.market_key, market));
-  const activeGroups = modalMarketGroups(state.betModalMarketGroup === "advanced" ? advancedMarkets : basicMarkets, state.betModalMarketGroup);
+  const activeGroups = modalMarketGroups(basicMarkets, "basic");
   return `
     <div class="modal-backdrop" data-close-bet-modal>
       <section class="bet-modal glass-card" role="dialog" aria-modal="true" aria-label="Đặt cược ${escapeHtml(matchTitle(match))}" data-modal-panel>
@@ -2455,7 +2455,6 @@ function renderBetModal() {
             </div>
             <div class="segmented-control">
               <button type="button" class="${state.betModalMarketGroup === "basic" ? "active" : ""}" data-bet-modal-tab="basic">Cơ bản</button>
-              <button type="button" class="${state.betModalMarketGroup === "advanced" ? "active" : ""}" data-bet-modal-tab="advanced">Nâng cao</button>
             </div>
           </div>
           <div class="modal-market-stack">
@@ -2506,7 +2505,7 @@ function modalMarketGroups(markets, group) {
   markets.forEach((market) => {
     groups.set(market.market_key, [...(groups.get(market.market_key) || []), market]);
   });
-  const order = group === "basic" ? ["correct_score", "total_goals", "match_result", "draw_no_bet", "asian_handicap"] : [];
+  const order = group === "basic" ? ["correct_score", "total_goals", "match_result", "asian_handicap"] : [];
   return [...groups.entries()]
     .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: sortMarketsForDisplay(items) }))
     .sort((left, right) => {
@@ -2542,6 +2541,9 @@ function renderModalBetSection(match, group) {
   const displayMultiplier = modalMarketMultiplier(group.marketKey, selectedMarket, draft);
   const payout = selectedMarket ? stake * displayMultiplier : 0;
   const helpText = modalMarketHelpText(group.marketKey);
+  const multiplierText = group.marketKey === "correct_score" && !displayMultiplier
+    ? "No odds"
+    : `x${fmtOne.format(displayMultiplier || number(group.markets[0]?.odds_multiplier || 1))}`;
   return `
     <section class="modal-market-card ${enabled ? "open" : ""}" data-bet-market-card="${escapeHtml(group.marketKey)}">
       <div class="modal-market-card-head">
@@ -2556,7 +2558,7 @@ function renderModalBetSection(match, group) {
             <small>${existing ? `Đang mở: ${escapeHtml(existing.selection_label)} · ${money(existing.stake)}` : `${fmt.format(group.markets.length)} lựa chọn`}</small>
           </span>
         </label>
-        <span class="pill">x${fmtOne.format(displayMultiplier || number(group.markets[0]?.odds_multiplier || 1))}</span>
+        <span class="pill">${multiplierText}</span>
       </div>
       ${
         enabled
@@ -2623,10 +2625,8 @@ function modalMarketHelpText(marketKey) {
     return "The Odds API khong tra truc tiep correct_score; he thong suy ra fair odds tung ty so tu keo 1X2 va Tai/Xiu bang mo hinh Poisson.";
   }
   const notes = {
-    correct_score: "The Odds API hiện không hỗ trợ market correct_score cho World Cup, nên kèo tỷ số chính xác dùng multiplier internal của game.",
-    draw_no_bet: "Chọn đội thắng. Nếu trận hòa, cược được hoàn tiền; nếu đội đã chọn thua thì mất cược.",
     total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal.",
-    asian_handicap: "Kèo châu Á: line áp dụng cho đội nhà (ví dụ -1.5 nghĩa là nhà phải thắng 2 bàn trở lên). Nếu tỷ số sau handicap bằng nhau, cược được hoàn tiền."
+    asian_handicap: "Kèo châu Á chỉ mở khi có handicap/spreads từ nhà cái. Nếu tỷ số sau handicap bằng nhau, cược được hoàn tiền."
   };
   return notes[marketKey] || "";
 }
@@ -2681,7 +2681,7 @@ function correctScoreFairOdds(market, homeScore, awayScore) {
   const extra = marketExtra(market);
   const score = `${Math.max(0, number(homeScore))}-${Math.max(0, number(awayScore))}`;
   const row = extra.score_odds?.[score];
-  return number(row?.fair_odds || market.odds_multiplier || 6);
+  return number(row?.fair_odds || 0);
 }
 
 function correctScoreOddsHint(market, draft = {}) {
@@ -2690,8 +2690,8 @@ function correctScoreOddsHint(market, draft = {}) {
   const score = `${homeScore}-${awayScore}`;
   const multiplier = correctScoreFairOdds(market, homeScore, awayScore);
   const extra = marketExtra(market);
-  const source = extra.score_odds?.[score] ? "model" : "fallback";
-  return `Ty le ${score}: x${fmtOne.format(multiplier)} (${source})`;
+  if (!extra.score_odds?.[score]) return `Ty le ${score}: chua co odds nha cai`;
+  return `Ty le ${score}: x${fmtOne.format(multiplier)} (model nha cai)`;
 }
 
 function existingOpenBet(match, marketKey) {
@@ -2738,7 +2738,7 @@ function updateModalDerivedValues() {
   const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
   if (!match) return;
   syncBetModalDraftFromDom();
-  const allOpenMarkets = (match.match_markets || []).filter((market) => market.is_open);
+  const allOpenMarkets = (match.match_markets || []).filter(isBettableMarket);
   for (const group of modalMarketGroups(allOpenMarkets, "all")) {
     const draft = state.betModalDraft?.[group.marketKey] || {};
     const selectedMarket = selectedDraftMarket(group.markets, draft);
@@ -2751,7 +2751,11 @@ function updateModalDerivedValues() {
       shareNode.classList.toggle("over", stakeWalletShareClass(draft.stake) === "over");
     }
     const pillNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-market-card-head .pill`);
-    if (pillNode) pillNode.textContent = `x${fmtOne.format(multiplier || number(selectedMarket?.odds_multiplier || 1))}`;
+    if (pillNode) {
+      pillNode.textContent = group.marketKey === "correct_score" && !multiplier
+        ? "No odds"
+        : `x${fmtOne.format(multiplier || number(selectedMarket?.odds_multiplier || 1))}`;
+    }
     const scoreHintNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .score-odds-hint`);
     if (scoreHintNode && group.marketKey === "correct_score") scoreHintNode.textContent = correctScoreOddsHint(selectedMarket, draft);
   }
@@ -2767,7 +2771,7 @@ function modalSelectedSummary(match) {
 
 function collectModalBetPayloads(match, options = {}) {
   if (!options.quiet) syncBetModalDraftFromDom();
-  const allOpenMarkets = (match?.match_markets || []).filter((market) => market.is_open);
+  const allOpenMarkets = (match?.match_markets || []).filter(isBettableMarket);
   const groups = modalMarketGroups(allOpenMarkets, "all");
   const payloads = [];
   let netStakeDelta = 0;
@@ -2784,6 +2788,10 @@ function collectModalBetPayloads(match, options = {}) {
     const stakeDelta = stake - number(existing?.stake);
     netStakeDelta += stakeDelta;
     if (group.marketKey === "correct_score") {
+      if (!modalMarketMultiplier(group.marketKey, market, draft)) {
+        if (options.quiet) continue;
+        throw new Error("Ty so da chon chua co odds nha cai.");
+      }
       const homeScore = Math.max(0, number(draft.homeScore));
       const awayScore = Math.max(0, number(draft.awayScore));
       payloads.push({
@@ -2815,7 +2823,18 @@ function collectModalBetPayloads(match, options = {}) {
 
 function isBasicMarket(key, market = null) {
   if (key === "total_goals") return true;
-  return ["match_result", "draw_no_bet", "correct_score", "asian_handicap"].includes(key);
+  if (key === "draw_no_bet") return false;
+  if (key === "asian_handicap") return market?.source === "odds-api";
+  if (key === "correct_score") return market?.source === "odds-model" && Boolean(marketExtra(market).score_odds);
+  return key === "match_result";
+}
+
+function isBettableMarket(market) {
+  if (!market || market.is_open !== true) return false;
+  if (market.market_key === "draw_no_bet") return false;
+  if (market.market_key === "asian_handicap") return market.source === "odds-api";
+  if (market.market_key === "correct_score") return market.source === "odds-model" && Boolean(marketExtra(market).score_odds);
+  return true;
 }
 
 function renderMarketButton(market) {
@@ -2850,8 +2869,8 @@ function renderOutrightSearchCard(marketKey) {
   const markets = openOutrightMarkets(marketKey);
   const filtered = filteredOutrightMarkets(marketKey);
   const emptyCopy = isGoldenBoot
-    ? "Chưa có danh sách cầu thủ. Admin cần sync/import team_players trước."
-    : "Chưa có kèo vô địch.";
+    ? "Chưa có odds nhà cái cho Vua phá lưới."
+    : "Chưa có kèo vô địch từ nhà cái.";
 
   if (!markets.length) return `<p class="empty-copy">${emptyCopy}</p>`;
 
@@ -2910,7 +2929,7 @@ function updateOutrightSearchResults(marketKey) {
 }
 
 function openOutrightMarkets(marketKey) {
-  const markets = state.outrightMarkets.filter((market) => market.market_key === marketKey && market.is_open);
+  const markets = state.outrightMarkets.filter((market) => market.market_key === marketKey && market.is_open && market.source === "odds-api");
   if (marketKey === "tournament_winner") {
     return markets.sort((a, b) => {
       const teamA = teamByCode(a.selection_key);
@@ -4780,7 +4799,7 @@ function enhanceUpdateBetForms() {
     const match = matchForBet(bet || {});
     if (!bet || !match || bet.market_key === "correct_score" || form.elements.market_id) return;
     const markets = sortMarketsForDisplay((match.match_markets || [])
-      .filter((market) => market.is_open && market.market_key === bet.market_key));
+      .filter((market) => isBettableMarket(market) && market.market_key === bet.market_key));
     if (!markets.length) return;
     const selectionInput = [...form.querySelectorAll("input")].find((input) => input.disabled);
     const label = selectionInput?.closest("label");
@@ -4857,7 +4876,7 @@ async function updateBet(event) {
 async function placeScoreBet(event) {
   event.preventDefault();
   const match = selectedMatch();
-  const market = match.match_markets.find((item) => item.market_key === "correct_score");
+  const market = match.match_markets.find((item) => item.market_key === "correct_score" && isBettableMarket(item));
   if (!market) {
     state.error = "Trận này chưa có kèo tỷ số.";
     state.message = "";
@@ -4882,7 +4901,7 @@ async function placeMarketBet(marketId) {
   const match = selectedMatch();
   const market = match.match_markets.find((item) => item.id === marketId);
   const stake = parseStakeInput(prompt("Tiền cược ($)", "100") || 0);
-  if (!market || !stake) return;
+  if (!market || !isBettableMarket(market) || !stake) return;
   await placeBet({
     p_match_id: match.id,
     p_market_id: market.id,
@@ -4897,7 +4916,7 @@ async function placeOutrightBet(marketId) {
   if (state.isSubmittingBet) return;
   const market = state.outrightMarkets.find((item) => item.id === marketId);
   const stake = parseStakeInput(prompt("Tiền cược ($)", "100") || 0);
-  if (!market || !stake) return;
+  if (!market || market.source !== "odds-api" || !stake) return;
   await submitOutrightBet(market.id, stake);
 }
 
@@ -4914,7 +4933,7 @@ async function placeSelectedOutrightBet(event, marketKey) {
 
 async function submitOutrightBet(marketId, stake) {
   const market = state.outrightMarkets.find((item) => item.id === marketId);
-  if (!market || !stake) return;
+  if (!market || market.source !== "odds-api" || !stake) return;
   state.isSubmittingBet = true;
   renderApp();
   try {
