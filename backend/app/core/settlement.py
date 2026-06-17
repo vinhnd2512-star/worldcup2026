@@ -77,6 +77,18 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
             reason="Draw no bet market refunded because the match was drawn.",
         )
 
+    if bet.market_key == "total_goals":
+        line = Decimal(str(bet.selection.get("line", "2.5")))
+        if Decimal(result.home_score + result.away_score) == line:
+            return SettlementOutcome(
+                status="refunded",
+                result="push",
+                payout=money(bet.stake),
+                net_points=Decimal("0.00"),
+                prediction_bonus=Decimal("0.00"),
+                reason="Total goals market pushed; stake refunded.",
+            )
+
     if bet.market_key == "handicap":
         handicap_result = _handicap_adjusted_result(bet, result)
         if handicap_result == 0:

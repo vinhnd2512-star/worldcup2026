@@ -2557,6 +2557,27 @@ begin
       v_won := (v_bet.selection_key = 'home' and v_match.home_score > v_match.away_score)
         or (v_bet.selection_key = 'away' and v_match.away_score > v_match.home_score);
     elsif v_bet.market_key = 'total_goals' then
+      if v_total_goals = v_bet.line then
+        v_payout := v_bet.stake;
+        v_delta := 0;
+        v_bonus := 0;
+        update public.bets set status = 'refunded', points_delta = v_delta, prediction_bonus = v_bonus, settled_at = now() where id = v_bet.id;
+        update public.profiles set wallet_balance = wallet_balance + v_payout where id = v_bet.user_id;
+        insert into public.wallet_ledger (user_id, actor_id, amount, kind, reason, balance_after)
+        select
+          v_bet.user_id,
+          auth.uid(),
+          v_payout,
+          'bet_refund',
+          'Total goals push: ' || v_bet.selection_label,
+          wallet_balance
+        from public.profiles
+        where id = v_bet.user_id;
+        insert into public.settlements (bet_id, result, status, payout, reason)
+        values (v_bet.id, 'push', 'refunded', v_payout, 'Total goals market pushed; stake refunded.');
+        v_count := v_count + 1;
+        continue;
+      end if;
       v_won := (v_bet.selection_key = 'over' and v_total_goals > v_bet.line)
         or (v_bet.selection_key = 'under' and v_total_goals < v_bet.line);
     elsif v_bet.market_key = 'btts' then

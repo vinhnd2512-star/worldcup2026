@@ -74,6 +74,16 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(under.status, "won")
         self.assertEqual(over.prediction_bonus, Decimal("8.00"))
 
+    def test_total_goals_push_refunds_when_equal_line(self) -> None:
+        outcome = settle_bet(
+            BetSelection("total_goals", "under", Decimal("50"), Decimal("1.90"), {"line": "3"}),
+            MatchResult(status="FT", home_score=3, away_score=0),
+        )
+        self.assertEqual(outcome.status, "refunded")
+        self.assertEqual(outcome.result, "push")
+        self.assertEqual(outcome.payout, Decimal("50.00"))
+        self.assertEqual(outcome.net_points, Decimal("0.00"))
+
     def test_btts(self) -> None:
         outcome = settle_bet(
             BetSelection("btts", "yes", Decimal("40"), Decimal("1.95"), {}),
