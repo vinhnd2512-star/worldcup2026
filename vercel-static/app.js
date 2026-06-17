@@ -1644,10 +1644,10 @@ function teamPlayersFor(teamId) {
 
 function positionSortValue(position) {
   const text = String(position || "").toLowerCase();
-  if (/goal|keeper|gk/.test(text)) return 0;
-  if (/def|back/.test(text)) return 1;
-  if (/mid/.test(text)) return 2;
-  if (/for|att|wing|striker|fw/.test(text)) return 3;
+  if (/goal|keeper|gk|torwart|tormann|torh[u\u00fc]ter/.test(text)) return 0;
+  if (/def|back|cb|lb|rb|lwb|rwb|verteid|abwehr/.test(text)) return 1;
+  if (/mid|dm|cm|am|lm|rm|mittelfeld/.test(text)) return 2;
+  if (/for|att|wing|striker|fw|st[u\u00fc]rmer|angriff/.test(text)) return 3;
   return 4;
 }
 
@@ -1760,10 +1760,10 @@ function renderForecastTeamPanel(team, pct, isWinner = false, side = "") {
 
 function playerPositionGroup(player) {
   const text = String(player.position || "").toLowerCase();
-  if (/goal|keeper|gk/.test(text)) return "GK";
-  if (/def|back/.test(text)) return "DEF";
-  if (/mid/.test(text)) return "MID";
-  if (/for|att|wing|striker|fw/.test(text)) return "FWD";
+  if (/goal|keeper|gk|torwart|tormann|torh[u\u00fc]ter/.test(text)) return "GK";
+  if (/def|back|cb|lb|rb|lwb|rwb|verteid|abwehr/.test(text)) return "DEF";
+  if (/mid|dm|cm|am|lm|rm|mittelfeld/.test(text)) return "MID";
+  if (/for|att|wing|striker|fw|st[u\u00fc]rmer|angriff/.test(text)) return "FWD";
   return "OTHER";
 }
 
