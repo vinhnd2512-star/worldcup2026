@@ -9,7 +9,7 @@ create table if not exists public.profiles (
   display_name text not null,
   role text not null default 'player' check (role in ('admin', 'player')),
   is_active boolean not null default true,
-  wallet_balance numeric(12, 2) not null default 0,
+  wallet_balance numeric(18, 2) not null default 0,
   deleted_at timestamptz,
   deleted_by uuid references public.profiles(id) on delete set null,
   deleted_reason text,
@@ -25,10 +25,10 @@ create table if not exists public.wallet_ledger (
   id bigint generated always as identity primary key,
   user_id uuid not null references public.profiles(id) on delete cascade,
   actor_id uuid references public.profiles(id) on delete set null,
-  amount numeric(12, 2) not null,
+  amount numeric(18, 2) not null,
   kind text not null,
   reason text not null,
-  balance_after numeric(12, 2) not null,
+  balance_after numeric(18, 2) not null,
   created_at timestamptz not null default now()
 );
 
@@ -283,6 +283,10 @@ alter table public.match_markets
 create unique index if not exists match_markets_unique_selection_idx
   on public.match_markets (match_id, market_key, selection_key, line_key);
 
+update public.match_markets
+set is_open = false
+where market_key = 'correct_score';
+
 create table if not exists public.outright_markets (
   id bigint generated always as identity primary key,
   market_key text not null,
@@ -315,29 +319,45 @@ create table if not exists public.bets (
   market_key text not null,
   selection_key text not null,
   selection_label text not null,
-  stake numeric(12, 2) not null check (stake > 0),
+  stake numeric(18, 2) not null check (stake > 0),
   locked_multiplier numeric(8, 2) not null,
-  potential_payout numeric(12, 2) not null,
+  potential_payout numeric(18, 2) not null,
   status text not null default 'placed',
-  points_delta numeric(12, 2) not null default 0,
-  prediction_bonus numeric(12, 2) not null default 0,
+  points_delta numeric(18, 2) not null default 0,
+  prediction_bonus numeric(18, 2) not null default 0,
   selection_json jsonb not null default '{}',
   placed_at timestamptz not null default now(),
   settled_at timestamptz
 );
 
 alter table public.bets
-  add column if not exists prediction_bonus numeric(12, 2) not null default 0;
+  add column if not exists prediction_bonus numeric(18, 2) not null default 0;
 
 create table if not exists public.settlements (
   id bigint generated always as identity primary key,
   bet_id bigint not null unique references public.bets(id) on delete cascade,
   result text not null,
   status text not null,
-  payout numeric(12, 2) not null,
+  payout numeric(18, 2) not null,
   reason text not null,
   settled_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  alter column wallet_balance type numeric(18, 2);
+
+alter table public.wallet_ledger
+  alter column amount type numeric(18, 2),
+  alter column balance_after type numeric(18, 2);
+
+alter table public.bets
+  alter column stake type numeric(18, 2),
+  alter column potential_payout type numeric(18, 2),
+  alter column points_delta type numeric(18, 2),
+  alter column prediction_bonus type numeric(18, 2);
+
+alter table public.settlements
+  alter column payout type numeric(18, 2);
 
 create table if not exists public.sync_runs (
   id bigint generated always as identity primary key,
@@ -759,7 +779,7 @@ create or replace view public.leaderboard as
 with ledger_equity as (
   select
     user_id,
-    coalesce(sum(amount) filter (where kind in ('admin_topup', 'admin_deduction')), 0)::numeric(12,2) as initial_equity
+    coalesce(sum(amount) filter (where kind in ('admin_topup', 'admin_deduction')), 0)::numeric(18,2) as initial_equity
   from public.wallet_ledger
   group by user_id
 ),
@@ -770,21 +790,21 @@ user_scores as (
     p.display_name,
     p.wallet_balance,
     count(b.id)::integer as total_bets,
-    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.points_delta + b.prediction_bonus else 0 end), 0)::numeric(12,2) as score,
-    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.points_delta else 0 end), 0)::numeric(12,2) as net_points,
-    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.prediction_bonus else 0 end), 0)::numeric(12,2) as bonus_points,
+    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.points_delta + b.prediction_bonus else 0 end), 0)::numeric(18,2) as score,
+    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.points_delta else 0 end), 0)::numeric(18,2) as net_points,
+    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.prediction_bonus else 0 end), 0)::numeric(18,2) as bonus_points,
     count(b.id) filter (where b.status in ('won', 'lost', 'refunded'))::integer as settled_bets,
     count(b.id) filter (where b.status = 'won')::integer as won_bets,
     count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
-    coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)::numeric(12,2) as open_staked,
-    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.stake else 0 end), 0)::numeric(12,2) as settled_staked,
-    coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked,
+    coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)::numeric(18,2) as open_staked,
+    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.stake else 0 end), 0)::numeric(18,2) as settled_staked,
+    coalesce(sum(b.stake), 0)::numeric(18,2) as total_staked,
     coalesce(
       nullif(le.initial_equity, 0),
       p.wallet_balance
         + coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)
         - coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.points_delta + b.prediction_bonus else 0 end), 0)
-    )::numeric(12,2) as initial_equity
+    )::numeric(18,2) as initial_equity
   from public.profiles p
   left join public.bets b on b.user_id = p.id
   left join ledger_equity le on le.user_id = p.id
@@ -800,7 +820,7 @@ select
   wallet_balance,
   wallet_balance as available_balance,
   open_staked,
-  (wallet_balance + open_staked)::numeric(12,2) as total_balance,
+  (wallet_balance + open_staked)::numeric(18,2) as total_balance,
   total_bets,
   score,
   net_points,
@@ -820,12 +840,12 @@ from user_scores;
 create or replace view public.admin_report as
 select
   (select count(*) from public.profiles where role = 'player' and deleted_at is null)::integer as players,
-  (select coalesce(sum(wallet_balance), 0)::numeric(12,2) from public.profiles where deleted_at is null) as total_wallet_balance,
-  (select coalesce(sum(wallet_balance), 0)::numeric(12,2) from public.profiles where role = 'player' and deleted_at is null) as total_available_to_bet,
-  (select coalesce(sum(stake), 0)::numeric(12,2) from public.bets where status = 'placed') as total_open_staked,
-  (select coalesce(sum(stake), 0)::numeric(12,2) from public.bets) as total_staked,
-  (select coalesce(sum(points_delta), 0)::numeric(12,2) from public.bets where status in ('won','lost','refunded')) as settled_net_points,
-  (select coalesce(sum(prediction_bonus), 0)::numeric(12,2) from public.bets where status in ('won','lost','refunded')) as prediction_bonus_points,
+  (select coalesce(sum(wallet_balance), 0)::numeric(18,2) from public.profiles where deleted_at is null) as total_wallet_balance,
+  (select coalesce(sum(wallet_balance), 0)::numeric(18,2) from public.profiles where role = 'player' and deleted_at is null) as total_available_to_bet,
+  (select coalesce(sum(stake), 0)::numeric(18,2) from public.bets where status = 'placed') as total_open_staked,
+  (select coalesce(sum(stake), 0)::numeric(18,2) from public.bets) as total_staked,
+  (select coalesce(sum(points_delta), 0)::numeric(18,2) from public.bets where status in ('won','lost','refunded')) as settled_net_points,
+  (select coalesce(sum(prediction_bonus), 0)::numeric(18,2) from public.bets where status in ('won','lost','refunded')) as prediction_bonus_points,
   (select count(*)::integer from public.bets where status = 'placed') as open_bets,
   (select count(*)::integer from public.bets where status in ('won','lost','refunded')) as settled_bets
 where public.is_admin();
@@ -834,7 +854,7 @@ create or replace view public.admin_user_report as
 with ledger_equity as (
   select
     user_id,
-    coalesce(sum(amount) filter (where kind in ('admin_topup', 'admin_deduction')), 0)::numeric(12,2) as initial_equity
+    coalesce(sum(amount) filter (where kind in ('admin_topup', 'admin_deduction')), 0)::numeric(18,2) as initial_equity
   from public.wallet_ledger
   group by user_id
 ),
@@ -849,18 +869,18 @@ user_scores as (
     count(b.id) filter (where b.status in ('won','lost','refunded'))::integer as settled_bets,
     count(b.id) filter (where b.status = 'won')::integer as won_bets,
     count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
-    coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)::numeric(12,2) as open_staked,
-    coalesce(sum(case when b.status in ('won','lost','refunded') then b.stake else 0 end), 0)::numeric(12,2) as settled_staked,
-    coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked,
-    coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as net_points,
-    coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as bonus_points,
-    coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as score,
+    coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)::numeric(18,2) as open_staked,
+    coalesce(sum(case when b.status in ('won','lost','refunded') then b.stake else 0 end), 0)::numeric(18,2) as settled_staked,
+    coalesce(sum(b.stake), 0)::numeric(18,2) as total_staked,
+    coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as net_points,
+    coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as bonus_points,
+    coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as score,
     coalesce(
       nullif(le.initial_equity, 0),
       p.wallet_balance
         + coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)
         - coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)
-    )::numeric(12,2) as initial_equity
+    )::numeric(18,2) as initial_equity
   from public.profiles p
   left join public.bets b on b.user_id = p.id
   left join ledger_equity le on le.user_id = p.id
@@ -874,7 +894,7 @@ select
   wallet_balance,
   wallet_balance as available_balance,
   open_staked,
-  (wallet_balance + open_staked)::numeric(12,2) as total_balance,
+  (wallet_balance + open_staked)::numeric(18,2) as total_balance,
   total_bets,
   open_bets,
   settled_bets,
@@ -903,10 +923,10 @@ select
   count(b.id) filter (where b.status = 'placed')::integer as open_bets,
   count(b.id) filter (where b.status in ('won','lost','refunded'))::integer as settled_bets,
   count(b.id) filter (where b.status = 'won')::integer as won_bets,
-  coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked,
-  coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as net_points,
-  coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as bonus_points,
-  coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as score,
+  coalesce(sum(b.stake), 0)::numeric(18,2) as total_staked,
+  coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as net_points,
+  coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as bonus_points,
+  coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as score,
   case
     when count(b.id) filter (where b.status in ('won','lost','refunded')) = 0 then 0
     else round((count(b.id) filter (where b.status = 'won'))::numeric / (count(b.id) filter (where b.status in ('won','lost','refunded')))::numeric * 100, 1)
@@ -942,10 +962,10 @@ declare
   v_match public.matches%rowtype;
   v_market public.match_markets%rowtype;
   v_bet public.bets%rowtype;
-  v_next_stake numeric(12, 2);
-  v_stake_delta numeric(12, 2);
-  v_balance_after numeric(12, 2);
-  v_payout numeric(12, 2);
+  v_next_stake numeric(18, 2);
+  v_stake_delta numeric(18, 2);
+  v_balance_after numeric(18, 2);
+  v_payout numeric(18, 2);
   v_selection_key text;
   v_selection_label text;
   v_selection_json jsonb;
@@ -983,6 +1003,9 @@ begin
   end if;
   if v_market.market_key = 'draw_no_bet' then
     raise exception 'draw no bet is temporarily locked';
+  end if;
+  if v_market.market_key = 'correct_score' then
+    raise exception 'correct score is temporarily locked while bookmaker odds are unavailable';
   end if;
   if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
     raise exception 'handicap requires bookmaker odds';
@@ -1163,13 +1186,13 @@ declare
   v_match public.matches%rowtype;
   v_market public.match_markets%rowtype;
   v_updated public.bets%rowtype;
-  v_next_stake numeric(12, 2);
-  v_stake_delta numeric(12, 2);
-  v_balance_after numeric(12, 2);
+  v_next_stake numeric(18, 2);
+  v_stake_delta numeric(18, 2);
+  v_balance_after numeric(18, 2);
   v_selection_key text;
   v_selection_label text;
   v_selection_json jsonb;
-  v_payout numeric(12, 2);
+  v_payout numeric(18, 2);
   v_locked_multiplier numeric(8, 2);
 begin
   if auth.uid() is null then
@@ -1228,6 +1251,9 @@ begin
   end if;
   if v_market.market_key = 'draw_no_bet' then
     raise exception 'draw no bet is temporarily locked';
+  end if;
+  if v_market.market_key = 'correct_score' then
+    raise exception 'correct score is temporarily locked while bookmaker odds are unavailable';
   end if;
   if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
     raise exception 'handicap requires bookmaker odds';
@@ -1341,7 +1367,7 @@ declare
   v_match public.matches%rowtype;
   v_market public.match_markets%rowtype;
   v_outright public.outright_markets%rowtype;
-  v_balance numeric(12, 2);
+  v_balance numeric(18, 2);
 begin
   if auth.uid() is null then
     raise exception 'not authenticated';
@@ -1972,7 +1998,7 @@ set search_path = public
 as $$
 declare
   v_bet public.bets%rowtype;
-  v_balance numeric(12, 2);
+  v_balance numeric(18, 2);
 begin
   if not public.is_admin() then
     raise exception 'admin role required';
@@ -2040,7 +2066,7 @@ declare
   v_user public.profiles%rowtype;
   v_market public.outright_markets%rowtype;
   v_bet public.bets%rowtype;
-  v_payout numeric(12, 2);
+  v_payout numeric(18, 2);
 begin
   if auth.uid() is null then
     raise exception 'not authenticated';
@@ -2122,9 +2148,9 @@ as $$
 declare
   v_bet public.bets%rowtype;
   v_won boolean;
-  v_payout numeric(12, 2);
-  v_delta numeric(12, 2);
-  v_bonus numeric(12, 2);
+  v_payout numeric(18, 2);
+  v_delta numeric(18, 2);
+  v_bonus numeric(18, 2);
   v_count integer := 0;
 begin
   if not public.is_admin() then
@@ -2191,9 +2217,9 @@ as $$
 declare
   v_bet public.bets%rowtype;
   v_won boolean;
-  v_payout numeric(12, 2);
-  v_delta numeric(12, 2);
-  v_bonus numeric(12, 2);
+  v_payout numeric(18, 2);
+  v_delta numeric(18, 2);
+  v_bonus numeric(18, 2);
   v_count integer := 0;
 begin
   if not public.is_admin() then
@@ -2330,12 +2356,730 @@ begin
   where match_id = v_match.id
     and (
       market_key in ('draw_no_bet', 'asian_handicap')
-      or (market_key = 'correct_score' and source = 'internal')
+      or market_key = 'correct_score'
     );
 
   get diagnostics v_count = row_count;
   return v_count;
 end;
+$$;
+
+-- Round of 32 group-stage allocation helpers.
+-- The third-place path table mirrors the 495 combinations from FIFA World Cup 26 Regulations Annex C.
+create table if not exists public.bracket_third_place_paths (
+  qualified_groups text primary key check (qualified_groups ~ '^[A-L]{8}$'),
+  winner_a_opponent_group text not null check (winner_a_opponent_group ~ '^[A-L]$'),
+  winner_b_opponent_group text not null check (winner_b_opponent_group ~ '^[A-L]$'),
+  winner_d_opponent_group text not null check (winner_d_opponent_group ~ '^[A-L]$'),
+  winner_e_opponent_group text not null check (winner_e_opponent_group ~ '^[A-L]$'),
+  winner_g_opponent_group text not null check (winner_g_opponent_group ~ '^[A-L]$'),
+  winner_i_opponent_group text not null check (winner_i_opponent_group ~ '^[A-L]$'),
+  winner_k_opponent_group text not null check (winner_k_opponent_group ~ '^[A-L]$'),
+  winner_l_opponent_group text not null check (winner_l_opponent_group ~ '^[A-L]$')
+);
+
+alter table public.bracket_third_place_paths enable row level security;
+
+drop policy if exists public_read_bracket_third_place_paths on public.bracket_third_place_paths;
+create policy public_read_bracket_third_place_paths on public.bracket_third_place_paths
+  for select to authenticated using (true);
+
+drop policy if exists admin_write_bracket_third_place_paths on public.bracket_third_place_paths;
+create policy admin_write_bracket_third_place_paths on public.bracket_third_place_paths
+  for all using (public.is_admin()) with check (public.is_admin());
+
+insert into public.bracket_third_place_paths (
+  qualified_groups,
+  winner_a_opponent_group,
+  winner_b_opponent_group,
+  winner_d_opponent_group,
+  winner_e_opponent_group,
+  winner_g_opponent_group,
+  winner_i_opponent_group,
+  winner_k_opponent_group,
+  winner_l_opponent_group
+)
+values
+  ('EFGHIJKL', 'E', 'J', 'I', 'F', 'H', 'G', 'L', 'K'),
+  ('DFGHIJKL', 'H', 'G', 'I', 'D', 'J', 'F', 'L', 'K'),
+  ('DEGHIJKL', 'E', 'J', 'I', 'D', 'H', 'G', 'L', 'K'),
+  ('DEFHIJKL', 'E', 'J', 'I', 'D', 'H', 'F', 'L', 'K'),
+  ('DEFGIJKL', 'E', 'G', 'I', 'D', 'J', 'F', 'L', 'K'),
+  ('DEFGHJKL', 'E', 'G', 'J', 'D', 'H', 'F', 'L', 'K'),
+  ('DEFGHIKL', 'E', 'G', 'I', 'D', 'H', 'F', 'L', 'K'),
+  ('DEFGHIJL', 'E', 'G', 'J', 'D', 'H', 'F', 'L', 'I'),
+  ('DEFGHIJK', 'E', 'G', 'J', 'D', 'H', 'F', 'I', 'K'),
+  ('CFGHIJKL', 'H', 'G', 'I', 'C', 'J', 'F', 'L', 'K'),
+  ('CEGHIJKL', 'E', 'J', 'I', 'C', 'H', 'G', 'L', 'K'),
+  ('CEFHIJKL', 'E', 'J', 'I', 'C', 'H', 'F', 'L', 'K'),
+  ('CEFGIJKL', 'E', 'G', 'I', 'C', 'J', 'F', 'L', 'K'),
+  ('CEFGHJKL', 'E', 'G', 'J', 'C', 'H', 'F', 'L', 'K'),
+  ('CEFGHIKL', 'E', 'G', 'I', 'C', 'H', 'F', 'L', 'K'),
+  ('CEFGHIJL', 'E', 'G', 'J', 'C', 'H', 'F', 'L', 'I'),
+  ('CEFGHIJK', 'E', 'G', 'J', 'C', 'H', 'F', 'I', 'K'),
+  ('CDGHIJKL', 'H', 'G', 'I', 'C', 'J', 'D', 'L', 'K'),
+  ('CDFHIJKL', 'C', 'J', 'I', 'D', 'H', 'F', 'L', 'K'),
+  ('CDFGIJKL', 'C', 'G', 'I', 'D', 'J', 'F', 'L', 'K'),
+  ('CDFGHJKL', 'C', 'G', 'J', 'D', 'H', 'F', 'L', 'K'),
+  ('CDFGHIKL', 'C', 'G', 'I', 'D', 'H', 'F', 'L', 'K'),
+  ('CDFGHIJL', 'C', 'G', 'J', 'D', 'H', 'F', 'L', 'I'),
+  ('CDFGHIJK', 'C', 'G', 'J', 'D', 'H', 'F', 'I', 'K'),
+  ('CDEHIJKL', 'E', 'J', 'I', 'C', 'H', 'D', 'L', 'K'),
+  ('CDEGIJKL', 'E', 'G', 'I', 'C', 'J', 'D', 'L', 'K'),
+  ('CDEGHJKL', 'E', 'G', 'J', 'C', 'H', 'D', 'L', 'K'),
+  ('CDEGHIKL', 'E', 'G', 'I', 'C', 'H', 'D', 'L', 'K'),
+  ('CDEGHIJL', 'E', 'G', 'J', 'C', 'H', 'D', 'L', 'I'),
+  ('CDEGHIJK', 'E', 'G', 'J', 'C', 'H', 'D', 'I', 'K'),
+  ('CDEFIJKL', 'C', 'J', 'E', 'D', 'I', 'F', 'L', 'K'),
+  ('CDEFHJKL', 'C', 'J', 'E', 'D', 'H', 'F', 'L', 'K'),
+  ('CDEFHIKL', 'C', 'E', 'I', 'D', 'H', 'F', 'L', 'K'),
+  ('CDEFHIJL', 'C', 'J', 'E', 'D', 'H', 'F', 'L', 'I'),
+  ('CDEFHIJK', 'C', 'J', 'E', 'D', 'H', 'F', 'I', 'K'),
+  ('CDEFGJKL', 'C', 'G', 'E', 'D', 'J', 'F', 'L', 'K'),
+  ('CDEFGIKL', 'C', 'G', 'E', 'D', 'I', 'F', 'L', 'K'),
+  ('CDEFGIJL', 'C', 'G', 'E', 'D', 'J', 'F', 'L', 'I'),
+  ('CDEFGIJK', 'C', 'G', 'E', 'D', 'J', 'F', 'I', 'K'),
+  ('CDEFGHKL', 'C', 'G', 'E', 'D', 'H', 'F', 'L', 'K'),
+  ('CDEFGHJL', 'C', 'G', 'J', 'D', 'H', 'F', 'L', 'E'),
+  ('CDEFGHJK', 'C', 'G', 'J', 'D', 'H', 'F', 'E', 'K'),
+  ('CDEFGHIL', 'C', 'G', 'E', 'D', 'H', 'F', 'L', 'I'),
+  ('CDEFGHIK', 'C', 'G', 'E', 'D', 'H', 'F', 'I', 'K'),
+  ('CDEFGHIJ', 'C', 'G', 'J', 'D', 'H', 'F', 'E', 'I'),
+  ('BFGHIJKL', 'H', 'J', 'B', 'F', 'I', 'G', 'L', 'K'),
+  ('BEGHIJKL', 'E', 'J', 'I', 'B', 'H', 'G', 'L', 'K'),
+  ('BEFHIJKL', 'E', 'J', 'B', 'F', 'I', 'H', 'L', 'K'),
+  ('BEFGIJKL', 'E', 'J', 'B', 'F', 'I', 'G', 'L', 'K'),
+  ('BEFGHJKL', 'E', 'J', 'B', 'F', 'H', 'G', 'L', 'K'),
+  ('BEFGHIKL', 'E', 'G', 'B', 'F', 'I', 'H', 'L', 'K'),
+  ('BEFGHIJL', 'E', 'J', 'B', 'F', 'H', 'G', 'L', 'I'),
+  ('BEFGHIJK', 'E', 'J', 'B', 'F', 'H', 'G', 'I', 'K'),
+  ('BDGHIJKL', 'H', 'J', 'B', 'D', 'I', 'G', 'L', 'K'),
+  ('BDFHIJKL', 'H', 'J', 'B', 'D', 'I', 'F', 'L', 'K'),
+  ('BDFGIJKL', 'I', 'G', 'B', 'D', 'J', 'F', 'L', 'K'),
+  ('BDFGHJKL', 'H', 'G', 'B', 'D', 'J', 'F', 'L', 'K'),
+  ('BDFGHIKL', 'H', 'G', 'B', 'D', 'I', 'F', 'L', 'K'),
+  ('BDFGHIJL', 'H', 'G', 'B', 'D', 'J', 'F', 'L', 'I'),
+  ('BDFGHIJK', 'H', 'G', 'B', 'D', 'J', 'F', 'I', 'K'),
+  ('BDEHIJKL', 'E', 'J', 'B', 'D', 'I', 'H', 'L', 'K'),
+  ('BDEGIJKL', 'E', 'J', 'B', 'D', 'I', 'G', 'L', 'K'),
+  ('BDEGHJKL', 'E', 'J', 'B', 'D', 'H', 'G', 'L', 'K'),
+  ('BDEGHIKL', 'E', 'G', 'B', 'D', 'I', 'H', 'L', 'K'),
+  ('BDEGHIJL', 'E', 'J', 'B', 'D', 'H', 'G', 'L', 'I'),
+  ('BDEGHIJK', 'E', 'J', 'B', 'D', 'H', 'G', 'I', 'K'),
+  ('BDEFIJKL', 'E', 'J', 'B', 'D', 'I', 'F', 'L', 'K'),
+  ('BDEFHJKL', 'E', 'J', 'B', 'D', 'H', 'F', 'L', 'K'),
+  ('BDEFHIKL', 'E', 'I', 'B', 'D', 'H', 'F', 'L', 'K'),
+  ('BDEFHIJL', 'E', 'J', 'B', 'D', 'H', 'F', 'L', 'I'),
+  ('BDEFHIJK', 'E', 'J', 'B', 'D', 'H', 'F', 'I', 'K'),
+  ('BDEFGJKL', 'E', 'G', 'B', 'D', 'J', 'F', 'L', 'K'),
+  ('BDEFGIKL', 'E', 'G', 'B', 'D', 'I', 'F', 'L', 'K'),
+  ('BDEFGIJL', 'E', 'G', 'B', 'D', 'J', 'F', 'L', 'I'),
+  ('BDEFGIJK', 'E', 'G', 'B', 'D', 'J', 'F', 'I', 'K'),
+  ('BDEFGHKL', 'E', 'G', 'B', 'D', 'H', 'F', 'L', 'K'),
+  ('BDEFGHJL', 'H', 'G', 'B', 'D', 'J', 'F', 'L', 'E'),
+  ('BDEFGHJK', 'H', 'G', 'B', 'D', 'J', 'F', 'E', 'K'),
+  ('BDEFGHIL', 'E', 'G', 'B', 'D', 'H', 'F', 'L', 'I'),
+  ('BDEFGHIK', 'E', 'G', 'B', 'D', 'H', 'F', 'I', 'K'),
+  ('BDEFGHIJ', 'H', 'G', 'B', 'D', 'J', 'F', 'E', 'I'),
+  ('BCGHIJKL', 'H', 'J', 'B', 'C', 'I', 'G', 'L', 'K'),
+  ('BCFHIJKL', 'H', 'J', 'B', 'C', 'I', 'F', 'L', 'K'),
+  ('BCFGIJKL', 'I', 'G', 'B', 'C', 'J', 'F', 'L', 'K'),
+  ('BCFGHJKL', 'H', 'G', 'B', 'C', 'J', 'F', 'L', 'K'),
+  ('BCFGHIKL', 'H', 'G', 'B', 'C', 'I', 'F', 'L', 'K'),
+  ('BCFGHIJL', 'H', 'G', 'B', 'C', 'J', 'F', 'L', 'I'),
+  ('BCFGHIJK', 'H', 'G', 'B', 'C', 'J', 'F', 'I', 'K'),
+  ('BCEHIJKL', 'E', 'J', 'B', 'C', 'I', 'H', 'L', 'K'),
+  ('BCEGIJKL', 'E', 'J', 'B', 'C', 'I', 'G', 'L', 'K'),
+  ('BCEGHJKL', 'E', 'J', 'B', 'C', 'H', 'G', 'L', 'K'),
+  ('BCEGHIKL', 'E', 'G', 'B', 'C', 'I', 'H', 'L', 'K'),
+  ('BCEGHIJL', 'E', 'J', 'B', 'C', 'H', 'G', 'L', 'I'),
+  ('BCEGHIJK', 'E', 'J', 'B', 'C', 'H', 'G', 'I', 'K'),
+  ('BCEFIJKL', 'E', 'J', 'B', 'C', 'I', 'F', 'L', 'K'),
+  ('BCEFHJKL', 'E', 'J', 'B', 'C', 'H', 'F', 'L', 'K'),
+  ('BCEFHIKL', 'E', 'I', 'B', 'C', 'H', 'F', 'L', 'K'),
+  ('BCEFHIJL', 'E', 'J', 'B', 'C', 'H', 'F', 'L', 'I'),
+  ('BCEFHIJK', 'E', 'J', 'B', 'C', 'H', 'F', 'I', 'K'),
+  ('BCEFGJKL', 'E', 'G', 'B', 'C', 'J', 'F', 'L', 'K'),
+  ('BCEFGIKL', 'E', 'G', 'B', 'C', 'I', 'F', 'L', 'K'),
+  ('BCEFGIJL', 'E', 'G', 'B', 'C', 'J', 'F', 'L', 'I'),
+  ('BCEFGIJK', 'E', 'G', 'B', 'C', 'J', 'F', 'I', 'K'),
+  ('BCEFGHKL', 'E', 'G', 'B', 'C', 'H', 'F', 'L', 'K'),
+  ('BCEFGHJL', 'H', 'G', 'B', 'C', 'J', 'F', 'L', 'E'),
+  ('BCEFGHJK', 'H', 'G', 'B', 'C', 'J', 'F', 'E', 'K'),
+  ('BCEFGHIL', 'E', 'G', 'B', 'C', 'H', 'F', 'L', 'I'),
+  ('BCEFGHIK', 'E', 'G', 'B', 'C', 'H', 'F', 'I', 'K'),
+  ('BCEFGHIJ', 'H', 'G', 'B', 'C', 'J', 'F', 'E', 'I'),
+  ('BCDHIJKL', 'H', 'J', 'B', 'C', 'I', 'D', 'L', 'K'),
+  ('BCDGIJKL', 'I', 'G', 'B', 'C', 'J', 'D', 'L', 'K'),
+  ('BCDGHJKL', 'H', 'G', 'B', 'C', 'J', 'D', 'L', 'K'),
+  ('BCDGHIKL', 'H', 'G', 'B', 'C', 'I', 'D', 'L', 'K'),
+  ('BCDGHIJL', 'H', 'G', 'B', 'C', 'J', 'D', 'L', 'I'),
+  ('BCDGHIJK', 'H', 'G', 'B', 'C', 'J', 'D', 'I', 'K'),
+  ('BCDFIJKL', 'C', 'J', 'B', 'D', 'I', 'F', 'L', 'K'),
+  ('BCDFHJKL', 'C', 'J', 'B', 'D', 'H', 'F', 'L', 'K'),
+  ('BCDFHIKL', 'C', 'I', 'B', 'D', 'H', 'F', 'L', 'K'),
+  ('BCDFHIJL', 'C', 'J', 'B', 'D', 'H', 'F', 'L', 'I'),
+  ('BCDFHIJK', 'C', 'J', 'B', 'D', 'H', 'F', 'I', 'K'),
+  ('BCDFGJKL', 'C', 'G', 'B', 'D', 'J', 'F', 'L', 'K'),
+  ('BCDFGIKL', 'C', 'G', 'B', 'D', 'I', 'F', 'L', 'K'),
+  ('BCDFGIJL', 'C', 'G', 'B', 'D', 'J', 'F', 'L', 'I'),
+  ('BCDFGIJK', 'C', 'G', 'B', 'D', 'J', 'F', 'I', 'K'),
+  ('BCDFGHKL', 'C', 'G', 'B', 'D', 'H', 'F', 'L', 'K'),
+  ('BCDFGHJL', 'C', 'G', 'B', 'D', 'H', 'F', 'L', 'J'),
+  ('BCDFGHJK', 'H', 'G', 'B', 'C', 'J', 'F', 'D', 'K'),
+  ('BCDFGHIL', 'C', 'G', 'B', 'D', 'H', 'F', 'L', 'I'),
+  ('BCDFGHIK', 'C', 'G', 'B', 'D', 'H', 'F', 'I', 'K'),
+  ('BCDFGHIJ', 'H', 'G', 'B', 'C', 'J', 'F', 'D', 'I'),
+  ('BCDEIJKL', 'E', 'J', 'B', 'C', 'I', 'D', 'L', 'K'),
+  ('BCDEHJKL', 'E', 'J', 'B', 'C', 'H', 'D', 'L', 'K'),
+  ('BCDEHIKL', 'E', 'I', 'B', 'C', 'H', 'D', 'L', 'K'),
+  ('BCDEHIJL', 'E', 'J', 'B', 'C', 'H', 'D', 'L', 'I'),
+  ('BCDEHIJK', 'E', 'J', 'B', 'C', 'H', 'D', 'I', 'K'),
+  ('BCDEGJKL', 'E', 'G', 'B', 'C', 'J', 'D', 'L', 'K'),
+  ('BCDEGIKL', 'E', 'G', 'B', 'C', 'I', 'D', 'L', 'K'),
+  ('BCDEGIJL', 'E', 'G', 'B', 'C', 'J', 'D', 'L', 'I'),
+  ('BCDEGIJK', 'E', 'G', 'B', 'C', 'J', 'D', 'I', 'K'),
+  ('BCDEGHKL', 'E', 'G', 'B', 'C', 'H', 'D', 'L', 'K'),
+  ('BCDEGHJL', 'H', 'G', 'B', 'C', 'J', 'D', 'L', 'E'),
+  ('BCDEGHJK', 'H', 'G', 'B', 'C', 'J', 'D', 'E', 'K'),
+  ('BCDEGHIL', 'E', 'G', 'B', 'C', 'H', 'D', 'L', 'I'),
+  ('BCDEGHIK', 'E', 'G', 'B', 'C', 'H', 'D', 'I', 'K'),
+  ('BCDEGHIJ', 'H', 'G', 'B', 'C', 'J', 'D', 'E', 'I'),
+  ('BCDEFJKL', 'C', 'J', 'B', 'D', 'E', 'F', 'L', 'K'),
+  ('BCDEFIKL', 'C', 'E', 'B', 'D', 'I', 'F', 'L', 'K'),
+  ('BCDEFIJL', 'C', 'J', 'B', 'D', 'E', 'F', 'L', 'I'),
+  ('BCDEFIJK', 'C', 'J', 'B', 'D', 'E', 'F', 'I', 'K'),
+  ('BCDEFHKL', 'C', 'E', 'B', 'D', 'H', 'F', 'L', 'K'),
+  ('BCDEFHJL', 'C', 'J', 'B', 'D', 'H', 'F', 'L', 'E'),
+  ('BCDEFHJK', 'C', 'J', 'B', 'D', 'H', 'F', 'E', 'K'),
+  ('BCDEFHIL', 'C', 'E', 'B', 'D', 'H', 'F', 'L', 'I'),
+  ('BCDEFHIK', 'C', 'E', 'B', 'D', 'H', 'F', 'I', 'K'),
+  ('BCDEFHIJ', 'C', 'J', 'B', 'D', 'H', 'F', 'E', 'I'),
+  ('BCDEFGKL', 'C', 'G', 'B', 'D', 'E', 'F', 'L', 'K'),
+  ('BCDEFGJL', 'C', 'G', 'B', 'D', 'J', 'F', 'L', 'E'),
+  ('BCDEFGJK', 'C', 'G', 'B', 'D', 'J', 'F', 'E', 'K'),
+  ('BCDEFGIL', 'C', 'G', 'B', 'D', 'E', 'F', 'L', 'I'),
+  ('BCDEFGIK', 'C', 'G', 'B', 'D', 'E', 'F', 'I', 'K'),
+  ('BCDEFGIJ', 'C', 'G', 'B', 'D', 'J', 'F', 'E', 'I'),
+  ('BCDEFGHL', 'C', 'G', 'B', 'D', 'H', 'F', 'L', 'E'),
+  ('BCDEFGHK', 'C', 'G', 'B', 'D', 'H', 'F', 'E', 'K'),
+  ('BCDEFGHJ', 'H', 'G', 'B', 'C', 'J', 'F', 'D', 'E'),
+  ('BCDEFGHI', 'C', 'G', 'B', 'D', 'H', 'F', 'E', 'I'),
+  ('AFGHIJKL', 'H', 'J', 'I', 'F', 'A', 'G', 'L', 'K'),
+  ('AEGHIJKL', 'E', 'J', 'I', 'A', 'H', 'G', 'L', 'K'),
+  ('AEFHIJKL', 'E', 'J', 'I', 'F', 'A', 'H', 'L', 'K'),
+  ('AEFGIJKL', 'E', 'J', 'I', 'F', 'A', 'G', 'L', 'K'),
+  ('AEFGHJKL', 'E', 'G', 'J', 'F', 'A', 'H', 'L', 'K'),
+  ('AEFGHIKL', 'E', 'G', 'I', 'F', 'A', 'H', 'L', 'K'),
+  ('AEFGHIJL', 'E', 'G', 'J', 'F', 'A', 'H', 'L', 'I'),
+  ('AEFGHIJK', 'E', 'G', 'J', 'F', 'A', 'H', 'I', 'K'),
+  ('ADGHIJKL', 'H', 'J', 'I', 'D', 'A', 'G', 'L', 'K'),
+  ('ADFHIJKL', 'H', 'J', 'I', 'D', 'A', 'F', 'L', 'K'),
+  ('ADFGIJKL', 'I', 'G', 'J', 'D', 'A', 'F', 'L', 'K'),
+  ('ADFGHJKL', 'H', 'G', 'J', 'D', 'A', 'F', 'L', 'K'),
+  ('ADFGHIKL', 'H', 'G', 'I', 'D', 'A', 'F', 'L', 'K'),
+  ('ADFGHIJL', 'H', 'G', 'J', 'D', 'A', 'F', 'L', 'I'),
+  ('ADFGHIJK', 'H', 'G', 'J', 'D', 'A', 'F', 'I', 'K'),
+  ('ADEHIJKL', 'E', 'J', 'I', 'D', 'A', 'H', 'L', 'K'),
+  ('ADEGIJKL', 'E', 'J', 'I', 'D', 'A', 'G', 'L', 'K'),
+  ('ADEGHJKL', 'E', 'G', 'J', 'D', 'A', 'H', 'L', 'K'),
+  ('ADEGHIKL', 'E', 'G', 'I', 'D', 'A', 'H', 'L', 'K'),
+  ('ADEGHIJL', 'E', 'G', 'J', 'D', 'A', 'H', 'L', 'I'),
+  ('ADEGHIJK', 'E', 'G', 'J', 'D', 'A', 'H', 'I', 'K'),
+  ('ADEFIJKL', 'E', 'J', 'I', 'D', 'A', 'F', 'L', 'K'),
+  ('ADEFHJKL', 'H', 'J', 'E', 'D', 'A', 'F', 'L', 'K'),
+  ('ADEFHIKL', 'H', 'E', 'I', 'D', 'A', 'F', 'L', 'K'),
+  ('ADEFHIJL', 'H', 'J', 'E', 'D', 'A', 'F', 'L', 'I'),
+  ('ADEFHIJK', 'H', 'J', 'E', 'D', 'A', 'F', 'I', 'K'),
+  ('ADEFGJKL', 'E', 'G', 'J', 'D', 'A', 'F', 'L', 'K'),
+  ('ADEFGIKL', 'E', 'G', 'I', 'D', 'A', 'F', 'L', 'K'),
+  ('ADEFGIJL', 'E', 'G', 'J', 'D', 'A', 'F', 'L', 'I'),
+  ('ADEFGIJK', 'E', 'G', 'J', 'D', 'A', 'F', 'I', 'K'),
+  ('ADEFGHKL', 'H', 'G', 'E', 'D', 'A', 'F', 'L', 'K'),
+  ('ADEFGHJL', 'H', 'G', 'J', 'D', 'A', 'F', 'L', 'E'),
+  ('ADEFGHJK', 'H', 'G', 'J', 'D', 'A', 'F', 'E', 'K'),
+  ('ADEFGHIL', 'H', 'G', 'E', 'D', 'A', 'F', 'L', 'I'),
+  ('ADEFGHIK', 'H', 'G', 'E', 'D', 'A', 'F', 'I', 'K'),
+  ('ADEFGHIJ', 'H', 'G', 'J', 'D', 'A', 'F', 'E', 'I'),
+  ('ACGHIJKL', 'H', 'J', 'I', 'C', 'A', 'G', 'L', 'K'),
+  ('ACFHIJKL', 'H', 'J', 'I', 'C', 'A', 'F', 'L', 'K'),
+  ('ACFGIJKL', 'I', 'G', 'J', 'C', 'A', 'F', 'L', 'K'),
+  ('ACFGHJKL', 'H', 'G', 'J', 'C', 'A', 'F', 'L', 'K'),
+  ('ACFGHIKL', 'H', 'G', 'I', 'C', 'A', 'F', 'L', 'K'),
+  ('ACFGHIJL', 'H', 'G', 'J', 'C', 'A', 'F', 'L', 'I'),
+  ('ACFGHIJK', 'H', 'G', 'J', 'C', 'A', 'F', 'I', 'K'),
+  ('ACEHIJKL', 'E', 'J', 'I', 'C', 'A', 'H', 'L', 'K'),
+  ('ACEGIJKL', 'E', 'J', 'I', 'C', 'A', 'G', 'L', 'K'),
+  ('ACEGHJKL', 'E', 'G', 'J', 'C', 'A', 'H', 'L', 'K'),
+  ('ACEGHIKL', 'E', 'G', 'I', 'C', 'A', 'H', 'L', 'K'),
+  ('ACEGHIJL', 'E', 'G', 'J', 'C', 'A', 'H', 'L', 'I'),
+  ('ACEGHIJK', 'E', 'G', 'J', 'C', 'A', 'H', 'I', 'K'),
+  ('ACEFIJKL', 'E', 'J', 'I', 'C', 'A', 'F', 'L', 'K'),
+  ('ACEFHJKL', 'H', 'J', 'E', 'C', 'A', 'F', 'L', 'K'),
+  ('ACEFHIKL', 'H', 'E', 'I', 'C', 'A', 'F', 'L', 'K'),
+  ('ACEFHIJL', 'H', 'J', 'E', 'C', 'A', 'F', 'L', 'I'),
+  ('ACEFHIJK', 'H', 'J', 'E', 'C', 'A', 'F', 'I', 'K'),
+  ('ACEFGJKL', 'E', 'G', 'J', 'C', 'A', 'F', 'L', 'K'),
+  ('ACEFGIKL', 'E', 'G', 'I', 'C', 'A', 'F', 'L', 'K'),
+  ('ACEFGIJL', 'E', 'G', 'J', 'C', 'A', 'F', 'L', 'I'),
+  ('ACEFGIJK', 'E', 'G', 'J', 'C', 'A', 'F', 'I', 'K'),
+  ('ACEFGHKL', 'H', 'G', 'E', 'C', 'A', 'F', 'L', 'K'),
+  ('ACEFGHJL', 'H', 'G', 'J', 'C', 'A', 'F', 'L', 'E'),
+  ('ACEFGHJK', 'H', 'G', 'J', 'C', 'A', 'F', 'E', 'K'),
+  ('ACEFGHIL', 'H', 'G', 'E', 'C', 'A', 'F', 'L', 'I'),
+  ('ACEFGHIK', 'H', 'G', 'E', 'C', 'A', 'F', 'I', 'K'),
+  ('ACEFGHIJ', 'H', 'G', 'J', 'C', 'A', 'F', 'E', 'I'),
+  ('ACDHIJKL', 'H', 'J', 'I', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDGIJKL', 'I', 'G', 'J', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDGHJKL', 'H', 'G', 'J', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDGHIKL', 'H', 'G', 'I', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDGHIJL', 'H', 'G', 'J', 'C', 'A', 'D', 'L', 'I'),
+  ('ACDGHIJK', 'H', 'G', 'J', 'C', 'A', 'D', 'I', 'K'),
+  ('ACDFIJKL', 'C', 'J', 'I', 'D', 'A', 'F', 'L', 'K'),
+  ('ACDFHJKL', 'H', 'J', 'F', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDFHIKL', 'H', 'F', 'I', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDFHIJL', 'H', 'J', 'F', 'C', 'A', 'D', 'L', 'I'),
+  ('ACDFHIJK', 'H', 'J', 'F', 'C', 'A', 'D', 'I', 'K'),
+  ('ACDFGJKL', 'C', 'G', 'J', 'D', 'A', 'F', 'L', 'K'),
+  ('ACDFGIKL', 'C', 'G', 'I', 'D', 'A', 'F', 'L', 'K'),
+  ('ACDFGIJL', 'C', 'G', 'J', 'D', 'A', 'F', 'L', 'I'),
+  ('ACDFGIJK', 'C', 'G', 'J', 'D', 'A', 'F', 'I', 'K'),
+  ('ACDFGHKL', 'H', 'G', 'F', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDFGHJL', 'C', 'G', 'J', 'D', 'A', 'F', 'L', 'H'),
+  ('ACDFGHJK', 'H', 'G', 'J', 'C', 'A', 'F', 'D', 'K'),
+  ('ACDFGHIL', 'H', 'G', 'F', 'C', 'A', 'D', 'L', 'I'),
+  ('ACDFGHIK', 'H', 'G', 'F', 'C', 'A', 'D', 'I', 'K'),
+  ('ACDFGHIJ', 'H', 'G', 'J', 'C', 'A', 'F', 'D', 'I'),
+  ('ACDEIJKL', 'E', 'J', 'I', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDEHJKL', 'H', 'J', 'E', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDEHIKL', 'H', 'E', 'I', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDEHIJL', 'H', 'J', 'E', 'C', 'A', 'D', 'L', 'I'),
+  ('ACDEHIJK', 'H', 'J', 'E', 'C', 'A', 'D', 'I', 'K'),
+  ('ACDEGJKL', 'E', 'G', 'J', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDEGIKL', 'E', 'G', 'I', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDEGIJL', 'E', 'G', 'J', 'C', 'A', 'D', 'L', 'I'),
+  ('ACDEGIJK', 'E', 'G', 'J', 'C', 'A', 'D', 'I', 'K'),
+  ('ACDEGHKL', 'H', 'G', 'E', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDEGHJL', 'H', 'G', 'J', 'C', 'A', 'D', 'L', 'E'),
+  ('ACDEGHJK', 'H', 'G', 'J', 'C', 'A', 'D', 'E', 'K'),
+  ('ACDEGHIL', 'H', 'G', 'E', 'C', 'A', 'D', 'L', 'I'),
+  ('ACDEGHIK', 'H', 'G', 'E', 'C', 'A', 'D', 'I', 'K'),
+  ('ACDEGHIJ', 'H', 'G', 'J', 'C', 'A', 'D', 'E', 'I'),
+  ('ACDEFJKL', 'C', 'J', 'E', 'D', 'A', 'F', 'L', 'K'),
+  ('ACDEFIKL', 'C', 'E', 'I', 'D', 'A', 'F', 'L', 'K'),
+  ('ACDEFIJL', 'C', 'J', 'E', 'D', 'A', 'F', 'L', 'I'),
+  ('ACDEFIJK', 'C', 'J', 'E', 'D', 'A', 'F', 'I', 'K'),
+  ('ACDEFHKL', 'H', 'E', 'F', 'C', 'A', 'D', 'L', 'K'),
+  ('ACDEFHJL', 'H', 'J', 'F', 'C', 'A', 'D', 'L', 'E'),
+  ('ACDEFHJK', 'H', 'J', 'E', 'C', 'A', 'F', 'D', 'K'),
+  ('ACDEFHIL', 'H', 'E', 'F', 'C', 'A', 'D', 'L', 'I'),
+  ('ACDEFHIK', 'H', 'E', 'F', 'C', 'A', 'D', 'I', 'K'),
+  ('ACDEFHIJ', 'H', 'J', 'E', 'C', 'A', 'F', 'D', 'I'),
+  ('ACDEFGKL', 'C', 'G', 'E', 'D', 'A', 'F', 'L', 'K'),
+  ('ACDEFGJL', 'C', 'G', 'J', 'D', 'A', 'F', 'L', 'E'),
+  ('ACDEFGJK', 'C', 'G', 'J', 'D', 'A', 'F', 'E', 'K'),
+  ('ACDEFGIL', 'C', 'G', 'E', 'D', 'A', 'F', 'L', 'I'),
+  ('ACDEFGIK', 'C', 'G', 'E', 'D', 'A', 'F', 'I', 'K'),
+  ('ACDEFGIJ', 'C', 'G', 'J', 'D', 'A', 'F', 'E', 'I'),
+  ('ACDEFGHL', 'H', 'G', 'F', 'C', 'A', 'D', 'L', 'E'),
+  ('ACDEFGHK', 'H', 'G', 'E', 'C', 'A', 'F', 'D', 'K'),
+  ('ACDEFGHJ', 'H', 'G', 'J', 'C', 'A', 'F', 'D', 'E'),
+  ('ACDEFGHI', 'H', 'G', 'E', 'C', 'A', 'F', 'D', 'I'),
+  ('ABGHIJKL', 'H', 'J', 'B', 'A', 'I', 'G', 'L', 'K'),
+  ('ABFHIJKL', 'H', 'J', 'B', 'A', 'I', 'F', 'L', 'K'),
+  ('ABFGIJKL', 'I', 'J', 'B', 'F', 'A', 'G', 'L', 'K'),
+  ('ABFGHJKL', 'H', 'J', 'B', 'F', 'A', 'G', 'L', 'K'),
+  ('ABFGHIKL', 'H', 'G', 'B', 'A', 'I', 'F', 'L', 'K'),
+  ('ABFGHIJL', 'H', 'J', 'B', 'F', 'A', 'G', 'L', 'I'),
+  ('ABFGHIJK', 'H', 'J', 'B', 'F', 'A', 'G', 'I', 'K'),
+  ('ABEHIJKL', 'E', 'J', 'B', 'A', 'I', 'H', 'L', 'K'),
+  ('ABEGIJKL', 'E', 'J', 'B', 'A', 'I', 'G', 'L', 'K'),
+  ('ABEGHJKL', 'E', 'J', 'B', 'A', 'H', 'G', 'L', 'K'),
+  ('ABEGHIKL', 'E', 'G', 'B', 'A', 'I', 'H', 'L', 'K'),
+  ('ABEGHIJL', 'E', 'J', 'B', 'A', 'H', 'G', 'L', 'I'),
+  ('ABEGHIJK', 'E', 'J', 'B', 'A', 'H', 'G', 'I', 'K'),
+  ('ABEFIJKL', 'E', 'J', 'B', 'A', 'I', 'F', 'L', 'K'),
+  ('ABEFHJKL', 'E', 'J', 'B', 'F', 'A', 'H', 'L', 'K'),
+  ('ABEFHIKL', 'E', 'I', 'B', 'F', 'A', 'H', 'L', 'K'),
+  ('ABEFHIJL', 'E', 'J', 'B', 'F', 'A', 'H', 'L', 'I'),
+  ('ABEFHIJK', 'E', 'J', 'B', 'F', 'A', 'H', 'I', 'K'),
+  ('ABEFGJKL', 'E', 'J', 'B', 'F', 'A', 'G', 'L', 'K'),
+  ('ABEFGIKL', 'E', 'G', 'B', 'A', 'I', 'F', 'L', 'K'),
+  ('ABEFGIJL', 'E', 'J', 'B', 'F', 'A', 'G', 'L', 'I'),
+  ('ABEFGIJK', 'E', 'J', 'B', 'F', 'A', 'G', 'I', 'K'),
+  ('ABEFGHKL', 'E', 'G', 'B', 'F', 'A', 'H', 'L', 'K'),
+  ('ABEFGHJL', 'H', 'J', 'B', 'F', 'A', 'G', 'L', 'E'),
+  ('ABEFGHJK', 'H', 'J', 'B', 'F', 'A', 'G', 'E', 'K'),
+  ('ABEFGHIL', 'E', 'G', 'B', 'F', 'A', 'H', 'L', 'I'),
+  ('ABEFGHIK', 'E', 'G', 'B', 'F', 'A', 'H', 'I', 'K'),
+  ('ABEFGHIJ', 'H', 'J', 'B', 'F', 'A', 'G', 'E', 'I'),
+  ('ABDHIJKL', 'I', 'J', 'B', 'D', 'A', 'H', 'L', 'K'),
+  ('ABDGIJKL', 'I', 'J', 'B', 'D', 'A', 'G', 'L', 'K'),
+  ('ABDGHJKL', 'H', 'J', 'B', 'D', 'A', 'G', 'L', 'K'),
+  ('ABDGHIKL', 'I', 'G', 'B', 'D', 'A', 'H', 'L', 'K'),
+  ('ABDGHIJL', 'H', 'J', 'B', 'D', 'A', 'G', 'L', 'I'),
+  ('ABDGHIJK', 'H', 'J', 'B', 'D', 'A', 'G', 'I', 'K'),
+  ('ABDFIJKL', 'I', 'J', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDFHJKL', 'H', 'J', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDFHIKL', 'H', 'I', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDFHIJL', 'H', 'J', 'B', 'D', 'A', 'F', 'L', 'I'),
+  ('ABDFHIJK', 'H', 'J', 'B', 'D', 'A', 'F', 'I', 'K'),
+  ('ABDFGJKL', 'F', 'J', 'B', 'D', 'A', 'G', 'L', 'K'),
+  ('ABDFGIKL', 'I', 'G', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDFGIJL', 'F', 'J', 'B', 'D', 'A', 'G', 'L', 'I'),
+  ('ABDFGIJK', 'F', 'J', 'B', 'D', 'A', 'G', 'I', 'K'),
+  ('ABDFGHKL', 'H', 'G', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDFGHJL', 'H', 'G', 'B', 'D', 'A', 'F', 'L', 'J'),
+  ('ABDFGHJK', 'H', 'G', 'B', 'D', 'A', 'F', 'J', 'K'),
+  ('ABDFGHIL', 'H', 'G', 'B', 'D', 'A', 'F', 'L', 'I'),
+  ('ABDFGHIK', 'H', 'G', 'B', 'D', 'A', 'F', 'I', 'K'),
+  ('ABDFGHIJ', 'H', 'G', 'B', 'D', 'A', 'F', 'I', 'J'),
+  ('ABDEIJKL', 'E', 'J', 'B', 'A', 'I', 'D', 'L', 'K'),
+  ('ABDEHJKL', 'E', 'J', 'B', 'D', 'A', 'H', 'L', 'K'),
+  ('ABDEHIKL', 'E', 'I', 'B', 'D', 'A', 'H', 'L', 'K'),
+  ('ABDEHIJL', 'E', 'J', 'B', 'D', 'A', 'H', 'L', 'I'),
+  ('ABDEHIJK', 'E', 'J', 'B', 'D', 'A', 'H', 'I', 'K'),
+  ('ABDEGJKL', 'E', 'J', 'B', 'D', 'A', 'G', 'L', 'K'),
+  ('ABDEGIKL', 'E', 'G', 'B', 'A', 'I', 'D', 'L', 'K'),
+  ('ABDEGIJL', 'E', 'J', 'B', 'D', 'A', 'G', 'L', 'I'),
+  ('ABDEGIJK', 'E', 'J', 'B', 'D', 'A', 'G', 'I', 'K'),
+  ('ABDEGHKL', 'E', 'G', 'B', 'D', 'A', 'H', 'L', 'K'),
+  ('ABDEGHJL', 'H', 'J', 'B', 'D', 'A', 'G', 'L', 'E'),
+  ('ABDEGHJK', 'H', 'J', 'B', 'D', 'A', 'G', 'E', 'K'),
+  ('ABDEGHIL', 'E', 'G', 'B', 'D', 'A', 'H', 'L', 'I'),
+  ('ABDEGHIK', 'E', 'G', 'B', 'D', 'A', 'H', 'I', 'K'),
+  ('ABDEGHIJ', 'H', 'J', 'B', 'D', 'A', 'G', 'E', 'I'),
+  ('ABDEFJKL', 'E', 'J', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDEFIKL', 'E', 'I', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDEFIJL', 'E', 'J', 'B', 'D', 'A', 'F', 'L', 'I'),
+  ('ABDEFIJK', 'E', 'J', 'B', 'D', 'A', 'F', 'I', 'K'),
+  ('ABDEFHKL', 'H', 'E', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDEFHJL', 'H', 'J', 'B', 'D', 'A', 'F', 'L', 'E'),
+  ('ABDEFHJK', 'H', 'J', 'B', 'D', 'A', 'F', 'E', 'K'),
+  ('ABDEFHIL', 'H', 'E', 'B', 'D', 'A', 'F', 'L', 'I'),
+  ('ABDEFHIK', 'H', 'E', 'B', 'D', 'A', 'F', 'I', 'K'),
+  ('ABDEFHIJ', 'H', 'J', 'B', 'D', 'A', 'F', 'E', 'I'),
+  ('ABDEFGKL', 'E', 'G', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABDEFGJL', 'E', 'G', 'B', 'D', 'A', 'F', 'L', 'J'),
+  ('ABDEFGJK', 'E', 'G', 'B', 'D', 'A', 'F', 'J', 'K'),
+  ('ABDEFGIL', 'E', 'G', 'B', 'D', 'A', 'F', 'L', 'I'),
+  ('ABDEFGIK', 'E', 'G', 'B', 'D', 'A', 'F', 'I', 'K'),
+  ('ABDEFGIJ', 'E', 'G', 'B', 'D', 'A', 'F', 'I', 'J'),
+  ('ABDEFGHL', 'H', 'G', 'B', 'D', 'A', 'F', 'L', 'E'),
+  ('ABDEFGHK', 'H', 'G', 'B', 'D', 'A', 'F', 'E', 'K'),
+  ('ABDEFGHJ', 'H', 'G', 'B', 'D', 'A', 'F', 'E', 'J'),
+  ('ABDEFGHI', 'H', 'G', 'B', 'D', 'A', 'F', 'E', 'I'),
+  ('ABCHIJKL', 'I', 'J', 'B', 'C', 'A', 'H', 'L', 'K'),
+  ('ABCGIJKL', 'I', 'J', 'B', 'C', 'A', 'G', 'L', 'K'),
+  ('ABCGHJKL', 'H', 'J', 'B', 'C', 'A', 'G', 'L', 'K'),
+  ('ABCGHIKL', 'I', 'G', 'B', 'C', 'A', 'H', 'L', 'K'),
+  ('ABCGHIJL', 'H', 'J', 'B', 'C', 'A', 'G', 'L', 'I'),
+  ('ABCGHIJK', 'H', 'J', 'B', 'C', 'A', 'G', 'I', 'K'),
+  ('ABCFIJKL', 'I', 'J', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCFHJKL', 'H', 'J', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCFHIKL', 'H', 'I', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCFHIJL', 'H', 'J', 'B', 'C', 'A', 'F', 'L', 'I'),
+  ('ABCFHIJK', 'H', 'J', 'B', 'C', 'A', 'F', 'I', 'K'),
+  ('ABCFGJKL', 'C', 'J', 'B', 'F', 'A', 'G', 'L', 'K'),
+  ('ABCFGIKL', 'I', 'G', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCFGIJL', 'C', 'J', 'B', 'F', 'A', 'G', 'L', 'I'),
+  ('ABCFGIJK', 'C', 'J', 'B', 'F', 'A', 'G', 'I', 'K'),
+  ('ABCFGHKL', 'H', 'G', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCFGHJL', 'H', 'G', 'B', 'C', 'A', 'F', 'L', 'J'),
+  ('ABCFGHJK', 'H', 'G', 'B', 'C', 'A', 'F', 'J', 'K'),
+  ('ABCFGHIL', 'H', 'G', 'B', 'C', 'A', 'F', 'L', 'I'),
+  ('ABCFGHIK', 'H', 'G', 'B', 'C', 'A', 'F', 'I', 'K'),
+  ('ABCFGHIJ', 'H', 'G', 'B', 'C', 'A', 'F', 'I', 'J'),
+  ('ABCEIJKL', 'E', 'J', 'B', 'A', 'I', 'C', 'L', 'K'),
+  ('ABCEHJKL', 'E', 'J', 'B', 'C', 'A', 'H', 'L', 'K'),
+  ('ABCEHIKL', 'E', 'I', 'B', 'C', 'A', 'H', 'L', 'K'),
+  ('ABCEHIJL', 'E', 'J', 'B', 'C', 'A', 'H', 'L', 'I'),
+  ('ABCEHIJK', 'E', 'J', 'B', 'C', 'A', 'H', 'I', 'K'),
+  ('ABCEGJKL', 'E', 'J', 'B', 'C', 'A', 'G', 'L', 'K'),
+  ('ABCEGIKL', 'E', 'G', 'B', 'A', 'I', 'C', 'L', 'K'),
+  ('ABCEGIJL', 'E', 'J', 'B', 'C', 'A', 'G', 'L', 'I'),
+  ('ABCEGIJK', 'E', 'J', 'B', 'C', 'A', 'G', 'I', 'K'),
+  ('ABCEGHKL', 'E', 'G', 'B', 'C', 'A', 'H', 'L', 'K'),
+  ('ABCEGHJL', 'H', 'J', 'B', 'C', 'A', 'G', 'L', 'E'),
+  ('ABCEGHJK', 'H', 'J', 'B', 'C', 'A', 'G', 'E', 'K'),
+  ('ABCEGHIL', 'E', 'G', 'B', 'C', 'A', 'H', 'L', 'I'),
+  ('ABCEGHIK', 'E', 'G', 'B', 'C', 'A', 'H', 'I', 'K'),
+  ('ABCEGHIJ', 'H', 'J', 'B', 'C', 'A', 'G', 'E', 'I'),
+  ('ABCEFJKL', 'E', 'J', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCEFIKL', 'E', 'I', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCEFIJL', 'E', 'J', 'B', 'C', 'A', 'F', 'L', 'I'),
+  ('ABCEFIJK', 'E', 'J', 'B', 'C', 'A', 'F', 'I', 'K'),
+  ('ABCEFHKL', 'H', 'E', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCEFHJL', 'H', 'J', 'B', 'C', 'A', 'F', 'L', 'E'),
+  ('ABCEFHJK', 'H', 'J', 'B', 'C', 'A', 'F', 'E', 'K'),
+  ('ABCEFHIL', 'H', 'E', 'B', 'C', 'A', 'F', 'L', 'I'),
+  ('ABCEFHIK', 'H', 'E', 'B', 'C', 'A', 'F', 'I', 'K'),
+  ('ABCEFHIJ', 'H', 'J', 'B', 'C', 'A', 'F', 'E', 'I'),
+  ('ABCEFGKL', 'E', 'G', 'B', 'C', 'A', 'F', 'L', 'K'),
+  ('ABCEFGJL', 'E', 'G', 'B', 'C', 'A', 'F', 'L', 'J'),
+  ('ABCEFGJK', 'E', 'G', 'B', 'C', 'A', 'F', 'J', 'K'),
+  ('ABCEFGIL', 'E', 'G', 'B', 'C', 'A', 'F', 'L', 'I'),
+  ('ABCEFGIK', 'E', 'G', 'B', 'C', 'A', 'F', 'I', 'K'),
+  ('ABCEFGIJ', 'E', 'G', 'B', 'C', 'A', 'F', 'I', 'J'),
+  ('ABCEFGHL', 'H', 'G', 'B', 'C', 'A', 'F', 'L', 'E'),
+  ('ABCEFGHK', 'H', 'G', 'B', 'C', 'A', 'F', 'E', 'K'),
+  ('ABCEFGHJ', 'H', 'G', 'B', 'C', 'A', 'F', 'E', 'J'),
+  ('ABCEFGHI', 'H', 'G', 'B', 'C', 'A', 'F', 'E', 'I'),
+  ('ABCDIJKL', 'I', 'J', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDHJKL', 'H', 'J', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDHIKL', 'H', 'I', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDHIJL', 'H', 'J', 'B', 'C', 'A', 'D', 'L', 'I'),
+  ('ABCDHIJK', 'H', 'J', 'B', 'C', 'A', 'D', 'I', 'K'),
+  ('ABCDGJKL', 'C', 'J', 'B', 'D', 'A', 'G', 'L', 'K'),
+  ('ABCDGIKL', 'I', 'G', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDGIJL', 'C', 'J', 'B', 'D', 'A', 'G', 'L', 'I'),
+  ('ABCDGIJK', 'C', 'J', 'B', 'D', 'A', 'G', 'I', 'K'),
+  ('ABCDGHKL', 'H', 'G', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDGHJL', 'H', 'G', 'B', 'C', 'A', 'D', 'L', 'J'),
+  ('ABCDGHJK', 'H', 'G', 'B', 'C', 'A', 'D', 'J', 'K'),
+  ('ABCDGHIL', 'H', 'G', 'B', 'C', 'A', 'D', 'L', 'I'),
+  ('ABCDGHIK', 'H', 'G', 'B', 'C', 'A', 'D', 'I', 'K'),
+  ('ABCDGHIJ', 'H', 'G', 'B', 'C', 'A', 'D', 'I', 'J'),
+  ('ABCDFJKL', 'C', 'J', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABCDFIKL', 'C', 'I', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABCDFIJL', 'C', 'J', 'B', 'D', 'A', 'F', 'L', 'I'),
+  ('ABCDFIJK', 'C', 'J', 'B', 'D', 'A', 'F', 'I', 'K'),
+  ('ABCDFHKL', 'H', 'F', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDFHJL', 'C', 'J', 'B', 'D', 'A', 'F', 'L', 'H'),
+  ('ABCDFHJK', 'H', 'J', 'B', 'C', 'A', 'F', 'D', 'K'),
+  ('ABCDFHIL', 'H', 'F', 'B', 'C', 'A', 'D', 'L', 'I'),
+  ('ABCDFHIK', 'H', 'F', 'B', 'C', 'A', 'D', 'I', 'K'),
+  ('ABCDFHIJ', 'H', 'J', 'B', 'C', 'A', 'F', 'D', 'I'),
+  ('ABCDFGKL', 'C', 'G', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABCDFGJL', 'C', 'G', 'B', 'D', 'A', 'F', 'L', 'J'),
+  ('ABCDFGJK', 'C', 'G', 'B', 'D', 'A', 'F', 'J', 'K'),
+  ('ABCDFGIL', 'C', 'G', 'B', 'D', 'A', 'F', 'L', 'I'),
+  ('ABCDFGIK', 'C', 'G', 'B', 'D', 'A', 'F', 'I', 'K'),
+  ('ABCDFGIJ', 'C', 'G', 'B', 'D', 'A', 'F', 'I', 'J'),
+  ('ABCDFGHL', 'C', 'G', 'B', 'D', 'A', 'F', 'L', 'H'),
+  ('ABCDFGHK', 'H', 'G', 'B', 'C', 'A', 'F', 'D', 'K'),
+  ('ABCDFGHJ', 'H', 'G', 'B', 'C', 'A', 'F', 'D', 'J'),
+  ('ABCDFGHI', 'H', 'G', 'B', 'C', 'A', 'F', 'D', 'I'),
+  ('ABCDEJKL', 'E', 'J', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDEIKL', 'E', 'I', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDEIJL', 'E', 'J', 'B', 'C', 'A', 'D', 'L', 'I'),
+  ('ABCDEIJK', 'E', 'J', 'B', 'C', 'A', 'D', 'I', 'K'),
+  ('ABCDEHKL', 'H', 'E', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDEHJL', 'H', 'J', 'B', 'C', 'A', 'D', 'L', 'E'),
+  ('ABCDEHJK', 'H', 'J', 'B', 'C', 'A', 'D', 'E', 'K'),
+  ('ABCDEHIL', 'H', 'E', 'B', 'C', 'A', 'D', 'L', 'I'),
+  ('ABCDEHIK', 'H', 'E', 'B', 'C', 'A', 'D', 'I', 'K'),
+  ('ABCDEHIJ', 'H', 'J', 'B', 'C', 'A', 'D', 'E', 'I'),
+  ('ABCDEGKL', 'E', 'G', 'B', 'C', 'A', 'D', 'L', 'K'),
+  ('ABCDEGJL', 'E', 'G', 'B', 'C', 'A', 'D', 'L', 'J'),
+  ('ABCDEGJK', 'E', 'G', 'B', 'C', 'A', 'D', 'J', 'K'),
+  ('ABCDEGIL', 'E', 'G', 'B', 'C', 'A', 'D', 'L', 'I'),
+  ('ABCDEGIK', 'E', 'G', 'B', 'C', 'A', 'D', 'I', 'K'),
+  ('ABCDEGIJ', 'E', 'G', 'B', 'C', 'A', 'D', 'I', 'J'),
+  ('ABCDEGHL', 'H', 'G', 'B', 'C', 'A', 'D', 'L', 'E'),
+  ('ABCDEGHK', 'H', 'G', 'B', 'C', 'A', 'D', 'E', 'K'),
+  ('ABCDEGHJ', 'H', 'G', 'B', 'C', 'A', 'D', 'E', 'J'),
+  ('ABCDEGHI', 'H', 'G', 'B', 'C', 'A', 'D', 'E', 'I'),
+  ('ABCDEFKL', 'C', 'E', 'B', 'D', 'A', 'F', 'L', 'K'),
+  ('ABCDEFJL', 'C', 'J', 'B', 'D', 'A', 'F', 'L', 'E'),
+  ('ABCDEFJK', 'C', 'J', 'B', 'D', 'A', 'F', 'E', 'K'),
+  ('ABCDEFIL', 'C', 'E', 'B', 'D', 'A', 'F', 'L', 'I'),
+  ('ABCDEFIK', 'C', 'E', 'B', 'D', 'A', 'F', 'I', 'K'),
+  ('ABCDEFIJ', 'C', 'J', 'B', 'D', 'A', 'F', 'E', 'I'),
+  ('ABCDEFHL', 'H', 'F', 'B', 'C', 'A', 'D', 'L', 'E'),
+  ('ABCDEFHK', 'H', 'E', 'B', 'C', 'A', 'F', 'D', 'K'),
+  ('ABCDEFHJ', 'H', 'J', 'B', 'C', 'A', 'F', 'D', 'E'),
+  ('ABCDEFHI', 'H', 'E', 'B', 'C', 'A', 'F', 'D', 'I'),
+  ('ABCDEFGL', 'C', 'G', 'B', 'D', 'A', 'F', 'L', 'E'),
+  ('ABCDEFGK', 'C', 'G', 'B', 'D', 'A', 'F', 'E', 'K'),
+  ('ABCDEFGJ', 'C', 'G', 'B', 'D', 'A', 'F', 'E', 'J'),
+  ('ABCDEFGI', 'C', 'G', 'B', 'D', 'A', 'F', 'E', 'I'),
+  ('ABCDEFGH', 'H', 'G', 'B', 'C', 'A', 'F', 'D', 'E')
+on conflict (qualified_groups) do update
+set winner_a_opponent_group = excluded.winner_a_opponent_group,
+    winner_b_opponent_group = excluded.winner_b_opponent_group,
+    winner_d_opponent_group = excluded.winner_d_opponent_group,
+    winner_e_opponent_group = excluded.winner_e_opponent_group,
+    winner_g_opponent_group = excluded.winner_g_opponent_group,
+    winner_i_opponent_group = excluded.winner_i_opponent_group,
+    winner_k_opponent_group = excluded.winner_k_opponent_group,
+    winner_l_opponent_group = excluded.winner_l_opponent_group;
+
+create or replace function public.worldcup_group_key(p_group_name text)
+returns text
+language sql
+immutable
+as $$
+  select nullif(substring(regexp_replace(upper(trim(coalesce(p_group_name, ''))), '^GROUP[\s_-]*', '') from '^[A-L]'), '');
+$$;
+
+create or replace function public.group_stage_standings()
+returns table (
+  group_name text,
+  team_id bigint,
+  team_name text,
+  team_code text,
+  played integer,
+  wins integer,
+  draws integer,
+  losses integer,
+  goals_for integer,
+  goals_against integer,
+  goal_difference integer,
+  points integer,
+  h2h_points integer,
+  h2h_goal_difference integer,
+  h2h_goals_for integer,
+  fair_play_points integer,
+  group_rank integer
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with team_groups as (
+    select
+      t.id,
+      t.name,
+      t.code,
+      t.fifa_rank,
+      public.worldcup_group_key(t.group_name) as group_name
+    from public.teams t
+    where public.worldcup_group_key(t.group_name) is not null
+  ),
+  completed_matches as (
+    select
+      public.worldcup_group_key(m.group_name) as group_name,
+      m.home_team_id,
+      m.away_team_id,
+      m.home_score,
+      m.away_score,
+      coalesce(ms.yellow_cards_home, 0) as yellow_cards_home,
+      coalesce(ms.yellow_cards_away, 0) as yellow_cards_away,
+      coalesce(ms.red_cards_home, 0) as red_cards_home,
+      coalesce(ms.red_cards_away, 0) as red_cards_away
+    from public.matches m
+    left join public.match_stats ms on ms.match_id = m.id
+    where public.worldcup_group_key(m.group_name) is not null
+      and m.status in ('FT', 'AET', 'PEN', 'FT_PEN')
+      and m.home_score is not null
+      and m.away_score is not null
+  ),
+  team_match_rows as (
+    select
+      group_name,
+      home_team_id as team_id,
+      away_team_id as opponent_team_id,
+      home_score as gf,
+      away_score as ga,
+      case when home_score > away_score then 3 when home_score = away_score then 1 else 0 end as points,
+      -(yellow_cards_home + red_cards_home * 3) as fair_play_points
+    from completed_matches
+    union all
+    select
+      group_name,
+      away_team_id as team_id,
+      home_team_id as opponent_team_id,
+      away_score as gf,
+      home_score as ga,
+      case when away_score > home_score then 3 when away_score = home_score then 1 else 0 end as points,
+      -(yellow_cards_away + red_cards_away * 3) as fair_play_points
+    from completed_matches
+  ),
+  totals as (
+    select
+      tg.group_name,
+      tg.id as team_id,
+      tg.name as team_name,
+      tg.code as team_code,
+      tg.fifa_rank,
+      count(tmr.team_id)::integer as played,
+      coalesce(sum((tmr.gf > tmr.ga)::integer), 0)::integer as wins,
+      coalesce(sum((tmr.gf = tmr.ga)::integer), 0)::integer as draws,
+      coalesce(sum((tmr.gf < tmr.ga)::integer), 0)::integer as losses,
+      coalesce(sum(tmr.gf), 0)::integer as goals_for,
+      coalesce(sum(tmr.ga), 0)::integer as goals_against,
+      coalesce(sum(tmr.gf - tmr.ga), 0)::integer as goal_difference,
+      coalesce(sum(tmr.points), 0)::integer as points,
+      coalesce(sum(tmr.fair_play_points), 0)::integer as fair_play_points
+    from team_groups tg
+    left join team_match_rows tmr on tmr.team_id = tg.id and tmr.group_name = tg.group_name
+    group by tg.group_name, tg.id, tg.name, tg.code, tg.fifa_rank
+  ),
+  tie_sets as (
+    select
+      totals.*,
+      count(*) over (partition by group_name, points, goal_difference, goals_for) as tie_count
+    from totals
+  ),
+  h2h as (
+    select
+      ts.group_name,
+      ts.team_id,
+      coalesce(sum(tmr.points), 0)::integer as h2h_points,
+      coalesce(sum(tmr.gf - tmr.ga), 0)::integer as h2h_goal_difference,
+      coalesce(sum(tmr.gf), 0)::integer as h2h_goals_for
+    from tie_sets ts
+    left join team_match_rows tmr on tmr.group_name = ts.group_name and tmr.team_id = ts.team_id
+    left join tie_sets opp on opp.group_name = ts.group_name
+      and opp.team_id = tmr.opponent_team_id
+      and opp.points = ts.points
+      and opp.goal_difference = ts.goal_difference
+      and opp.goals_for = ts.goals_for
+    where ts.tie_count > 1 and opp.team_id is not null
+    group by ts.group_name, ts.team_id
+  )
+  select
+    ts.group_name,
+    ts.team_id,
+    ts.team_name,
+    ts.team_code,
+    ts.played,
+    ts.wins,
+    ts.draws,
+    ts.losses,
+    ts.goals_for,
+    ts.goals_against,
+    ts.goal_difference,
+    ts.points,
+    coalesce(h2h.h2h_points, 0) as h2h_points,
+    coalesce(h2h.h2h_goal_difference, 0) as h2h_goal_difference,
+    coalesce(h2h.h2h_goals_for, 0) as h2h_goals_for,
+    ts.fair_play_points,
+    row_number() over (
+      partition by ts.group_name
+      order by
+        ts.points desc,
+        ts.goal_difference desc,
+        ts.goals_for desc,
+        case when ts.tie_count > 1 then coalesce(h2h.h2h_points, 0) else 0 end desc,
+        case when ts.tie_count > 1 then coalesce(h2h.h2h_goal_difference, 0) else 0 end desc,
+        case when ts.tie_count > 1 then coalesce(h2h.h2h_goals_for, 0) else 0 end desc,
+        ts.fair_play_points desc,
+        ts.fifa_rank asc nulls last,
+        ts.team_name asc,
+        ts.team_id asc
+    )::integer as group_rank
+  from tie_sets ts
+  left join h2h on h2h.group_name = ts.group_name and h2h.team_id = ts.team_id;
+$$;
+
+create or replace function public.group_stage_complete()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select count(*) >= 72
+    and count(*) filter (
+      where status not in ('FT', 'AET', 'PEN', 'FT_PEN')
+        or home_score is null
+        or away_score is null
+    ) = 0
+  from public.matches
+  where public.worldcup_group_key(group_name) is not null;
 $$;
 
 create or replace function public.ensure_bracket_match(p_match_no integer)
@@ -2397,6 +3141,165 @@ begin
 
   perform public.ensure_default_markets_for_match(v_match_id);
   return v_match_id;
+end;
+$$;
+
+create or replace function public.allocate_round_of_32_bracket()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_path public.bracket_third_place_paths%rowtype;
+  v_third_groups text;
+  v_updated integer := 0;
+  v_created integer := 0;
+  v_match_no integer;
+begin
+  if not (public.is_admin() or auth.role() = 'service_role') then
+    raise exception 'admin role required';
+  end if;
+
+  if not public.group_stage_complete() then
+    return 0;
+  end if;
+
+  select string_agg(group_name, '' order by group_name)
+  into v_third_groups
+  from (
+    select group_name
+    from public.group_stage_standings()
+    where group_rank = 3
+    order by points desc, goal_difference desc, goals_for desc, fair_play_points desc, team_name asc, team_id asc
+    limit 8
+  ) third_teams;
+
+  if v_third_groups is null or length(v_third_groups) <> 8 then
+    return 0;
+  end if;
+
+  select * into v_path
+  from public.bracket_third_place_paths
+  where qualified_groups = v_third_groups;
+
+  if not found then
+    raise exception 'third-place bracket path not found for groups %', v_third_groups;
+  end if;
+
+  with standings as (
+    select * from public.group_stage_standings()
+  ),
+  third_qualified as (
+    select group_name, team_id, team_name
+    from standings
+    where group_rank = 3
+    order by points desc, goal_difference desc, goals_for desc, fair_play_points desc, team_name asc, team_id asc
+    limit 8
+  ),
+  fixed_slots(match_no, slot, group_name, group_rank) as (
+    values
+      (73, 'home', 'A', 2), (73, 'away', 'B', 2),
+      (74, 'home', 'E', 1),
+      (75, 'home', 'F', 1), (75, 'away', 'C', 2),
+      (76, 'home', 'C', 1), (76, 'away', 'F', 2),
+      (77, 'home', 'I', 1),
+      (78, 'home', 'E', 2), (78, 'away', 'I', 2),
+      (79, 'home', 'A', 1),
+      (80, 'home', 'L', 1),
+      (81, 'home', 'D', 1),
+      (82, 'home', 'G', 1),
+      (83, 'home', 'K', 2), (83, 'away', 'L', 2),
+      (84, 'home', 'H', 1), (84, 'away', 'J', 2),
+      (85, 'home', 'B', 1),
+      (86, 'home', 'J', 1), (86, 'away', 'H', 2),
+      (87, 'home', 'K', 1),
+      (88, 'home', 'D', 2), (88, 'away', 'G', 2)
+  ),
+  third_slots(match_no, slot, group_name, group_rank) as (
+    values
+      (79, 'away', v_path.winner_a_opponent_group, 3),
+      (85, 'away', v_path.winner_b_opponent_group, 3),
+      (81, 'away', v_path.winner_d_opponent_group, 3),
+      (74, 'away', v_path.winner_e_opponent_group, 3),
+      (82, 'away', v_path.winner_g_opponent_group, 3),
+      (77, 'away', v_path.winner_i_opponent_group, 3),
+      (87, 'away', v_path.winner_k_opponent_group, 3),
+      (80, 'away', v_path.winner_l_opponent_group, 3)
+  ),
+  slot_updates as (
+    select * from fixed_slots
+    union all
+    select * from third_slots
+  ),
+  resolved_slots as (
+    select
+      su.match_no,
+      su.slot,
+      coalesce(s.team_id, tq.team_id) as team_id,
+      coalesce(s.team_name, tq.team_name) as team_name
+    from slot_updates su
+    left join standings s on s.group_name = su.group_name and s.group_rank = su.group_rank and su.group_rank <> 3
+    left join third_qualified tq on tq.group_name = su.group_name and su.group_rank = 3
+  ),
+  match_updates as (
+    select
+      match_no,
+      max(team_id) filter (where slot = 'home') as home_team_id,
+      max(team_id) filter (where slot = 'away') as away_team_id,
+      max(team_name) filter (where slot = 'home') as home_label,
+      max(team_name) filter (where slot = 'away') as away_label
+    from resolved_slots
+    group by match_no
+    having count(*) = 2 and count(team_id) = 2
+  )
+  update public.bracket_matches bm
+  set home_team_id = mu.home_team_id,
+      away_team_id = mu.away_team_id,
+      home_label = mu.home_label,
+      away_label = mu.away_label,
+      is_confirmed = true,
+      source = 'group_standings',
+      updated_at = now()
+  from match_updates mu
+  where bm.match_no = mu.match_no
+    and bm.match_no between 73 and 88
+    and (
+      bm.home_team_id is distinct from mu.home_team_id
+      or bm.away_team_id is distinct from mu.away_team_id
+      or bm.home_label is distinct from mu.home_label
+      or bm.away_label is distinct from mu.away_label
+      or bm.is_confirmed is distinct from true
+      or bm.source is distinct from 'group_standings'
+    );
+
+  get diagnostics v_updated = row_count;
+
+  if v_updated = 0 then
+    return 0;
+  end if;
+
+  for v_match_no in
+    select match_no
+    from public.bracket_matches
+    where match_no between 73 and 88
+      and home_team_id is not null
+      and away_team_id is not null
+    order by match_no
+  loop
+    perform public.ensure_bracket_match(v_match_no);
+    v_created := v_created + 1;
+  end loop;
+
+  insert into public.audit_logs (actor_id, action, entity_type, details_json)
+  values (
+    auth.uid(),
+    'bracket.allocate_round_of_32',
+    'bracket',
+    jsonb_build_object('third_place_groups', v_third_groups, 'updated_matches', v_updated, 'ensured_matches', v_created)
+  );
+
+  return v_updated;
 end;
 $$;
 
@@ -2607,14 +3510,15 @@ declare
   v_stats public.match_stats%rowtype;
   v_bet record;
   v_won boolean;
-  v_payout numeric(12, 2);
-  v_delta numeric(12, 2);
-  v_bonus numeric(12, 2);
+  v_payout numeric(18, 2);
+  v_delta numeric(18, 2);
+  v_bonus numeric(18, 2);
   v_total_goals numeric;
   v_total_corners numeric;
   v_total_cards numeric;
   v_count integer := 0;
   v_advanced integer := 0;
+  v_round_of_32 integer := 0;
   v_ah_adjusted numeric;
 begin
   if not (public.is_admin() or auth.role() = 'service_role') then
@@ -2795,6 +3699,9 @@ begin
   end loop;
 
   v_advanced := public.advance_knockout_match(p_match_id);
+  if public.worldcup_group_key(v_match.group_name) is not null then
+    v_round_of_32 := public.allocate_round_of_32_bracket();
+  end if;
 
   insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
   values (
@@ -2802,7 +3709,13 @@ begin
     'settlement.match',
     'match',
     p_match_id::text,
-    jsonb_build_object('match_id', p_match_id, 'status', v_match.status, 'settled_bets', v_count, 'advanced_slots', v_advanced)
+    jsonb_build_object(
+      'match_id', p_match_id,
+      'status', v_match.status,
+      'settled_bets', v_count,
+      'advanced_slots', v_advanced,
+      'round_of_32_slots', v_round_of_32
+    )
   );
 
   return v_count;

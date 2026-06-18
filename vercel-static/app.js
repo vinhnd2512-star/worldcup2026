@@ -799,7 +799,7 @@ function renderMatches() {
   }
   const visibleMatches = activeMatches.filter((match) => match.id !== featured.id);
   const summaryMatches = visibleMatches.slice(0, 6);
-  const odd = featured.match_markets.find((market) => market.market_key === "correct_score" && isBettableMarket(market))?.odds_multiplier || 6.00;
+  const featuredOpenMarkets = featured.match_markets.filter(isBettableMarket).length;
   return `
     <div class="dashboard-grid">
       <div class="stack">
@@ -815,7 +815,7 @@ function renderMatches() {
             <span>${dateText(featured.starts_at)}</span>
             <span>${escapeHtml(featured.stage)}</span>
             <span>${escapeHtml(matchLocation(featured))}</span>
-            <span>x${fmtOne.format(number(odd))}</span>
+            <span>${fmt.format(featuredOpenMarkets)} kèo mở</span>
           </div>
           <p><button class="primary-button" data-open-bet-modal="${featured.id}">Dự đoán ngay</button></p>
         </section>
@@ -2956,7 +2956,7 @@ function isBasicMarket(key, market = null) {
   if (key === "total_goals") return true;
   if (key === "draw_no_bet") return false;
   if (key === "asian_handicap") return market?.source === "odds-api";
-  if (key === "correct_score") return market?.source === "odds-model" && Boolean(marketExtra(market).score_odds);
+  if (key === "correct_score") return false;
   return key === "match_result";
 }
 
@@ -2964,7 +2964,7 @@ function isBettableMarket(market) {
   if (!market || market.is_open !== true) return false;
   if (market.market_key === "draw_no_bet") return false;
   if (market.market_key === "asian_handicap") return market.source === "odds-api";
-  if (market.market_key === "correct_score") return market.source === "odds-model" && Boolean(marketExtra(market).score_odds);
+  if (market.market_key === "correct_score") return false;
   return true;
 }
 
@@ -3396,7 +3396,7 @@ function renderGuide() {
         </article>
         <article class="glass-card panel">
           <h2>2. Chọn loại cược</h2>
-          <p>Nhóm Cơ bản gồm 1X2, Draw no bet và tỷ số chính xác. Nhóm Nâng cao gồm tổng bàn, BTTS, góc, thẻ và các market admin mở thêm.</p>
+          <p>Nhóm Cơ bản gồm 1X2 và các kèo chính đang mở. Nhóm Nâng cao gồm tổng bàn, BTTS, góc, thẻ và các market admin mở thêm.</p>
         </article>
         <article class="glass-card panel">
           <h2>3. Tiền cược và payout</h2>
@@ -3931,9 +3931,14 @@ function renderBracketAdminPanel() {
       <div class="section-heading">
         <div>
           <h2>Xác nhận nhánh đấu</h2>
-          <p>Confirm Round of 32 teams when the API or group standings are ready. Winners advance automatically after settlement.</p>
+          <p>Round of 32 can be auto-filled from completed group standings; winners advance automatically after settlement.</p>
         </div>
-        <span>${fmt.format(roundOf32.filter((match) => match.is_confirmed).length)} confirmed</span>
+        <div class="inline-actions">
+          <button class="ghost-button compact-button" id="allocate-round-of-32-button" type="button" ${state.actionLoading === "allocate-bracket" ? "disabled" : ""}>
+            ${state.actionLoading === "allocate-bracket" ? "Allocating..." : "Tự phân bổ vòng 32"}
+          </button>
+          <span>${fmt.format(roundOf32.filter((match) => match.is_confirmed).length)} confirmed</span>
+        </div>
       </div>
       <form class="bracket-admin-form" id="bracket-slot-form">
         <label>Match<select id="bracket-match-no">${matchOptions}</select></label>
@@ -4860,6 +4865,7 @@ function bindShellEvents() {
   document.getElementById("top-up-form")?.addEventListener("submit", adjustWallet);
   document.getElementById("result-form")?.addEventListener("submit", updateResultAndSettle);
   document.getElementById("bracket-slot-form")?.addEventListener("submit", setBracketSlot);
+  document.getElementById("allocate-round-of-32-button")?.addEventListener("click", allocateRoundOf32Bracket);
   document.getElementById("market-control-form")?.addEventListener("submit", updateMarketControl);
   document.getElementById("admin-market-id")?.addEventListener("change", hydrateMarketControlForm);
   hydrateMarketControlForm();
@@ -5187,7 +5193,7 @@ async function placeScoreBet(event) {
   const match = selectedMatch();
   const market = match.match_markets.find((item) => item.market_key === "correct_score" && isBettableMarket(item));
   if (!market) {
-    state.error = "Trận này chưa có kèo tỷ số.";
+    state.error = "Kèo tỷ số đang tạm khóa để chờ odds nhà cái chuẩn.";
     state.message = "";
     renderApp();
     return;
@@ -5360,6 +5366,24 @@ async function setBracketSlot(event) {
   });
   state.message = error ? "" : `Updated bracket match ${fmt.format(matchNo)} ${slot} slot.`;
   state.error = error ? error.message : "";
+  await loadData();
+}
+
+async function allocateRoundOf32Bracket() {
+  if (state.actionLoading) return;
+  state.actionLoading = "allocate-bracket";
+  state.message = "";
+  state.error = "";
+  renderApp();
+  const { data, error } = await state.client.rpc("allocate_round_of_32_bracket");
+  const updated = number(data);
+  state.message = error
+    ? ""
+    : updated > 0
+      ? `Đã tự phân bổ ${fmt.format(updated)} trận vòng 32.`
+      : "Chưa đủ kết quả vòng bảng hoặc nhánh vòng 32 đã được phân bổ.";
+  state.error = error ? error.message : "";
+  state.actionLoading = "";
   await loadData();
 }
 

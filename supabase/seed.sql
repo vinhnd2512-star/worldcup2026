@@ -264,6 +264,10 @@ set name = excluded.name,
     default_multiplier = excluded.default_multiplier,
     display_order = excluded.display_order;
 
+update public.market_definitions
+set enabled = false
+where key = 'correct_score';
+
 with t as (select code, id from public.teams)
 insert into public.matches (provider_id, stage, group_name, home_team_id, away_team_id, starts_at, status, venue, city)
 values
@@ -484,11 +488,8 @@ where public.outright_markets.source = 'internal';
 
 update public.match_markets
 set is_open = false
-where source = 'internal'
-  and (
-    market_key in ('draw_no_bet', 'asian_handicap')
-    or market_key = 'correct_score'
-  );
+where market_key = 'correct_score'
+  or (source = 'internal' and market_key in ('draw_no_bet', 'asian_handicap'));
 
 update public.outright_markets
 set is_open = false
