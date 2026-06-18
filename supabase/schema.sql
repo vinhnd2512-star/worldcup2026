@@ -343,6 +343,13 @@ create table if not exists public.settlements (
   settled_at timestamptz not null default now()
 );
 
+-- Existing report views depend on money columns, so drop them before widening
+-- numeric precision on already-created databases.
+drop view if exists public.admin_market_report;
+drop view if exists public.admin_user_report;
+drop view if exists public.admin_report;
+drop view if exists public.leaderboard;
+
 alter table public.profiles
   alter column wallet_balance type numeric(18, 2);
 
