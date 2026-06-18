@@ -1283,7 +1283,6 @@ async function upsertMarketFromOdds(candidate) {
 }
 
 function marketRowFromOddsCandidate(candidate) {
-  const isTemporarilyLocked = candidate.market_key === "correct_score";
   return {
     match_id: candidate.match_id,
     market_key: candidate.market_key,
@@ -1292,7 +1291,7 @@ function marketRowFromOddsCandidate(candidate) {
     selection_label: candidate.selection_label,
     line: candidate.line,
     odds_multiplier: candidate.odds_multiplier,
-    is_open: !isTemporarilyLocked,
+    is_open: true,
     source: candidate.source || (candidate.market_key === "correct_score" ? "odds-model" : "odds-api"),
     closes_at: candidate.closes_at,
     extra_json: {
@@ -2099,7 +2098,6 @@ async function closeInternalHandicapFallbacks(matchIds) {
 
 async function closeLockedMarketFallbacks(matchIds) {
   await closeMatchMarketByKey(matchIds, "draw_no_bet");
-  await closeMatchMarketByKey(matchIds, "correct_score");
   await closeInternalMarketFallbacks(matchIds, "asian_handicap");
 }
 

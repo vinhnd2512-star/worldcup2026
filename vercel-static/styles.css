@@ -2299,7 +2299,7 @@ select:focus {
 }
 
 .add-score-pick-button {
-  justify-self: start;
+  display: none;
 }
 
 .modal-selection-list {

@@ -2586,7 +2586,7 @@ function renderModalBetSection(match, group) {
   const multiplierText = group.marketKey === "correct_score"
     ? `${fmt.format(scorePicks.length)} tỷ số`
     : `x${fmtOne.format(displayMultiplier || number(group.markets[0]?.odds_multiplier || 1))}`;
-  const openCopy = group.marketKey === "correct_score" && existingBets.length
+  const openCopy = group.marketKey === "correct_score" && existing
     ? `Đang mở ${fmt.format(existingBets.length)} kèo tỷ số`
     : existing
       ? `Đang mở: ${escapeHtml(existing.selection_label)} · ${money(existing.stake)}`
@@ -2693,7 +2693,7 @@ function ensureBetModalDraft(match, marketKey, markets) {
       homeScore: score.homeScore,
       awayScore: score.awayScore,
       scorePicks: marketKey === "correct_score"
-        ? (existingBets.length ? existingBets.map(scorePickFromBet) : [{ homeScore: score.homeScore, awayScore: score.awayScore, stake: number(existing?.stake || 100), betId: existing?.id || null }])
+        ? [{ homeScore: score.homeScore, awayScore: score.awayScore, stake: number(existing?.stake || 100), betId: existing?.id || null }]
         : undefined
     };
   }
@@ -2738,7 +2738,7 @@ function correctScoreDraftPicks(draft) {
       betId: null
     }];
   }
-  draft.scorePicks = draft.scorePicks.map((pick) => ({
+  draft.scorePicks = draft.scorePicks.slice(0, 1).map((pick) => ({
     homeScore: Math.max(0, number(pick.homeScore ?? 0)),
     awayScore: Math.max(0, number(pick.awayScore ?? 0)),
     stake: number(pick.stake || draft.stake || 100),
@@ -2913,7 +2913,7 @@ function collectModalBetPayloads(match, options = {}) {
           throw new Error(`Tỷ số ${homeScore} - ${awayScore} đã được chọn trùng.`);
         }
         seenScores.add(selectionKey);
-        const existing = existingOpenBet(match, group.marketKey, selectionKey);
+        const existing = existingOpenBet(match, group.marketKey);
         const stakeDelta = stake - number(existing?.stake);
         netStakeDelta += stakeDelta;
         payloads.push({
@@ -2956,7 +2956,7 @@ function isBasicMarket(key, market = null) {
   if (key === "total_goals") return true;
   if (key === "draw_no_bet") return false;
   if (key === "asian_handicap") return market?.source === "odds-api";
-  if (key === "correct_score") return false;
+  if (key === "correct_score") return correctScoreMarketHasOdds(market);
   return key === "match_result";
 }
 
@@ -2964,8 +2964,12 @@ function isBettableMarket(market) {
   if (!market || market.is_open !== true) return false;
   if (market.market_key === "draw_no_bet") return false;
   if (market.market_key === "asian_handicap") return market.source === "odds-api";
-  if (market.market_key === "correct_score") return false;
+  if (market.market_key === "correct_score") return correctScoreMarketHasOdds(market);
   return true;
+}
+
+function correctScoreMarketHasOdds(market) {
+  return market?.source === "odds-model" && Boolean(marketExtra(market).score_odds);
 }
 
 function renderMarketButton(market) {

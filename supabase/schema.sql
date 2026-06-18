@@ -1011,9 +1011,6 @@ begin
   if v_market.market_key = 'draw_no_bet' then
     raise exception 'draw no bet is temporarily locked';
   end if;
-  if v_market.market_key = 'correct_score' then
-    raise exception 'correct score is temporarily locked while bookmaker odds are unavailable';
-  end if;
   if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
     raise exception 'handicap requires bookmaker odds';
   end if;
@@ -1063,7 +1060,6 @@ begin
   where user_id = auth.uid()
     and match_id = p_match_id
     and market_key = v_market.market_key
-    and (v_market.market_key <> 'correct_score' or selection_key = v_selection_key)
     and status = 'placed'
   order by placed_at desc
   limit 1
@@ -1258,9 +1254,6 @@ begin
   end if;
   if v_market.market_key = 'draw_no_bet' then
     raise exception 'draw no bet is temporarily locked';
-  end if;
-  if v_market.market_key = 'correct_score' then
-    raise exception 'correct score is temporarily locked while bookmaker odds are unavailable';
   end if;
   if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
     raise exception 'handicap requires bookmaker odds';
@@ -2363,7 +2356,7 @@ begin
   where match_id = v_match.id
     and (
       market_key in ('draw_no_bet', 'asian_handicap')
-      or market_key = 'correct_score'
+      or (market_key = 'correct_score' and source = 'internal')
     );
 
   get diagnostics v_count = row_count;
