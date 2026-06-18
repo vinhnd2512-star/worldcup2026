@@ -1022,6 +1022,7 @@ function filteredScheduleMatches(options = {}) {
   const todayKey = localDateKey(now);
   const useSearch = options.useSearch !== false;
   const includeAllStatusesForTabs = options.includeAllStatusesForTabs === true;
+  const includeBettingOpen = options.includeBettingOpen === true;
   const selectedDate = options.dateKey || "";
   const search = searchNormalize(state.matchSearch);
   return state.matches.filter((match) => {
@@ -1032,7 +1033,7 @@ function filteredScheduleMatches(options = {}) {
     else if (state.matchFilter === "knockout") matchesFilter = isKnockoutMatch(match);
     else if (state.matchFilter?.startsWith("group:")) matchesFilter = match.group_name === state.matchFilter.slice(6);
     else if (includeAllStatusesForTabs) matchesFilter = true;
-    else { const ms = new Date(match.starts_at).getTime(); const threeDaysAgo = now.getTime() - 3 * 86400000; matchesFilter = (ms >= now.getTime() && match.status === "SCHEDULED") || (ms >= threeDaysAgo && ["FT","AET","PEN","FT_PEN","1H","2H","HT"].includes(match.status)); }
+    else { const ms = new Date(match.starts_at).getTime(); const threeDaysAgo = now.getTime() - 3 * 86400000; matchesFilter = (ms >= now.getTime() && match.status === "SCHEDULED") || (includeBettingOpen && canPredictMatch(match)) || (ms >= threeDaysAgo && ["FT","AET","PEN","FT_PEN","1H","2H","HT"].includes(match.status)); }
     if (!matchesFilter) return false;
     if (!useSearch || !search) return true;
     return searchNormalize(matchSearchText(match)).includes(search);
@@ -2103,7 +2104,7 @@ function renderPlayerCard(player) {
 
 function renderDetail() {
   const selectedDate = state.selectedCalendarDate;
-  const matches = filteredScheduleMatches({ useSearch: false, dateKey: selectedDate })
+  const matches = filteredScheduleMatches({ useSearch: false, dateKey: selectedDate, includeBettingOpen: true })
     .filter((match) => canPredictMatch(match))
     .sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime());
   const forecastMatch = spotlightMatchFor(matches, { preferSelected: true });
