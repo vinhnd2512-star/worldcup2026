@@ -2669,7 +2669,7 @@ function modalMarketTitle(marketKey, fallback = "") {
 
 function modalMarketHelpText(marketKey) {
   if (marketKey === "correct_score") {
-    return "The Odds API khong tra truc tiep correct_score; he thong suy ra fair odds tung ty so tu keo 1X2 va Tai/Xiu bang mo hinh Poisson.";
+    return "He thong suy ra fair odds tung ty so tu rate 1X2 va Tai/Xiu hien tai bang mo hinh Poisson.";
   }
   const notes = {
     total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal.",
@@ -2969,7 +2969,7 @@ function isBettableMarket(market) {
 }
 
 function correctScoreMarketHasOdds(market) {
-  return market?.source === "odds-model" && Boolean(marketExtra(market).score_odds);
+  return Boolean(marketExtra(market).score_odds);
 }
 
 function renderMarketButton(market) {

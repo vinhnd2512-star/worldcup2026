@@ -1016,8 +1016,8 @@ begin
     raise exception 'handicap requires bookmaker odds';
   end if;
   if v_market.market_key = 'correct_score'
-     and (v_market.source <> 'odds-model' or not (v_market.extra_json ? 'score_odds')) then
-    raise exception 'correct score requires bookmaker-derived odds';
+     and not (v_market.extra_json ? 'score_odds') then
+    raise exception 'correct score requires model odds';
   end if;
   if v_market.market_key = 'correct_score' then
     if not (p_selection_json ? 'home_score') or not (p_selection_json ? 'away_score') then
@@ -1260,8 +1260,8 @@ begin
     raise exception 'handicap requires bookmaker odds';
   end if;
   if v_market.market_key = 'correct_score'
-     and (v_market.source <> 'odds-model' or not (v_market.extra_json ? 'score_odds')) then
-    raise exception 'correct score requires bookmaker-derived odds';
+     and not (v_market.extra_json ? 'score_odds') then
+    raise exception 'correct score requires model odds';
   end if;
   if now() >= coalesce(v_market.closes_at, v_match.starts_at) then
     raise exception 'betting is locked for this match';

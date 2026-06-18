@@ -1328,6 +1328,87 @@ async function upsertMarketsFromOdds(candidates) {
   return Promise.all(candidates.map((candidate) => upsertMarketFromOdds(candidate)));
 }
 
+function marketSourceRank(source) {
+  if (source === "odds-api") return 3;
+  if (source === "admin") return 2;
+  if (source === "internal") return 1;
+  return 0;
+}
+
+function currentMarketCandidateFromRow(row) {
+  return {
+    match_id: row.match_id,
+    market_key: row.market_key,
+    label: row.label,
+    selection_key: row.selection_key,
+    selection_label: row.selection_label,
+    line: row.line === null || row.line === undefined ? null : decimal(row.line),
+    odds_multiplier: decimal(row.odds_multiplier),
+    source: row.source,
+    bookmaker: row.extra_json?.bookmaker || row.extra_json?.provider || row.source || "current-market",
+    bookmaker_key: row.extra_json?.bookmaker_key || row.source || "current-market",
+    bookmaker_rank: marketSourceRank(row.source),
+    bookmaker_last_update: row.extra_json?.updated_at || row.closes_at || new Date().toISOString(),
+    closes_at: row.closes_at,
+    payload_json: { source_market_id: row.id, source: row.source }
+  };
+}
+
+function currentMarketCandidates(rows) {
+  const byIdentity = new Map();
+  for (const row of rows || []) {
+    if (!row?.match_id || !row.market_key || !row.selection_key) continue;
+    const candidate = currentMarketCandidateFromRow(row);
+    if (!candidate.odds_multiplier || candidate.odds_multiplier <= 1) continue;
+    const line = candidate.line === null ? "" : String(candidate.line);
+    const key = `${candidate.match_id}|${candidate.market_key}|${candidate.selection_key}|${line}`;
+    const current = byIdentity.get(key);
+    if (!current || marketSourceRank(candidate.source) > marketSourceRank(current.source)) {
+      byIdentity.set(key, candidate);
+    }
+  }
+  return [...byIdentity.values()];
+}
+
+async function ensureCorrectScoreMarketsFromCurrentMarkets(matches) {
+  const ids = [...new Set((matches || []).map((match) => Number(match.id)).filter(Boolean))];
+  if (!ids.length) return 0;
+
+  const response = await supabaseFetch(
+    `/rest/v1/match_markets?select=id,match_id,market_key,label,selection_key,selection_label,line,odds_multiplier,is_open,source,closes_at,extra_json&match_id=in.(${ids.join(",")})&market_key=in.(match_result,total_goals)&is_open=eq.true`
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase read current markets for correct score failed: ${response.status} ${await response.text()}`);
+  }
+
+  const rows = await response.json();
+  const candidatesByMatch = new Map();
+  for (const candidate of currentMarketCandidates(rows)) {
+    candidatesByMatch.set(candidate.match_id, [...(candidatesByMatch.get(candidate.match_id) || []), candidate]);
+  }
+
+  const correctScoreCandidates = [];
+  for (const match of matches || []) {
+    const candidates = candidatesByMatch.get(Number(match.id)) || [];
+    const correctScoreCandidate = correctScoreCandidateFromMarkets(candidates, match);
+    if (correctScoreCandidate) {
+      correctScoreCandidates.push({
+        ...correctScoreCandidate,
+        closes_at: match.starts_at,
+        source: "odds-model",
+        extra_json: {
+          ...correctScoreCandidate.extra_json,
+          provider: "model-from-current-markets",
+          source_markets: ["current_match_result", "current_total_goals"]
+        }
+      });
+    }
+  }
+
+  const markets = await upsertMarketsFromOdds(correctScoreCandidates);
+  return markets.length;
+}
+
 async function insertOddsSnapshot(market, candidate) {
   const response = await supabaseFetch("/rest/v1/odds_snapshots", {
     method: "POST",
@@ -1933,6 +2014,7 @@ async function syncFootballDataFixtures() {
   const syncedMatches = await upsertJson("matches", matches, "provider_id");
   const completed = await upsertCompletedMatchResults(syncedMatches, "football-data.org", "fixtures");
   const defaultMarkets = await ensureDefaultMarketsForMatches(syncedMatches);
+  const correctScoreMarkets = await ensureCorrectScoreMarketsFromCurrentMarkets(syncedMatches);
   let bracketLinks = 0;
   try {
     bracketLinks = await linkFootballDataBracketMatches(matchesPayload, syncedMatches);
@@ -1950,7 +2032,7 @@ async function syncFootballDataFixtures() {
     jobType: "fixtures",
     status: "success",
     requestCount: 1,
-    message: `Synced ${matches.length} World Cup fixtures and ${teamsByProvider.size} teams from football-data.org; saved ${completed.resultRows} completed results; added ${defaultMarkets} default markets; linked ${bracketLinks} bracket matches.`
+    message: `Synced ${matches.length} World Cup fixtures and ${teamsByProvider.size} teams from football-data.org; saved ${completed.resultRows} completed results; added ${defaultMarkets} default markets and ${correctScoreMarkets} correct-score model markets; linked ${bracketLinks} bracket matches.`
   });
 
   return {
@@ -1962,7 +2044,8 @@ async function syncFootballDataFixtures() {
     results: completed.resultRows,
     completedMatchIds: completed.completedMatchIds,
     bracketLinks,
-    defaultMarkets
+    defaultMarkets,
+    correctScoreMarkets
   };
 }
 
@@ -2671,6 +2754,8 @@ async function syncOddsSummary() {
 
   await closeInternalTotalGoalFallbacks([...providerTotalMatchIds]);
   await closeInternalHandicapFallbacks([...providerHandicapMatchIds]);
+  const derivedCorrectScoreMarkets = await ensureCorrectScoreMarketsFromCurrentMarkets(matches);
+  updatedMarkets += derivedCorrectScoreMarkets;
 
   const teams = await getTeamsForOutrightMapping();
   const outrightCandidates = bestOutrightPrices(outrightOdds.events, teams);
