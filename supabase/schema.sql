@@ -285,7 +285,8 @@ create unique index if not exists match_markets_unique_selection_idx
 
 update public.match_markets
 set is_open = false
-where market_key = 'correct_score';
+where market_key = 'correct_score'
+  and source = 'internal';
 
 create table if not exists public.outright_markets (
   id bigint generated always as identity primary key,
