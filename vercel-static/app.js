@@ -2443,12 +2443,16 @@ function renderRebetConfirmModal() {
         <div class="rebet-summary">
           <strong>${escapeHtml(summary.label)}</strong>
           <div class="rebet-bet-list">
-            ${summary.bets.map((bet) => `
+            ${summary.bets.map((bet) => {
+              const canCancel = canCancelBet(bet);
+              return `
               <span>
                 <b>${escapeHtml(modalMarketTitle(bet.market_key, bet.market_key))}</b>
                 ${escapeHtml(bet.market_key === "correct_score" ? scoreLabelFromBet(bet) : bet.selection_label)} · ${money(bet.stake)}
+                ${canCancel ? `<button class="danger-button compact-button" type="button" data-cancel-bet="${bet.id}" ${state.isSubmittingBet ? "disabled" : ""}>Hủy kèo</button>` : ""}
               </span>
-            `).join("")}
+            `;
+            }).join("")}
           </div>
         </div>
         <p class="empty-copy">Bạn có muốn mở lại kèo đấu để cập nhật lựa chọn hoặc số tiền cược không?</p>
@@ -2568,15 +2572,25 @@ function marketSelectionOrder(selectionKey) {
 function renderModalBetSection(match, group) {
   const draft = ensureBetModalDraft(match, group.marketKey, group.markets);
   const existing = existingOpenBet(match, group.marketKey);
+  const existingBets = existingOpenBets(match, group.marketKey);
   const selectedMarket = selectedDraftMarket(group.markets, draft);
   const enabled = Boolean(draft.enabled);
   const stake = number(draft.stake || existing?.stake || 100);
   const displayMultiplier = modalMarketMultiplier(group.marketKey, selectedMarket, draft);
   const payout = selectedMarket ? stake * displayMultiplier : 0;
   const helpText = modalMarketHelpText(group.marketKey);
-  const multiplierText = group.marketKey === "correct_score" && !displayMultiplier
-    ? "No odds"
+  const existingCancelButton = existing && canCancelBet(existing)
+    ? `<button class="danger-button compact-button" type="button" data-cancel-bet="${existing.id}" ${state.isSubmittingBet ? "disabled" : ""}>Hủy kèo</button>`
+    : "";
+  const scorePicks = group.marketKey === "correct_score" ? correctScoreDraftPicks(draft) : [];
+  const multiplierText = group.marketKey === "correct_score"
+    ? `${fmt.format(scorePicks.length)} tỷ số`
     : `x${fmtOne.format(displayMultiplier || number(group.markets[0]?.odds_multiplier || 1))}`;
+  const openCopy = group.marketKey === "correct_score" && existingBets.length
+    ? `Đang mở ${fmt.format(existingBets.length)} kèo tỷ số`
+    : existing
+      ? `Đang mở: ${escapeHtml(existing.selection_label)} · ${money(existing.stake)}`
+      : `${fmt.format(group.markets.length)} lựa chọn`;
   return `
     <section class="modal-market-card ${enabled ? "open" : ""}" data-bet-market-card="${escapeHtml(group.marketKey)}">
       <div class="modal-market-card-head">
@@ -2588,7 +2602,7 @@ function renderModalBetSection(match, group) {
               ${escapeHtml(group.label)}
               ${helpText ? `<span class="market-help" tabindex="0" aria-label="${escapeHtml(helpText)}" data-tooltip="${escapeHtml(helpText)}">?</span>` : ""}
             </strong>
-            <small>${existing ? `Đang mở: ${escapeHtml(existing.selection_label)} · ${money(existing.stake)}` : `${fmt.format(group.markets.length)} lựa chọn`}</small>
+            <small>${openCopy}</small>
           </span>
         </label>
         <span class="pill">${multiplierText}</span>
@@ -2598,21 +2612,21 @@ function renderModalBetSection(match, group) {
           ? `<div class="modal-market-card-body">
               ${
                 group.marketKey === "correct_score"
-                  ? `<div class="score-picker compact">
-                      ${scoreStepper("modal-score-home", match.home_team?.name || "Đội nhà", number(draft.homeScore ?? 1))}
-                      <span class="vs-text">-</span>
-                      ${scoreStepper("modal-score-away", match.away_team?.name || "Đội khách", number(draft.awayScore ?? 0))}
-                    </div>
-                    <small class="score-odds-hint">${escapeHtml(correctScoreOddsHint(selectedMarket, draft))}</small>`
+                  ? renderCorrectScorePicks(match, selectedMarket, draft)
                   : renderModalSelectionOptions(group, draft)
               }
-              <div class="modal-stake-grid">
-                <label>Tiền cược<input data-modal-market-stake="${escapeHtml(group.marketKey)}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(stake)}">${renderStakeWalletShare(stake, { marketKey: group.marketKey })}</label>
-                <div>
-                  <small>Payout dự kiến</small>
-                  <strong>${money(payout)}</strong>
-                </div>
-              </div>
+              ${
+                group.marketKey === "correct_score"
+                  ? ""
+                  : `<div class="modal-stake-grid">
+                      <label>Tiền cược<input data-modal-market-stake="${escapeHtml(group.marketKey)}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(stake)}">${renderStakeWalletShare(stake, { marketKey: group.marketKey })}</label>
+                      <div>
+                        <small>Payout dự kiến</small>
+                        <strong>${money(payout)}</strong>
+                      </div>
+                    </div>`
+              }
+              ${group.marketKey !== "correct_score" && existingCancelButton ? `<div class="modal-existing-bet-actions">${existingCancelButton}</div>` : ""}
             </div>`
           : ""
       }
@@ -2666,7 +2680,8 @@ function modalMarketHelpText(marketKey) {
 
 function ensureBetModalDraft(match, marketKey, markets) {
   if (!state.betModalDraft) state.betModalDraft = {};
-  const existing = existingOpenBet(match, marketKey);
+  const existingBets = existingOpenBets(match, marketKey);
+  const existing = existingBets[0] || null;
   const existingMarket = existing ? markets.find((market) => Number(market.id) === Number(existing.market_id)) : null;
   const fallbackMarket = existingMarket || markets[0] || null;
   if (!state.betModalDraft[marketKey]) {
@@ -2676,14 +2691,30 @@ function ensureBetModalDraft(match, marketKey, markets) {
       stake: number(existing?.stake || 100),
       marketId: fallbackMarket?.id || null,
       homeScore: score.homeScore,
-      awayScore: score.awayScore
+      awayScore: score.awayScore,
+      scorePicks: marketKey === "correct_score"
+        ? (existingBets.length ? existingBets.map(scorePickFromBet) : [{ homeScore: score.homeScore, awayScore: score.awayScore, stake: number(existing?.stake || 100), betId: existing?.id || null }])
+        : undefined
     };
   }
   const draft = state.betModalDraft[marketKey];
   if (!markets.some((market) => Number(market.id) === Number(draft.marketId))) {
     draft.marketId = fallbackMarket?.id || null;
   }
+  if (marketKey === "correct_score") {
+    correctScoreDraftPicks(draft);
+  }
   return draft;
+}
+
+function scorePickFromBet(bet) {
+  const score = scoreFromExistingBet(bet);
+  return {
+    homeScore: score.homeScore,
+    awayScore: score.awayScore,
+    stake: number(bet?.stake || 100),
+    betId: bet?.id || null
+  };
 }
 
 function scoreFromExistingBet(existing) {
@@ -2696,6 +2727,24 @@ function scoreFromExistingBet(existing) {
     return { homeScore: Number(parsed[1]), awayScore: Number(parsed[2]) };
   }
   return { homeScore: 1, awayScore: 0 };
+}
+
+function correctScoreDraftPicks(draft) {
+  if (!Array.isArray(draft.scorePicks) || !draft.scorePicks.length) {
+    draft.scorePicks = [{
+      homeScore: Math.max(0, number(draft.homeScore ?? 1)),
+      awayScore: Math.max(0, number(draft.awayScore ?? 0)),
+      stake: number(draft.stake || 100),
+      betId: null
+    }];
+  }
+  draft.scorePicks = draft.scorePicks.map((pick) => ({
+    homeScore: Math.max(0, number(pick.homeScore ?? 0)),
+    awayScore: Math.max(0, number(pick.awayScore ?? 0)),
+    stake: number(pick.stake || draft.stake || 100),
+    betId: pick.betId || null
+  }));
+  return draft.scorePicks;
 }
 
 function selectedDraftMarket(markets, draft) {
@@ -2755,8 +2804,20 @@ function syncBetModalDraftFromDom() {
     if (choice) draft.marketId = Number(choice.value);
     if (stake) draft.stake = parseStakeInput(stake.value);
     if (marketKey === "correct_score") {
-      draft.homeScore = Number(document.getElementById("modal-score-home")?.value || draft.homeScore || 0);
-      draft.awayScore = Number(document.getElementById("modal-score-away")?.value || draft.awayScore || 0);
+      const rows = [...card.querySelectorAll("[data-correct-score-row]")];
+      draft.scorePicks = rows.map((row) => {
+        const index = Number(row.dataset.correctScoreRow);
+        return {
+          homeScore: Number(row.querySelector(`#modal-score-home-${index}`)?.value || 0),
+          awayScore: Number(row.querySelector(`#modal-score-away-${index}`)?.value || 0),
+          stake: parseStakeInput(row.querySelector("[data-correct-score-stake]")?.value),
+          betId: row.dataset.existingBetId ? Number(row.dataset.existingBetId) : null
+        };
+      }).filter((pick) => Number.isFinite(pick.homeScore) && Number.isFinite(pick.awayScore));
+      const first = correctScoreDraftPicks(draft)[0];
+      draft.homeScore = first.homeScore;
+      draft.awayScore = first.awayScore;
+      draft.stake = first.stake;
     }
   });
 }
@@ -2782,6 +2843,21 @@ function updateModalDerivedValues() {
   for (const group of modalMarketGroups(allOpenMarkets, "all")) {
     const draft = state.betModalDraft?.[group.marketKey] || {};
     const selectedMarket = selectedDraftMarket(group.markets, draft);
+    if (group.marketKey === "correct_score") {
+      const picks = correctScoreDraftPicks(draft);
+      picks.forEach((pick, index) => {
+        const multiplier = modalMarketMultiplier(group.marketKey, selectedMarket, pick);
+        const payoutNode = document.querySelector(`[data-correct-score-payout="${index}"]`);
+        if (payoutNode) payoutNode.textContent = money(number(pick.stake) * multiplier);
+        const hintNode = document.querySelector(`[data-correct-score-hint="${index}"]`);
+        if (hintNode) hintNode.textContent = correctScoreOddsHint(selectedMarket, pick);
+        const stakeInput = document.getElementById(`modal-score-stake-${index}`);
+        if (stakeInput) updateStakeShareForInput(stakeInput);
+      });
+      const pillNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-market-card-head .pill`);
+      if (pillNode) pillNode.textContent = `${fmt.format(picks.length)} tỷ số`;
+      continue;
+    }
     const multiplier = modalMarketMultiplier(group.marketKey, selectedMarket, draft);
     const payoutNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-stake-grid strong`);
     if (payoutNode) payoutNode.textContent = money(number(draft.stake) * multiplier);
@@ -2796,8 +2872,6 @@ function updateModalDerivedValues() {
         ? "No odds"
         : `x${fmtOne.format(multiplier || number(selectedMarket?.odds_multiplier || 1))}`;
     }
-    const scoreHintNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .score-odds-hint`);
-    if (scoreHintNode && group.marketKey === "correct_score") scoreHintNode.textContent = correctScoreOddsHint(selectedMarket, draft);
   }
   const summary = document.querySelector("#modal-bulk-bet-form .modal-submit-row span");
   if (summary) summary.textContent = modalSelectedSummary(match);
@@ -2819,32 +2893,45 @@ function collectModalBetPayloads(match, options = {}) {
     const draft = state.betModalDraft?.[group.marketKey];
     if (!draft?.enabled) continue;
     const market = selectedDraftMarket(group.markets, draft);
-    const stake = number(draft.stake);
-    if (!market || stake <= 0) {
-      if (options.quiet) continue;
-      throw new Error(`Vui lòng nhập tiền cược hợp lệ cho ${group.label}.`);
-    }
     if (group.marketKey === "correct_score") {
-      if (!modalMarketMultiplier(group.marketKey, market, draft)) {
-        if (options.quiet) continue;
-        throw new Error("Ty so da chon chua co odds nha cai.");
+      const seenScores = new Set();
+      for (const pick of correctScoreDraftPicks(draft)) {
+        const stake = number(pick.stake);
+        if (!market || stake <= 0) {
+          if (options.quiet) continue;
+          throw new Error(`Vui lòng nhập tiền cược hợp lệ cho ${group.label}.`);
+        }
+        if (!modalMarketMultiplier(group.marketKey, market, pick)) {
+          if (options.quiet) continue;
+          throw new Error("Ty so da chon chua co odds nha cai.");
+        }
+        const homeScore = Math.max(0, number(pick.homeScore));
+        const awayScore = Math.max(0, number(pick.awayScore));
+        const selectionKey = `${homeScore}-${awayScore}`;
+        if (seenScores.has(selectionKey)) {
+          if (options.quiet) continue;
+          throw new Error(`Tỷ số ${homeScore} - ${awayScore} đã được chọn trùng.`);
+        }
+        seenScores.add(selectionKey);
+        const existing = existingOpenBet(match, group.marketKey, selectionKey);
+        const stakeDelta = stake - number(existing?.stake);
+        netStakeDelta += stakeDelta;
+        payloads.push({
+          _stake_delta: stakeDelta,
+          p_match_id: match.id,
+          p_market_id: market.id,
+          p_selection_key: selectionKey,
+          p_selection_label: `${homeScore} - ${awayScore}`,
+          p_stake: stake,
+          p_selection_json: { home_score: homeScore, away_score: awayScore }
+        });
       }
-      const homeScore = Math.max(0, number(draft.homeScore));
-      const awayScore = Math.max(0, number(draft.awayScore));
-      const selectionKey = `${homeScore}-${awayScore}`;
-      const existing = existingOpenBet(match, group.marketKey, selectionKey);
-      const stakeDelta = stake - number(existing?.stake);
-      netStakeDelta += stakeDelta;
-      payloads.push({
-        _stake_delta: stakeDelta,
-        p_match_id: match.id,
-        p_market_id: market.id,
-        p_selection_key: selectionKey,
-        p_selection_label: `${homeScore} - ${awayScore}`,
-        p_stake: stake,
-        p_selection_json: { home_score: homeScore, away_score: awayScore }
-      });
     } else {
+      const stake = number(draft.stake);
+      if (!market || stake <= 0) {
+        if (options.quiet) continue;
+        throw new Error(`Vui lòng nhập tiền cược hợp lệ cho ${group.label}.`);
+      }
       const existing = existingOpenBet(match, group.marketKey);
       const stakeDelta = stake - number(existing?.stake);
       netStakeDelta += stakeDelta;
@@ -3189,7 +3276,7 @@ function renderLeaderboard() {
       </section>
       <section class="glass-card table-card">
         <div class="table-row table-head leaderboard-row">
-          <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền cược</span><span>Số tiền hiện tại</span><span>Lãi/Lỗ</span><span>% Lãi/Lỗ</span>
+          <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền đã cược</span><span>Số tiền đang cược</span><span>Số tiền hiện tại</span><span>Lãi/Lỗ</span><span>% Lãi/Lỗ</span>
         </div>
         ${state.leaderboard.map((row) => {
           const canInspect = canInspectLeaderboardBets(row.user_id);
@@ -3201,7 +3288,8 @@ function renderLeaderboard() {
             <span>${escapeHtml(row.display_name)}</span>
             <span>${fmt.format(number(row.total_bets ?? row.settled_bets))}</span>
             <span>${fmtOne.format(number(row.accuracy))}%</span>
-            <span>${money(row.total_staked)}</span>
+            <span>${money(row.settled_staked ?? Math.max(0, number(row.total_staked) - number(row.open_staked)))}</span>
+            <span>${money(row.open_staked)}</span>
             <span>${money(row.wallet_balance)}</span>
             <b class="${number(row.profit_loss ?? row.score) >= 0 ? "success" : "error"}">${number(row.profit_loss ?? row.score) >= 0 ? "+" : ""}${money(row.profit_loss ?? row.score)}</b>
             <span>${fmtOne.format(number(row.profit_loss_pct ?? row.roi))}%</span>
@@ -3210,6 +3298,49 @@ function renderLeaderboard() {
         }).join("")}
       </section>
       ${selectedRow ? renderLeaderboardPlayerDetails(selectedRow) : ""}
+    </div>
+  `;
+}
+
+function renderCorrectScorePicks(match, market, draft) {
+  const rows = correctScoreDraftPicks(draft);
+  return `
+    <div class="correct-score-picks">
+      ${rows.map((pick, index) => renderCorrectScorePickRow(match, market, pick, index, rows.length)).join("")}
+      <button class="ghost-button compact-button add-score-pick-button" type="button" data-add-correct-score>+ Dự đoán thêm kèo tỷ số</button>
+    </div>
+  `;
+}
+
+function renderCorrectScorePickRow(match, market, pick, index, rowCount) {
+  const homeId = `modal-score-home-${index}`;
+  const awayId = `modal-score-away-${index}`;
+  const stakeId = `modal-score-stake-${index}`;
+  const rowDraft = { homeScore: pick.homeScore, awayScore: pick.awayScore };
+  const payout = number(pick.stake) * modalMarketMultiplier("correct_score", market, rowDraft);
+  const existingBet = pick.betId ? state.bets.find((bet) => Number(bet.id) === Number(pick.betId)) : null;
+  const canCancel = existingBet && canCancelBet(existingBet);
+  return `
+    <div class="correct-score-pick-row" data-correct-score-row="${index}" data-existing-bet-id="${pick.betId || ""}">
+      <div class="score-picker compact">
+        ${scoreStepper(homeId, match.home_team?.name || "Đội nhà", number(pick.homeScore ?? 1))}
+        <span class="vs-text">-</span>
+        ${scoreStepper(awayId, match.away_team?.name || "Đội khách", number(pick.awayScore ?? 0))}
+      </div>
+      <div class="correct-score-row-meta">
+        <small class="score-odds-hint" data-correct-score-hint="${index}">${escapeHtml(correctScoreOddsHint(market, rowDraft))}</small>
+        <div class="modal-stake-grid">
+          <label>Tiền cược<input id="${stakeId}" data-correct-score-stake="${index}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(pick.stake)}">${renderStakeWalletShare(pick.stake, { forId: stakeId })}</label>
+          <div>
+            <small>Payout dự kiến</small>
+            <strong data-correct-score-payout="${index}">${money(payout)}</strong>
+          </div>
+        </div>
+      </div>
+      <div class="correct-score-row-actions">
+        <button class="ghost-button compact-button" type="button" data-remove-correct-score="${index}" ${rowCount <= 1 ? "disabled" : ""}>Xóa dòng</button>
+        ${canCancel ? `<button class="danger-button compact-button" type="button" data-cancel-bet="${existingBet.id}" ${state.isSubmittingBet ? "disabled" : ""}>Hủy kèo</button>` : ""}
+      </div>
     </div>
   `;
 }
@@ -4683,7 +4814,13 @@ function bindShellEvents() {
       renderApp();
     });
   });
-  document.querySelectorAll("[data-modal-market-stake]").forEach((input) => {
+  document.querySelector("[data-add-correct-score]")?.addEventListener("click", () => {
+    addCorrectScorePick();
+  });
+  document.querySelectorAll("[data-remove-correct-score]").forEach((button) => {
+    button.addEventListener("click", () => removeCorrectScorePick(Number(button.dataset.removeCorrectScore)));
+  });
+  document.querySelectorAll("[data-modal-market-stake], [data-correct-score-stake]").forEach((input) => {
     prepareStakeInput(input);
     input.addEventListener("input", (event) => {
       handleStakeInput(event);
@@ -4787,6 +4924,64 @@ function openBetModal(matchId) {
   state.betModalDraft = {};
   state.active = "detail";
   renderApp();
+}
+
+function addCorrectScorePick() {
+  const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
+  if (!match) return;
+  syncBetModalDraftFromDom();
+  const market = (match.match_markets || []).find((item) => item.market_key === "correct_score" && isBettableMarket(item));
+  const draft = state.betModalDraft.correct_score || (state.betModalDraft.correct_score = {
+    enabled: true,
+    stake: 100,
+    marketId: market?.id || null,
+    homeScore: 1,
+    awayScore: 0
+  });
+  draft.enabled = true;
+  if (!draft.marketId && market) draft.marketId = market.id;
+  const picks = correctScoreDraftPicks(draft);
+  const nextScore = nextSuggestedCorrectScore(picks, market);
+  picks.push({
+    homeScore: nextScore.homeScore,
+    awayScore: nextScore.awayScore,
+    stake: number(picks[picks.length - 1]?.stake || draft.stake || 100),
+    betId: null
+  });
+  renderApp();
+}
+
+function removeCorrectScorePick(index) {
+  syncBetModalDraftFromDom();
+  const draft = state.betModalDraft.correct_score;
+  if (!draft) return;
+  const picks = correctScoreDraftPicks(draft);
+  if (picks.length <= 1) return;
+  picks.splice(index, 1);
+  const first = picks[0];
+  draft.homeScore = first.homeScore;
+  draft.awayScore = first.awayScore;
+  draft.stake = first.stake;
+  renderApp();
+}
+
+function nextSuggestedCorrectScore(picks, market) {
+  const used = new Set(picks.map((pick) => `${number(pick.homeScore)}-${number(pick.awayScore)}`));
+  const topScores = marketExtra(market).top_scores || [];
+  for (const row of topScores) {
+    const score = String(row.score || "");
+    if (!used.has(score)) {
+      const parsed = score.match(/^(\d+)-(\d+)$/);
+      if (parsed) return { homeScore: Number(parsed[1]), awayScore: Number(parsed[2]) };
+    }
+  }
+  for (let total = 0; total <= 10; total += 1) {
+    for (let home = 0; home <= total; home += 1) {
+      const away = total - home;
+      if (!used.has(`${home}-${away}`)) return { homeScore: home, awayScore: away };
+    }
+  }
+  return { homeScore: 1, awayScore: 0 };
 }
 
 async function submitModalBets(event) {
@@ -5682,7 +5877,8 @@ function exportLeaderboardCsv() {
     "Username": row.username,
     "Số trận cược": row.total_bets ?? row.settled_bets,
     "Tỷ lệ đúng": row.accuracy,
-    "Số tiền cược": row.total_staked,
+    "Số tiền đã cược": row.settled_staked ?? Math.max(0, number(row.total_staked) - number(row.open_staked)),
+    "Số tiền đang cược": row.open_staked,
     "Số tiền hiện tại": row.wallet_balance,
     "Lãi/Lỗ": row.profit_loss ?? row.score,
     "% Lãi/Lỗ": row.profit_loss_pct ?? row.roi
@@ -6005,7 +6201,7 @@ document.addEventListener("click", (event) => {
   if (!input) return;
   const next = Math.max(0, Number(input.value || 0) + (inc ? 1 : -1));
   input.value = String(next);
-  if (id === "modal-score-home" || id === "modal-score-away") {
+  if (id === "modal-score-home" || id === "modal-score-away" || id.startsWith("modal-score-home-") || id.startsWith("modal-score-away-")) {
     updateModalDerivedValues();
   }
 });
@@ -6015,7 +6211,7 @@ document.addEventListener("input", (event) => {
   if (!input) return;
   const next = Math.max(0, Math.trunc(Number(input.value || 0)));
   input.value = String(next);
-  if (input.id === "modal-score-home" || input.id === "modal-score-away") {
+  if (input.id === "modal-score-home" || input.id === "modal-score-away" || input.id.startsWith("modal-score-home-") || input.id.startsWith("modal-score-away-")) {
     updateModalDerivedValues();
   }
 });
