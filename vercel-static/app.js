@@ -170,9 +170,10 @@ async function boot() {
   state.client = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
   const { data } = await state.client.auth.getSession();
   state.session = data.session;
-  state.client.auth.onAuthStateChange((_event, session) => {
-    state.session = session;
-    if (!session) {
+  state.client.auth.onAuthStateChange((event, session) => {
+    if (session) state.session = session;
+    if (event === "SIGNED_OUT") {
+      state.session = null;
       state.profile = null;
       renderLogin();
     }
@@ -250,6 +251,33 @@ function friendlyAuthError(error) {
     return "Sai tài khoản hoặc mật khẩu.";
   }
   return message || "Không thể xử lý yêu cầu đăng nhập.";
+}
+
+function isAuthSessionError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("jwt")
+    || message.includes("session")
+    || message.includes("refresh token")
+    || message.includes("not authenticated")
+    || message.includes("auth session missing");
+}
+
+async function ensureSession(options = {}) {
+  const { renderOnMissing = true } = options;
+  if (!state.client) return false;
+  const { data, error } = await state.client.auth.getSession();
+  if (error || !data?.session) {
+    state.session = null;
+    state.profile = null;
+    if (renderOnMissing) {
+      state.error = "Phien dang nhap da het han. Vui long dang nhap lai.";
+      state.message = "";
+      renderLogin();
+    }
+    return false;
+  }
+  state.session = data.session;
+  return true;
 }
 
 function renderConfigScreen() {
@@ -397,6 +425,7 @@ async function createPublicAccount(event) {
 async function loadData() {
   state.error = "";
   try {
+    if (!(await ensureSession())) return;
     const profileResult = await state.client.from("profiles").select("*").eq("id", state.session.user.id).single();
     throwIfError(profileResult.error);
     state.profile = profileResult.data;
@@ -546,6 +575,10 @@ async function loadData() {
     }
     renderApp();
   } catch (error) {
+    if (isAuthSessionError(error)) {
+      await ensureSession();
+      return;
+    }
     state.error = error.message || String(error);
     renderApp();
   }
@@ -2694,11 +2727,18 @@ function correctScoreOddsHint(market, draft = {}) {
   return `Ty le ${score}: x${fmtOne.format(multiplier)} (model nha cai)`;
 }
 
-function existingOpenBet(match, marketKey) {
-  if (!match) return null;
+function existingOpenBet(match, marketKey, selectionKey = "") {
+  return existingOpenBets(match, marketKey, selectionKey)[0] || null;
+}
+
+function existingOpenBets(match, marketKey, selectionKey = "") {
+  if (!match) return [];
   return state.bets
-    .filter((bet) => bet.status === "placed" && Number(bet.match_id) === Number(match.id) && bet.market_key === marketKey)
-    .sort((left, right) => new Date(right.placed_at).getTime() - new Date(left.placed_at).getTime())[0] || null;
+    .filter((bet) => bet.status === "placed"
+      && Number(bet.match_id) === Number(match.id)
+      && bet.market_key === marketKey
+      && (!selectionKey || bet.selection_key === selectionKey))
+    .sort((left, right) => new Date(right.placed_at).getTime() - new Date(left.placed_at).getTime());
 }
 
 function syncBetModalDraftFromDom() {
@@ -2784,9 +2824,6 @@ function collectModalBetPayloads(match, options = {}) {
       if (options.quiet) continue;
       throw new Error(`Vui lòng nhập tiền cược hợp lệ cho ${group.label}.`);
     }
-    const existing = existingOpenBet(match, group.marketKey);
-    const stakeDelta = stake - number(existing?.stake);
-    netStakeDelta += stakeDelta;
     if (group.marketKey === "correct_score") {
       if (!modalMarketMultiplier(group.marketKey, market, draft)) {
         if (options.quiet) continue;
@@ -2794,16 +2831,23 @@ function collectModalBetPayloads(match, options = {}) {
       }
       const homeScore = Math.max(0, number(draft.homeScore));
       const awayScore = Math.max(0, number(draft.awayScore));
+      const selectionKey = `${homeScore}-${awayScore}`;
+      const existing = existingOpenBet(match, group.marketKey, selectionKey);
+      const stakeDelta = stake - number(existing?.stake);
+      netStakeDelta += stakeDelta;
       payloads.push({
         _stake_delta: stakeDelta,
         p_match_id: match.id,
         p_market_id: market.id,
-        p_selection_key: `${homeScore}-${awayScore}`,
+        p_selection_key: selectionKey,
         p_selection_label: `${homeScore} - ${awayScore}`,
         p_stake: stake,
         p_selection_json: { home_score: homeScore, away_score: awayScore }
       });
     } else {
+      const existing = existingOpenBet(match, group.marketKey);
+      const stakeDelta = stake - number(existing?.stake);
+      netStakeDelta += stakeDelta;
       payloads.push({
         _stake_delta: stakeDelta,
         p_match_id: match.id,
@@ -3328,6 +3372,10 @@ function renderUpcomingBetRow(bet) {
   const current = number(market?.odds_multiplier || bet.locked_multiplier);
   const closesAt = market?.closes_at || match?.starts_at || bet.placed_at;
   const editable = canUpdateBet(bet, match, market);
+  const cancellable = canCancelBet(bet, match, market);
+  const cancelButton = cancellable
+    ? `<button class="danger-button compact-button" type="button" data-cancel-bet="${bet.id}" ${state.isSubmittingBet ? "disabled" : ""}>Hủy kèo</button>`
+    : "";
   const homeScore = Number(bet.selection_json?.home_score ?? 0);
   const awayScore = Number(bet.selection_json?.away_score ?? 0);
   return `
@@ -3343,17 +3391,23 @@ function renderUpcomingBetRow(bet) {
       <div><small>Payout</small><b>${money(bet.potential_payout)}</b></div>
       ${
         editable
-          ? `<form class="update-bet-form" data-update-bet="${bet.id}">
-              ${
-                bet.market_key === "correct_score"
-                  ? `<label>Home<input name="home_score" type="number" min="0" step="1" value="${homeScore}"></label>
-                     <label>Away<input name="away_score" type="number" min="0" step="1" value="${awayScore}"></label>`
-                  : `<label>Selection<input value="${escapeHtml(bet.selection_label)}" disabled></label>`
-              }
-              <label>Stake<input id="update-stake-${bet.id}" name="stake" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(bet.stake)}">${renderStakeWalletShare(bet.stake, { forId: `update-stake-${bet.id}` })}</label>
-              <button class="primary-button compact-button" ${state.isSubmittingBet ? "disabled" : ""}>${state.isSubmittingBet ? renderBouncingBall("Dang cap nhat...") : "Cập nhật"}</button>
-            </form>`
-          : `<div class="locked-copy"><small>Không thể sửa</small><b>${match ? escapeHtml(match.status) : "Outright"}</b></div>`
+          ? `<div class="upcoming-bet-actions">
+              <form class="update-bet-form" data-update-bet="${bet.id}">
+                ${
+                  bet.market_key === "correct_score"
+                    ? `<label>Home<input name="home_score" type="number" min="0" step="1" value="${homeScore}"></label>
+                       <label>Away<input name="away_score" type="number" min="0" step="1" value="${awayScore}"></label>`
+                    : `<label>Selection<input value="${escapeHtml(bet.selection_label)}" disabled></label>`
+                }
+                <label>Stake<input id="update-stake-${bet.id}" name="stake" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(bet.stake)}">${renderStakeWalletShare(bet.stake, { forId: `update-stake-${bet.id}` })}</label>
+                <button class="primary-button compact-button" ${state.isSubmittingBet ? "disabled" : ""}>${state.isSubmittingBet ? renderBouncingBall("Dang cap nhat...") : "Cập nhật"}</button>
+              </form>
+              ${cancelButton}
+            </div>`
+          : `<div class="upcoming-bet-actions">
+              <div class="locked-copy"><small>Không thể sửa</small><b>${match ? escapeHtml(match.status) : "Outright"}</b></div>
+              ${cancelButton}
+            </div>`
       }
     </article>
   `;
@@ -3371,11 +3425,32 @@ function marketForBet(bet, match = matchForBet(bet)) {
     || null;
 }
 
+function outrightMarketForBet(bet) {
+  const outrightId = Number(bet?.selection_json?.outright_market_id);
+  return (state.outrightMarkets || []).find((market) => Number(market.id) === outrightId)
+    || (state.outrightMarkets || []).find((market) => market.market_key === bet?.market_key && market.selection_key === bet?.selection_key)
+    || null;
+}
+
 function canUpdateBet(bet, match = matchForBet(bet), market = marketForBet(bet, match)) {
   if (!match || !market || bet.status !== "placed") return false;
   if (!["SCHEDULED", "NS", "TBD"].includes(match.status)) return false;
   const closeTime = new Date(market.closes_at || match.starts_at).getTime();
   return Number.isFinite(closeTime) && closeTime > Date.now() && market.is_open !== false;
+}
+
+function canCancelBet(bet, match = matchForBet(bet), market = marketForBet(bet, match)) {
+  if (!bet || bet.status !== "placed") return false;
+  if (match) {
+    if (!["SCHEDULED", "NS", "TBD"].includes(match.status)) return false;
+    if (market && market.is_open === false) return false;
+    const closeTime = new Date(market?.closes_at || match.starts_at).getTime();
+    return Number.isFinite(closeTime) && closeTime > Date.now();
+  }
+  const outright = outrightMarketForBet(bet);
+  if (!outright || outright.is_open === false) return false;
+  const closeTime = new Date(outright.closes_at).getTime();
+  return Number.isFinite(closeTime) && closeTime > Date.now();
 }
 
 function statsForMatch(match) {
@@ -3586,6 +3661,8 @@ function renderAdmin() {
       <section class="metric-grid">
         ${metric("Players", report.players || players.length)}
         ${metric("Wallet balance", money(report.total_wallet_balance))}
+        ${metric("In open bets", money(report.total_open_staked))}
+        ${metric("Available", money(report.total_available_to_bet ?? report.total_wallet_balance))}
         ${metric("Total staked", money(report.total_staked))}
         ${metric("Settled net", money(report.settled_net_points))}
         ${metric("Prediction bonus", money(report.prediction_bonus_points))}
@@ -3676,7 +3753,7 @@ function renderAdmin() {
       </section>
       <section class="glass-card table-card">
         <div class="section-heading"><h2>Player report</h2><span>profit · bonus · accuracy</span></div>
-        <div class="table-row table-head"><span>Player</span><span>Wallet</span><span>Net</span><span>Bonus</span><span>Score</span></div>
+        <div class="table-row table-head user-report-row"><span>Player</span><span>Total</span><span>Dang bet</span><span>Con bet</span><span>Net</span><span>Bonus</span><span>Score</span></div>
         ${renderUserReportRows(players)}
       </section>
       <section class="glass-card table-card">
@@ -4158,16 +4235,18 @@ function renderUserReportRows(players) {
   }));
   const rows = source.map((row) => {
     return `
-      <div class="table-row">
+      <div class="table-row user-report-row">
         <span>${escapeHtml(row.display_name)}</span>
-        <span>${money(row.wallet_balance)}</span>
+        <span>${money(row.total_balance ?? (number(row.wallet_balance) + number(row.open_staked)))}</span>
+        <span>${money(row.open_staked)}</span>
+        <span>${money(row.available_balance ?? row.wallet_balance)}</span>
         <span>${money(row.net_points)}</span>
         <span>${money(row.bonus_points)}</span>
         <span>${money(row.score)}</span>
       </div>
     `;
   });
-  return rows.join("") || `<div class="table-row"><span>No players</span><span>-</span><span>-</span><span>-</span><span>-</span></div>`;
+  return rows.join("") || `<div class="table-row user-report-row"><span>No players</span><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div>`;
 }
 
 function renderMarketReportRows() {
@@ -4682,6 +4761,9 @@ function bindShellEvents() {
   document.querySelectorAll("[data-void-bet]").forEach((button) => {
     button.addEventListener("click", () => voidBet(Number(button.dataset.voidBet)));
   });
+  document.querySelectorAll("[data-cancel-bet]").forEach((button) => {
+    button.addEventListener("click", () => cancelBet(Number(button.dataset.cancelBet)));
+  });
 }
 
 function requestOpenBetModal(matchId) {
@@ -4710,6 +4792,7 @@ function openBetModal(matchId) {
 async function submitModalBets(event) {
   event.preventDefault();
   if (state.isSubmittingBet) return;
+  if (!(await ensureSession())) return;
   const match = state.matches.find((item) => item.id === state.betModalMatchId) || selectedMatch();
   if (!match) return;
   let collected;
@@ -4873,6 +4956,37 @@ async function updateBet(event) {
   await loadData();
 }
 
+async function cancelBet(betId) {
+  if (state.isSubmittingBet) return;
+  const bet = state.bets.find((item) => Number(item.id) === Number(betId));
+  if (!bet) return;
+  const confirmed = confirm(`Hủy kèo ${bet.selection_label} và hoàn ${money(bet.stake)} vào ví?`);
+  if (!confirmed) return;
+
+  state.isSubmittingBet = true;
+  renderApp();
+  try {
+    const { data, error } = await state.client.rpc("cancel_bet", {
+      p_bet_id: betId,
+      p_reason: "User cancelled bet"
+    });
+    if (error) {
+      state.error = error.message;
+      state.message = "";
+    } else {
+      state.message = `Đã hủy kèo và hoàn ${money(data?.stake ?? bet.stake)} vào ví.`;
+      state.error = "";
+      state.predictionStatsTab = "upcoming";
+    }
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : String(error);
+    state.message = "";
+  } finally {
+    state.isSubmittingBet = false;
+  }
+  await loadData();
+}
+
 async function placeScoreBet(event) {
   event.preventDefault();
   const match = selectedMatch();
@@ -4932,6 +5046,7 @@ async function placeSelectedOutrightBet(event, marketKey) {
 }
 
 async function submitOutrightBet(marketId, stake) {
+  if (!(await ensureSession())) return;
   const market = state.outrightMarkets.find((item) => item.id === marketId);
   if (!market || market.source !== "odds-api" || !stake) return;
   state.isSubmittingBet = true;
@@ -4963,6 +5078,7 @@ async function submitOutrightBet(marketId, stake) {
 
 async function placeBet(payload) {
   if (state.isSubmittingBet) return;
+  if (!(await ensureSession())) return;
   state.isSubmittingBet = true;
   renderApp();
   try {
@@ -5020,6 +5136,7 @@ async function createUser(event) {
 async function adjustWallet(event) {
   event.preventDefault();
   if (state.actionLoading) return;
+  if (!(await ensureSession())) return;
   const userId = document.getElementById("topup-user").value;
   const amount = Number(document.getElementById("topup-amount").value || 0);
   const reason = document.getElementById("topup-reason").value;
@@ -5633,6 +5750,9 @@ function exportReportsCsv() {
     settled_bets: row.settled_bets,
     won_bets: row.won_bets,
     correct_score_count: row.correct_score_count,
+    total_balance: row.total_balance ?? (number(row.wallet_balance) + number(row.open_staked)),
+    open_staked: row.open_staked,
+    available_balance: row.available_balance ?? row.wallet_balance,
     total_staked: row.total_staked,
     net_points: row.net_points,
     bonus_points: row.bonus_points,

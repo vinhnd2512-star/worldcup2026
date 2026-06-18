@@ -52,6 +52,7 @@ const requiredEnv = [
 const requiredAppTokens = [
   "place_bet",
   "update_bet",
+  "cancel_bet",
   "place_outright_bet",
   "settle_tournament_winner",
   "admin_adjust_wallet",
@@ -193,6 +194,7 @@ const requiredSqlTokens = [
   "bet_refund",
   "create or replace function public.place_bet",
   "create or replace function public.update_bet",
+  "create or replace function public.cancel_bet",
   "create or replace function public.place_outright_bet",
   "create or replace function public.admin_update_match_market",
   "create or replace function public.admin_update_outright_market",
@@ -201,6 +203,7 @@ const requiredSqlTokens = [
   "create or replace function public.settle_tournament_winner",
   "bet_stake_adjustment",
   "bet_stake_refund",
+  "'bet.cancel'",
   "'bet.update'",
   "enable row level security"
 ];

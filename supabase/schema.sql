@@ -797,6 +797,9 @@ select
   username,
   display_name,
   wallet_balance,
+  wallet_balance as available_balance,
+  open_staked,
+  (wallet_balance + open_staked)::numeric(12,2) as total_balance,
   total_bets,
   score,
   net_points,
@@ -816,6 +819,8 @@ create or replace view public.admin_report as
 select
   (select count(*) from public.profiles where role = 'player' and deleted_at is null)::integer as players,
   (select coalesce(sum(wallet_balance), 0)::numeric(12,2) from public.profiles where deleted_at is null) as total_wallet_balance,
+  (select coalesce(sum(wallet_balance), 0)::numeric(12,2) from public.profiles where role = 'player' and deleted_at is null) as total_available_to_bet,
+  (select coalesce(sum(stake), 0)::numeric(12,2) from public.bets where status = 'placed') as total_open_staked,
   (select coalesce(sum(stake), 0)::numeric(12,2) from public.bets) as total_staked,
   (select coalesce(sum(points_delta), 0)::numeric(12,2) from public.bets where status in ('won','lost','refunded')) as settled_net_points,
   (select coalesce(sum(prediction_bonus), 0)::numeric(12,2) from public.bets where status in ('won','lost','refunded')) as prediction_bonus_points,
@@ -842,6 +847,7 @@ user_scores as (
     count(b.id) filter (where b.status in ('won','lost','refunded'))::integer as settled_bets,
     count(b.id) filter (where b.status = 'won')::integer as won_bets,
     count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
+    coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)::numeric(12,2) as open_staked,
     coalesce(sum(b.stake), 0)::numeric(12,2) as total_staked,
     coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as net_points,
     coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(12,2) as bonus_points,
@@ -863,6 +869,9 @@ select
   username,
   display_name,
   wallet_balance,
+  wallet_balance as available_balance,
+  open_staked,
+  (wallet_balance + open_staked)::numeric(12,2) as total_balance,
   total_bets,
   open_bets,
   settled_bets,
@@ -1020,6 +1029,7 @@ begin
   where user_id = auth.uid()
     and match_id = p_match_id
     and market_key = v_market.market_key
+    and (v_market.market_key <> 'correct_score' or selection_key = v_selection_key)
     and status = 'placed'
   order by placed_at desc
   limit 1
@@ -1309,6 +1319,131 @@ begin
   );
 
   return v_updated;
+end;
+$$;
+
+create or replace function public.cancel_bet(
+  p_bet_id bigint,
+  p_reason text default 'User cancelled bet'
+)
+returns public.bets
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user public.profiles%rowtype;
+  v_bet public.bets%rowtype;
+  v_match public.matches%rowtype;
+  v_market public.match_markets%rowtype;
+  v_outright public.outright_markets%rowtype;
+  v_balance numeric(12, 2);
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select * into v_user
+  from public.profiles
+  where id = auth.uid()
+  for update;
+
+  if not found or v_user.is_active is false then
+    raise exception 'user is inactive';
+  end if;
+
+  select * into v_bet
+  from public.bets
+  where id = p_bet_id
+  for update;
+
+  if not found then
+    raise exception 'bet not found';
+  end if;
+  if v_bet.user_id <> auth.uid() then
+    raise exception 'cannot cancel another user''s bet';
+  end if;
+  if v_bet.status <> 'placed' then
+    raise exception 'only placed bets can be cancelled';
+  end if;
+
+  if v_bet.match_id is not null then
+    select * into v_match
+    from public.matches
+    where id = v_bet.match_id;
+
+    if not found then
+      raise exception 'match not found';
+    end if;
+    if v_match.status not in ('SCHEDULED', 'NS', 'TBD') then
+      raise exception 'match is not open for bet cancellation';
+    end if;
+
+    select * into v_market
+    from public.match_markets
+    where id = v_bet.market_id
+      and match_id = v_bet.match_id;
+
+    if not found then
+      select * into v_market
+      from public.match_markets
+      where match_id = v_bet.match_id
+        and market_key = v_bet.market_key
+      order by closes_at asc
+      limit 1;
+    end if;
+
+    if not found or v_market.is_open is false or now() >= coalesce(v_market.closes_at, v_match.starts_at) then
+      raise exception 'bet cancellation is locked for this match';
+    end if;
+  else
+    select * into v_outright
+    from public.outright_markets
+    where id = (v_bet.selection_json->>'outright_market_id')::bigint;
+
+    if not found then
+      raise exception 'outright market not found';
+    end if;
+    if v_outright.is_open is false or now() >= v_outright.closes_at then
+      raise exception 'outright bet cancellation is locked';
+    end if;
+  end if;
+
+  update public.bets
+  set status = 'refunded',
+      points_delta = 0,
+      prediction_bonus = 0,
+      settled_at = now()
+  where id = p_bet_id
+  returning * into v_bet;
+
+  update public.profiles
+  set wallet_balance = wallet_balance + v_bet.stake
+  where id = auth.uid()
+  returning wallet_balance into v_balance;
+
+  insert into public.wallet_ledger (user_id, actor_id, amount, kind, reason, balance_after)
+  values (auth.uid(), auth.uid(), v_bet.stake, 'bet_refund', p_reason, v_balance);
+
+  insert into public.settlements (bet_id, result, status, payout, reason)
+  values (v_bet.id, 'user_cancelled', 'refunded', v_bet.stake, p_reason);
+
+  insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
+  values (
+    auth.uid(),
+    'bet.cancel',
+    'bet',
+    p_bet_id::text,
+    jsonb_build_object(
+      'match_id', v_bet.match_id,
+      'market_key', v_bet.market_key,
+      'selection_key', v_bet.selection_key,
+      'stake', v_bet.stake,
+      'reason', p_reason
+    )
+  );
+
+  return v_bet;
 end;
 $$;
 
