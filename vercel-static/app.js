@@ -506,7 +506,7 @@ async function loadData() {
       .eq("user_id", state.profile.id)
       .order("placed_at", { ascending: false });
     throwIfError(betResult.error);
-    state.bets = betResult.data || [];
+    state.bets = await attachSettlementsToBets(betResult.data || []);
 
     if (state.profile.role === "admin") {
       const usersResult = await state.client.from("profiles").select("*").order("created_at", { ascending: false });
@@ -541,7 +541,7 @@ async function loadData() {
       adminBetsQuery = applyAdminFilters(adminBetsQuery, "placed_at", "user_id");
       const adminBetsResult = await adminBetsQuery;
       throwIfError(adminBetsResult.error);
-      state.adminBets = adminBetsResult.data || [];
+      state.adminBets = await attachSettlementsToBets(adminBetsResult.data || []);
 
       let ledgerQuery = state.client
         .from("wallet_ledger")
@@ -581,6 +581,31 @@ async function loadData() {
     }
     state.error = error.message || String(error);
     renderApp();
+  }
+}
+
+async function attachSettlementsToBets(bets) {
+  if (!Array.isArray(bets) || !bets.length) return bets || [];
+  const betIds = [...new Set(bets.map((bet) => bet.id).filter((id) => id !== null && id !== undefined))];
+  if (!betIds.length) return bets;
+  try {
+    const { data, error } = await state.client
+      .from("settlements")
+      .select("bet_id,result,status,payout,reason,settled_at")
+      .in("bet_id", betIds)
+      .order("settled_at", { ascending: false });
+    if (error) throw error;
+    const byBet = new Map();
+    (data || []).forEach((settlement) => {
+      if (!byBet.has(settlement.bet_id)) byBet.set(settlement.bet_id, settlement);
+    });
+    return bets.map((bet) => ({
+      ...bet,
+      settlement: byBet.get(bet.id) || bet.settlement || null
+    }));
+  } catch (error) {
+    console.warn("Could not load bet settlement details", error);
+    return bets;
   }
 }
 
@@ -3265,6 +3290,7 @@ function matchWinner(match) {
 
 function renderLeaderboard() {
   const selectedRow = state.leaderboard.find((row) => row.user_id === state.selectedLeaderboardUserId) || null;
+  const totalBalanceForRow = (row) => row.total_balance ?? (number(row.wallet_balance) + number(row.open_staked));
   return `
     <div class="stack">
       <div class="section-heading"><div><h1>Bảng xếp hạng</h1><p>Thống kê theo cược đã đặt, ví hiện tại và lãi/lỗ đã settle.</p></div></div>
@@ -3274,14 +3300,14 @@ function renderLeaderboard() {
             <div class="avatar">${initials(row.display_name)}</div>
             <span>#${row.rank}</span>
             <h2>${escapeHtml(row.display_name)}</h2>
-            <strong class="score-value">${money(row.wallet_balance)}</strong>
+            <strong class="score-value">${money(totalBalanceForRow(row))}</strong>
             <small>${fmt.format(number(row.total_bets))} cược · ${fmtOne.format(number(row.accuracy))}% đúng</small>
           </article>
         `).join("")}
       </section>
       <section class="glass-card table-card">
         <div class="table-row table-head leaderboard-row">
-          <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền đã cược</span><span>Số tiền đang cược</span><span>Số tiền hiện tại</span><span>Lãi/Lỗ</span><span>% Lãi/Lỗ</span>
+          <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền đã cược</span><span>Số tiền đang cược</span><span>Tổng tiền</span><span>Lãi/Lỗ</span><span>% Lãi/Lỗ</span>
         </div>
         ${state.leaderboard.map((row) => {
           const canInspect = canInspectLeaderboardBets(row.user_id);
@@ -3295,7 +3321,7 @@ function renderLeaderboard() {
             <span>${fmtOne.format(number(row.accuracy))}%</span>
             <span>${money(row.settled_staked ?? Math.max(0, number(row.total_staked) - number(row.open_staked)))}</span>
             <span>${money(row.open_staked)}</span>
-            <span>${money(row.wallet_balance)}</span>
+            <span>${money(totalBalanceForRow(row))}</span>
             <b class="${number(row.profit_loss ?? row.score) >= 0 ? "success" : "error"}">${number(row.profit_loss ?? row.score) >= 0 ? "+" : ""}${money(row.profit_loss ?? row.score)}</b>
             <span>${fmtOne.format(number(row.profit_loss_pct ?? row.roi))}%</span>
           </${tag}>
@@ -3658,7 +3684,13 @@ function betActualText(bet) {
 function betOutcome(bet) {
   if (bet.status === "won") return { label: "WIN", className: "success" };
   if (bet.status === "lost") return { label: "LOSS", className: "error" };
-  if (bet.status === "refunded") return { label: "REFUND", className: "muted" };
+  if (bet.status === "refunded") {
+    const result = String(bet.settlement?.result || "");
+    if (result === "user_cancelled") return { label: "CANCELLED", className: "muted" };
+    if (result === "admin_void") return { label: "VOID", className: "muted" };
+    if (result === "push") return { label: "PUSH", className: "muted" };
+    return { label: "REFUND", className: "muted" };
+  }
   return { label: "OPEN", className: "muted" };
 }
 
@@ -3673,6 +3705,15 @@ function betScoreAmount(bet) {
   return number(bet.points_delta) + number(bet.prediction_bonus);
 }
 
+function betSettlementDetailText(bet) {
+  if (bet.status !== "refunded" || !bet.settlement) return "";
+  if (bet.settlement.result === "user_cancelled") return "User cancelled bet";
+  if (bet.settlement.result === "admin_void") return "Admin voided bet";
+  if (bet.settlement.result === "push") return "Push: stake returned";
+  if (bet.settlement.reason) return bet.settlement.reason;
+  return "";
+}
+
 function betMarketTitle(bet) {
   return modalMarketTitle(bet.market_key, bet.market_key);
 }
@@ -3684,6 +3725,7 @@ function renderBetDetailCells(bet, { includeUser = false, allowVoid = false } = 
   const score = betScoreAmount(bet);
   const receivedLabel = bet.status === "placed" ? `Potential ${money(betReceivedAmount(bet))}` : money(betReceivedAmount(bet));
   const outcomeClass = `outcome-${String(bet.status || "placed")}`;
+  const settlementDetail = betSettlementDetailText(bet);
   return `
     ${includeUser ? `<div><small>User</small><strong>${escapeHtml(bet.user?.display_name || bet.user_id)}</strong><small>${dateText(bet.placed_at)}</small></div>` : `<div><small>Match</small><strong>${escapeHtml(title)}</strong><small>${dateText(bet.placed_at)}</small></div>`}
     <div><small>Bet type</small><b>${escapeHtml(betMarketTitle(bet))}</b><small>${escapeHtml(bet.market_key)}</small></div>
@@ -3692,6 +3734,7 @@ function renderBetDetailCells(bet, { includeUser = false, allowVoid = false } = 
     <div class="outcome-cell ${escapeHtml(outcomeClass)}">
       <small>Outcome</small>
       <b class="${escapeHtml(outcome.className)}">${escapeHtml(outcome.label)}</b>
+      ${settlementDetail ? `<small>${escapeHtml(settlementDetail)}</small>` : ""}
       <small>Received: ${escapeHtml(receivedLabel)}</small>
       <small>Score: ${score >= 0 ? "+" : ""}${money(score)}${number(bet.prediction_bonus) ? ` · bonus ${money(bet.prediction_bonus)}` : ""}</small>
       ${allowVoid && bet.status === "placed" ? `<button class="ghost-button compact-button" data-void-bet="${bet.id}">Void</button>` : ""}
@@ -4487,7 +4530,7 @@ async function selectLeaderboardUser(userId) {
       .limit(300);
     if (error) throw error;
     if (state.selectedLeaderboardUserId !== userId) return;
-    state.selectedLeaderboardBets = data || [];
+    state.selectedLeaderboardBets = await attachSettlementsToBets(data || []);
   } catch (error) {
     if (state.selectedLeaderboardUserId !== userId) return;
     state.selectedLeaderboardBets = [];
@@ -5545,7 +5588,7 @@ async function loadAdminPredictions(userId) {
       .limit(1000);
     if (error) throw error;
     if (state.adminPredictionUserId !== userId) return;
-    state.adminPredictionBets = data || [];
+    state.adminPredictionBets = await attachSettlementsToBets(data || []);
     state.adminPredictionError = "";
   } catch (error) {
     if (state.adminPredictionUserId !== userId) return;
@@ -5908,7 +5951,7 @@ function exportLeaderboardCsv() {
     "Tỷ lệ đúng": row.accuracy,
     "Số tiền đã cược": row.settled_staked ?? Math.max(0, number(row.total_staked) - number(row.open_staked)),
     "Số tiền đang cược": row.open_staked,
-    "Số tiền hiện tại": row.wallet_balance,
+    "Tổng tiền": row.total_balance ?? (number(row.wallet_balance) + number(row.open_staked)),
     "Lãi/Lỗ": row.profit_loss ?? row.score,
     "% Lãi/Lỗ": row.profit_loss_pct ?? row.roi
   }));
