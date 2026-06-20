@@ -2521,6 +2521,46 @@ select:focus {
   text-transform: uppercase;
 }
 
+.leaderboard-sort-button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-transform: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.leaderboard-sort-button.active {
+  color: var(--gold);
+}
+
+.leaderboard-sort-button span {
+  margin-left: 4px;
+}
+
+.leaderboard-sort-controls {
+  display: none;
+  gap: 8px;
+  align-items: center;
+}
+
+.leaderboard-sort-controls .leaderboard-sort-button {
+  width: auto;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.leaderboard-sort-controls .leaderboard-sort-button.active {
+  border-color: rgba(255, 215, 0, 0.5);
+  background: rgba(255, 215, 0, 0.12);
+}
+
 .odds-report-card {
   display: grid;
   gap: 14px;
@@ -4616,6 +4656,10 @@ select {
 
   .table-head.leaderboard-row {
     display: none;
+  }
+
+  .leaderboard-sort-controls {
+    display: flex;
   }
 
   .leaderboard-row {

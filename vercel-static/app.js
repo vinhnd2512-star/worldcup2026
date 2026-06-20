@@ -16,6 +16,10 @@ const state = {
   selectedLeaderboardUserId: "",
   selectedLeaderboardBets: null,
   leaderboardDetailError: "",
+  leaderboardSort: {
+    key: "total_balance",
+    direction: "desc"
+  },
   users: [],
   report: null,
   syncRuns: [],
@@ -3288,41 +3292,71 @@ function matchWinner(match) {
   return null;
 }
 
+function leaderboardTotalBalance(row) {
+  return row.total_balance ?? (number(row.wallet_balance) + number(row.open_staked));
+}
+
+function leaderboardProfitLoss(row) {
+  return row.profit_loss ?? row.score;
+}
+
+function sortedLeaderboardRows() {
+  const { key, direction } = state.leaderboardSort || { key: "total_balance", direction: "desc" };
+  const multiplier = direction === "asc" ? 1 : -1;
+  const valueFor = key === "profit_loss" ? leaderboardProfitLoss : leaderboardTotalBalance;
+  return [...state.leaderboard].sort((left, right) => {
+    const diff = number(valueFor(left)) - number(valueFor(right));
+    if (diff !== 0) return diff * multiplier;
+    return String(left.display_name || "").localeCompare(String(right.display_name || ""), "vi");
+  });
+}
+
+function leaderboardSortButton(key, label) {
+  const active = state.leaderboardSort?.key === key;
+  const direction = active ? state.leaderboardSort.direction : "desc";
+  const marker = active ? (direction === "asc" ? "↑" : "↓") : "";
+  return `<button class="leaderboard-sort-button ${active ? "active" : ""}" type="button" data-leaderboard-sort="${escapeHtml(key)}">${escapeHtml(label)}${marker ? ` <span>${marker}</span>` : ""}</button>`;
+}
+
 function renderLeaderboard() {
   const selectedRow = state.leaderboard.find((row) => row.user_id === state.selectedLeaderboardUserId) || null;
-  const totalBalanceForRow = (row) => row.total_balance ?? (number(row.wallet_balance) + number(row.open_staked));
+  const sortedRows = sortedLeaderboardRows();
   return `
     <div class="stack">
       <div class="section-heading"><div><h1>Bảng xếp hạng</h1><p>Thống kê theo cược đã đặt, ví hiện tại và lãi/lỗ đã settle.</p></div></div>
       <section class="podium">
-        ${state.leaderboard.slice(0, 3).map((row) => `
+        ${sortedRows.slice(0, 3).map((row, index) => `
           <article class="podium-card">
             <div class="avatar">${initials(row.display_name)}</div>
-            <span>#${row.rank}</span>
+            <span>#${index + 1}</span>
             <h2>${escapeHtml(row.display_name)}</h2>
-            <strong class="score-value">${money(totalBalanceForRow(row))}</strong>
+            <strong class="score-value">${money(leaderboardTotalBalance(row))}</strong>
             <small>${fmt.format(number(row.total_bets))} cược · ${fmtOne.format(number(row.accuracy))}% đúng</small>
           </article>
         `).join("")}
       </section>
+      <div class="leaderboard-sort-controls">
+        ${leaderboardSortButton("total_balance", "Tổng tiền")}
+        ${leaderboardSortButton("profit_loss", "Lãi/Lỗ")}
+      </div>
       <section class="glass-card table-card">
         <div class="table-row table-head leaderboard-row">
-          <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền đã cược</span><span>Số tiền đang cược</span><span>Tổng tiền</span><span>Lãi/Lỗ</span><span>% Lãi/Lỗ</span>
+          <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền đã cược</span><span>Số tiền đang cược</span><span>${leaderboardSortButton("total_balance", "Tổng tiền")}</span><span>${leaderboardSortButton("profit_loss", "Lãi/Lỗ")}</span><span>% Lãi/Lỗ</span>
         </div>
-        ${state.leaderboard.map((row) => {
+        ${sortedRows.map((row, index) => {
           const canInspect = canInspectLeaderboardBets(row.user_id);
           const tag = canInspect ? "button" : "div";
           const attrs = canInspect ? `type="button" data-leaderboard-user="${escapeHtml(row.user_id)}"` : "";
           return `
           <${tag} class="table-row leaderboard-row ${canInspect ? "clickable-row" : ""} ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" ${attrs}>
-            <strong>#${row.rank}</strong>
+            <strong>#${index + 1}</strong>
             <span>${escapeHtml(row.display_name)}</span>
             <span>${fmt.format(number(row.total_bets ?? row.settled_bets))}</span>
             <span>${fmtOne.format(number(row.accuracy))}%</span>
             <span>${money(row.settled_staked ?? Math.max(0, number(row.total_staked) - number(row.open_staked)))}</span>
             <span>${money(row.open_staked)}</span>
-            <span>${money(totalBalanceForRow(row))}</span>
-            <b class="${number(row.profit_loss ?? row.score) >= 0 ? "success" : "error"}">${number(row.profit_loss ?? row.score) >= 0 ? "+" : ""}${money(row.profit_loss ?? row.score)}</b>
+            <span>${money(leaderboardTotalBalance(row))}</span>
+            <b class="${number(leaderboardProfitLoss(row)) >= 0 ? "success" : "error"}">${number(leaderboardProfitLoss(row)) >= 0 ? "+" : ""}${money(leaderboardProfitLoss(row))}</b>
             <span>${fmtOne.format(number(row.profit_loss_pct ?? row.roi))}%</span>
           </${tag}>
         `;
@@ -4562,6 +4596,18 @@ function bindShellEvents() {
 
   document.querySelectorAll("[data-leaderboard-user]").forEach((button) => {
     button.addEventListener("click", () => selectLeaderboardUser(button.dataset.leaderboardUser));
+  });
+
+  document.querySelectorAll("[data-leaderboard-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.leaderboardSort;
+      if (state.leaderboardSort.key === key) {
+        state.leaderboardSort.direction = state.leaderboardSort.direction === "desc" ? "asc" : "desc";
+      } else {
+        state.leaderboardSort = { key, direction: "desc" };
+      }
+      renderApp();
+    });
   });
 
   document.querySelector("[data-clear-leaderboard-user]")?.addEventListener("click", () => {
@@ -5943,16 +5989,16 @@ async function voidBet(betId) {
 }
 
 function exportLeaderboardCsv() {
-  const rows = state.leaderboard.map((row) => ({
-    "Hạng": row.rank,
+  const rows = sortedLeaderboardRows().map((row, index) => ({
+    "Hạng": index + 1,
     "Người chơi": row.display_name,
     "Username": row.username,
     "Số trận cược": row.total_bets ?? row.settled_bets,
     "Tỷ lệ đúng": row.accuracy,
     "Số tiền đã cược": row.settled_staked ?? Math.max(0, number(row.total_staked) - number(row.open_staked)),
     "Số tiền đang cược": row.open_staked,
-    "Tổng tiền": row.total_balance ?? (number(row.wallet_balance) + number(row.open_staked)),
-    "Lãi/Lỗ": row.profit_loss ?? row.score,
+    "Tổng tiền": leaderboardTotalBalance(row),
+    "Lãi/Lỗ": leaderboardProfitLoss(row),
     "% Lãi/Lỗ": row.profit_loss_pct ?? row.roi
   }));
   downloadCsv("worldcup-rankings.csv", rows);
