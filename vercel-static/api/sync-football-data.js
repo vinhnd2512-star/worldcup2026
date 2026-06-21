@@ -945,6 +945,20 @@ function shouldReplaceOddsCandidate(current, candidate, preferredBookmakers) {
   return new Date(candidate.bookmaker_last_update || 0).getTime() > new Date(current.bookmaker_last_update || 0).getTime();
 }
 
+function isSuspiciousH2hMarket(market) {
+  const outcomes = Array.isArray(market?.outcomes) ? market.outcomes : [];
+  const draw = outcomes.find((outcome) => normalizeTeamName(outcome.name) === "draw");
+  if (!draw) return false;
+  const drawPrice = Number(draw.price);
+  const teamPrices = outcomes
+    .filter((outcome) => normalizeTeamName(outcome.name) !== "draw")
+    .map((outcome) => Number(outcome.price))
+    .filter((price) => Number.isFinite(price) && price > 1);
+  if (!Number.isFinite(drawPrice) || teamPrices.length < 2) return false;
+  const shortestTeamPrice = Math.min(...teamPrices);
+  return drawPrice < 1.6 && drawPrice < shortestTeamPrice * 0.75;
+}
+
 function poissonDistribution(lambda, maxGoals = 6) {
   const values = [];
   let sum = 0;
@@ -1138,6 +1152,7 @@ function bestPricesForEvent(event, match, reversed) {
 
     for (const market of bookmaker.markets || []) {
       if (market.key === "h2h") {
+        if (isSuspiciousH2hMarket(market)) continue;
         for (const outcome of market.outcomes || []) {
           const outcomeName = normalizeTeamName(outcome.name);
           let selectionKey = null;
