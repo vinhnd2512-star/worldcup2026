@@ -3580,15 +3580,20 @@ function renderAccountBalanceChart() {
   const height = 220;
   const padX = 34;
   const padY = 26;
-  const values = series.map((point) => point.balance);
-  const min = Math.min(...values, current);
-  const max = Math.max(...values, current);
+  const chartPoints = series.map((point) => ({
+    ...point,
+    change: point.balance - start
+  }));
+  const values = chartPoints.map((point) => point.change);
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 0);
   const span = Math.max(1, max - min);
   const xFor = (index) => series.length <= 1 ? width / 2 : padX + (index / (series.length - 1)) * (width - padX * 2);
   const yFor = (value) => height - padY - ((value - min) / span) * (height - padY * 2);
-  const points = series.map((point, index) => `${xFor(index).toFixed(1)},${yFor(point.balance).toFixed(1)}`).join(" ");
+  const zeroY = yFor(0);
+  const points = chartPoints.map((point, index) => `${xFor(index).toFixed(1)},${yFor(point.change).toFixed(1)}`).join(" ");
   const areaPoints = series.length
-    ? `${padX},${height - padY} ${points} ${xFor(series.length - 1).toFixed(1)},${height - padY}`
+    ? `${xFor(0).toFixed(1)},${zeroY.toFixed(1)} ${points} ${xFor(series.length - 1).toFixed(1)},${zeroY.toFixed(1)}`
     : "";
   const lastPoint = series[series.length - 1];
   return `
@@ -3601,10 +3606,13 @@ function renderAccountBalanceChart() {
         <svg class="account-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Biểu đồ biến động tài khoản theo ngày">
           <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" class="chart-axis"></line>
           <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" class="chart-axis"></line>
+          <line x1="${padX}" y1="${zeroY.toFixed(1)}" x2="${width - padX}" y2="${zeroY.toFixed(1)}" class="chart-zero-line"></line>
+          <text x="${padX - 10}" y="${(zeroY - 5).toFixed(1)}" class="chart-zero-label">0</text>
           ${areaPoints ? `<polygon points="${areaPoints}" class="chart-area"></polygon>` : ""}
           ${points ? `<polyline points="${points}" class="chart-line"></polyline>` : ""}
-          ${series.map((point, index) => `<circle cx="${xFor(index).toFixed(1)}" cy="${yFor(point.balance).toFixed(1)}" r="${index === series.length - 1 ? 4.5 : 3}" class="chart-point"><title>${escapeHtml(point.label)}: ${escapeHtml(money(point.balance))}</title></circle>`).join("")}
+          ${chartPoints.map((point, index) => `<circle cx="${xFor(index).toFixed(1)}" cy="${yFor(point.change).toFixed(1)}" r="${index === series.length - 1 ? 4.5 : 3}" class="chart-point" tabindex="0" data-account-chart-point data-date="${escapeHtml(point.label)}" data-balance="${escapeHtml(money(point.balance))}" data-change="${escapeHtml(`${point.change >= 0 ? "+" : ""}${money(point.change)}`)}"></circle>`).join("")}
         </svg>
+        <div class="account-chart-tooltip" data-account-chart-tooltip hidden></div>
       </div>
       <div class="account-trend-summary">
         <span><small>Đầu kỳ</small><b>${money(start)}</b></span>
@@ -4680,6 +4688,46 @@ function renderAuditRow(entry) {
   `;
 }
 
+function bindAccountChartTooltips() {
+  const wrap = document.querySelector(".account-chart-wrap");
+  const svg = wrap?.querySelector(".account-chart");
+  const tooltip = wrap?.querySelector("[data-account-chart-tooltip]");
+  if (!wrap || !svg || !tooltip) return;
+
+  const showTooltip = (point) => {
+    const svgRect = svg.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const viewBox = svg.viewBox.baseVal;
+    const cx = number(point.getAttribute("cx"));
+    const cy = number(point.getAttribute("cy"));
+    const left = svgRect.left - wrapRect.left + (cx / viewBox.width) * svgRect.width;
+    const top = svgRect.top - wrapRect.top + (cy / viewBox.height) * svgRect.height;
+    tooltip.innerHTML = `
+      <strong>${escapeHtml(point.dataset.date || "")}</strong>
+      <span>Số dư: ${escapeHtml(point.dataset.balance || "")}</span>
+      <span>Biến động: ${escapeHtml(point.dataset.change || "")}</span>
+    `;
+    tooltip.hidden = false;
+    tooltip.style.left = `${Math.max(84, Math.min(left, wrapRect.width - 84))}px`;
+    tooltip.style.top = `${Math.max(12, top - 14)}px`;
+  };
+
+  const hideTooltip = () => {
+    tooltip.hidden = true;
+  };
+
+  wrap.querySelectorAll("[data-account-chart-point]").forEach((point) => {
+    point.addEventListener("mouseenter", () => showTooltip(point));
+    point.addEventListener("focus", () => showTooltip(point));
+    point.addEventListener("click", (event) => {
+      event.stopPropagation();
+      showTooltip(point);
+    });
+    point.addEventListener("mouseleave", hideTooltip);
+    point.addEventListener("blur", hideTooltip);
+  });
+}
+
 async function selectLeaderboardUser(userId) {
   if (!userId) return;
   if (!canInspectLeaderboardBets(userId)) {
@@ -4711,6 +4759,8 @@ async function selectLeaderboardUser(userId) {
 }
 
 function bindShellEvents() {
+  bindAccountChartTooltips();
+
   document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {
     button.addEventListener("click", () => {
       state.sidebarCollapsed = !state.sidebarCollapsed;

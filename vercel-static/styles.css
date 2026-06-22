@@ -2723,8 +2723,9 @@ select:focus {
 }
 
 .account-chart-wrap {
+  position: relative;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .account-chart {
@@ -2737,6 +2738,19 @@ select:focus {
 .chart-axis {
   stroke: rgba(255, 255, 255, 0.15);
   stroke-width: 1;
+}
+
+.chart-zero-line {
+  stroke: rgba(255, 215, 0, 0.75);
+  stroke-dasharray: 6 6;
+  stroke-width: 1.5;
+}
+
+.chart-zero-label {
+  fill: var(--gold);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  text-anchor: end;
 }
 
 .chart-area {
@@ -2755,6 +2769,36 @@ select:focus {
   fill: var(--gold);
   stroke: #ffffff;
   stroke-width: 2;
+  cursor: pointer;
+  outline: none;
+}
+
+.chart-point:hover,
+.chart-point:focus {
+  fill: #ffffff;
+  stroke: var(--gold);
+  stroke-width: 3;
+}
+
+.account-chart-tooltip {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 215, 0, 0.42);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 34px rgba(8, 54, 42, 0.16);
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+}
+
+.account-chart-tooltip span {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .account-trend-summary,
