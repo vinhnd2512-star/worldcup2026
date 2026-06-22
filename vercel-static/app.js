@@ -3393,7 +3393,7 @@ function renderLeaderboard() {
   const selectedRow = selectedRankIndex >= 0 ? sortedRows[selectedRankIndex] : null;
   return `
     <div class="stack">
-      <div class="section-heading"><div><h1>B&#7843;ng x&#7871;p h&#7841;ng</h1><p>T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i (1) = T&#7893;ng ti&#7873;n hi&#7879;n c&oacute; (2) + T&#7893;ng ti&#7873;n &#273;ang c&#432;&#7907;c (3).</p></div></div>
+      <div class="section-heading"><div><h1>B&#7843;ng x&#7871;p h&#7841;ng</h1><p>T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i (1) = T&#7893;ng ti&#7873;n ch&#432;a c&#432;&#7907;c (2) + T&#7893;ng ti&#7873;n &#273;ang c&#432;&#7907;c (3).</p></div></div>
       <section class="podium">
         ${sortedRows.slice(0, 3).map((row, index) => `
           <article class="podium-card podium-${leaderboardMedal(index)}">
@@ -3420,7 +3420,7 @@ function renderLeaderboard() {
             <span>H&#7841;ng</span>
             <span>Ng&#432;&#7901;i ch&#417;i</span>
             <span>${leaderboardSortButton("total_balance", "T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i (1)")}</span>
-            <span>${leaderboardSortButton("available_balance", "T&#7893;ng ti&#7873;n hi&#7879;n c&oacute; (2)")}</span>
+            <span>${leaderboardSortButton("available_balance", "T&#7893;ng ti&#7873;n ch&#432;a c&#432;&#7907;c (2)")}</span>
             <span>${leaderboardSortButton("open_staked", "T&#7893;ng ti&#7873;n &#273;ang c&#432;&#7907;c (3)")}</span>
             <span>${leaderboardSortButton("profit_loss", "L&atilde;i/l&#7895;")}</span>
             <span>${leaderboardSortButton("profit_loss_pct", "% L&atilde;i/l&#7895;")}</span>
@@ -6288,7 +6288,7 @@ function exportLeaderboardCsv() {
     "Hạng": index + 1,
     "Người chơi": row.display_name,
     "Tổng tiền hiện tại (1)": leaderboardTotalBalance(row),
-    "Tổng tiền hiện có (2)": leaderboardAvailableBalance(row),
+    "Tổng tiền chưa cược (2)": leaderboardAvailableBalance(row),
     "Tổng tiền đang cược (3)": leaderboardOpenStaked(row),
     "Lãi/lỗ": leaderboardProfitLoss(row),
     "% Lãi/lỗ": leaderboardProfitLossPct(row),

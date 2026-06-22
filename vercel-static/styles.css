@@ -2381,7 +2381,7 @@ select:focus {
   --lb-rank-col: 60px;
   --lb-player-col: 140px;
   --lb-total-col: 135px;
-  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 130px 130px 130px 90px 140px 90px 110px 103px;
+  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px 125px 75px 130px 103px;
 }
 
 .guide-grid {
@@ -2501,7 +2501,7 @@ select:focus {
 }
 
 .table-row.leaderboard-row {
-  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 130px 130px 130px 90px 140px 90px 110px 103px;
+  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px 125px 75px 130px 103px;
   gap: 0;
   min-width: 1258px;
   padding: 0;
@@ -5003,7 +5003,7 @@ select {
     --lb-rank-col: 76px;
     --lb-player-col: 130px;
     --lb-total-col: 140px;
-    grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 130px 130px 130px 90px 140px 90px 110px 103px;
+    grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px 125px 75px 130px 103px;
     min-width: 1222px;
     align-items: center;
     gap: 0;
