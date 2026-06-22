@@ -3305,14 +3305,55 @@ function leaderboardTotalBalance(row) {
   return row.total_balance ?? (number(row.wallet_balance) + number(row.open_staked));
 }
 
+function leaderboardAvailableBalance(row) {
+  return row.available_balance ?? row.wallet_balance;
+}
+
+function leaderboardOpenStaked(row) {
+  return row.open_staked;
+}
+
 function leaderboardProfitLoss(row) {
   return row.profit_loss ?? row.score;
 }
 
+function leaderboardProfitLossPct(row) {
+  return row.profit_loss_pct ?? row.roi;
+}
+
+function leaderboardTotalStaked(row) {
+  return row.total_staked;
+}
+
+function leaderboardTotalBets(row) {
+  return row.total_bets ?? row.settled_bets;
+}
+
+function leaderboardBetEfficiency(row) {
+  const totalBets = number(leaderboardTotalBets(row));
+  return totalBets > 0 ? number(leaderboardTotalStaked(row)) / totalBets : 0;
+}
+
+function leaderboardWinPct(row) {
+  return row.accuracy;
+}
+
+const LEADERBOARD_SORTERS = {
+  total_balance: leaderboardTotalBalance,
+  available_balance: leaderboardAvailableBalance,
+  open_staked: leaderboardOpenStaked,
+  profit_loss: leaderboardProfitLoss,
+  profit_loss_pct: leaderboardProfitLossPct,
+  total_staked: leaderboardTotalStaked,
+  total_bets: leaderboardTotalBets,
+  bet_efficiency: leaderboardBetEfficiency,
+  accuracy: leaderboardWinPct
+};
+
 function sortedLeaderboardRows() {
   const { key, direction } = state.leaderboardSort || { key: "total_balance", direction: "desc" };
   const multiplier = direction === "asc" ? 1 : -1;
-  const valueFor = key === "profit_loss" ? leaderboardProfitLoss : leaderboardTotalBalance;
+  const valueFor = LEADERBOARD_SORTERS[key] || leaderboardTotalBalance;
   return [...state.leaderboard].sort((left, right) => {
     const diff = number(valueFor(left)) - number(valueFor(right));
     if (diff !== 0) return diff * multiplier;
@@ -3324,58 +3365,84 @@ function leaderboardSortButton(key, label) {
   const active = state.leaderboardSort?.key === key;
   const direction = active ? state.leaderboardSort.direction : "desc";
   const marker = active ? (direction === "asc" ? "↑" : "↓") : "";
-  return `<button class="leaderboard-sort-button ${active ? "active" : ""}" type="button" data-leaderboard-sort="${escapeHtml(key)}">${escapeHtml(label)}${marker ? ` <span>${marker}</span>` : ""}</button>`;
+  return `<button class="leaderboard-sort-button ${active ? "active" : ""}" type="button" data-leaderboard-sort="${escapeHtml(key)}">${label}${marker ? ` <span>${marker}</span>` : ""}</button>`;
+}
+
+function leaderboardMedal(index) {
+  return ["gold", "silver", "bronze"][index] || "";
+}
+
+function leaderboardRankBadge(index) {
+  const medal = leaderboardMedal(index);
+  if (!medal) return `<span class="rank-number">#${index + 1}</span>`;
+  const label = medal === "gold" ? "Vàng" : medal === "silver" ? "Bạc" : "Đồng";
+  return `<span class="rank-medal ${medal}" title="Top ${index + 1} - ${label}"><span>${index + 1}</span></span>`;
 }
 
 function renderLeaderboard() {
-  const selectedRow = state.leaderboard.find((row) => row.user_id === state.selectedLeaderboardUserId) || null;
   const sortedRows = sortedLeaderboardRows();
+  const selectedRankIndex = sortedRows.findIndex((row) => row.user_id === state.selectedLeaderboardUserId);
+  const selectedRow = selectedRankIndex >= 0 ? sortedRows[selectedRankIndex] : null;
   return `
     <div class="stack">
-      <div class="section-heading"><div><h1>Bảng xếp hạng</h1><p>Thống kê theo cược đã đặt, ví hiện tại và lãi/lỗ đã settle.</p></div></div>
+      <div class="section-heading"><div><h1>B&#7843;ng x&#7871;p h&#7841;ng</h1><p>T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i (1) = T&#7893;ng ti&#7873;n hi&#7879;n c&oacute; (2) + T&#7893;ng ti&#7873;n &#273;ang c&#432;&#7907;c (3).</p></div></div>
       <section class="podium">
         ${sortedRows.slice(0, 3).map((row, index) => `
-          <article class="podium-card">
+          <article class="podium-card podium-${leaderboardMedal(index)}">
+            ${leaderboardRankBadge(index)}
             <div class="avatar">${initials(row.display_name)}</div>
-            <span>#${index + 1}</span>
             <h2>${escapeHtml(row.display_name)}</h2>
             <strong class="score-value">${money(leaderboardTotalBalance(row))}</strong>
-            <small>${fmt.format(number(row.total_bets))} cược · ${fmtOne.format(number(row.accuracy))}% đúng</small>
+            <small>${fmt.format(number(leaderboardTotalBets(row)))} c&#432;&#7907;c &middot; ${fmtOne.format(number(leaderboardWinPct(row)))}% th&#7855;ng</small>
           </article>
         `).join("")}
       </section>
       <div class="leaderboard-sort-controls">
-        ${leaderboardSortButton("total_balance", "Tổng tiền")}
-        ${leaderboardSortButton("profit_loss", "Lãi/Lỗ")}
+        ${leaderboardSortButton("total_balance", "T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i")}
+        ${leaderboardSortButton("profit_loss", "L&atilde;i/l&#7895;")}
       </div>
-      <section class="glass-card table-card">
-        <div class="table-row table-head leaderboard-row">
-          <span>Hạng</span><span>Người chơi</span><span>Số trận cược</span><span>Tỷ lệ đúng</span><span>Số tiền đã cược</span><span>Số tiền đang cược</span><span>${leaderboardSortButton("total_balance", "Tổng tiền")}</span><span>${leaderboardSortButton("profit_loss", "Lãi/Lỗ")}</span><span>% Lãi/Lỗ</span>
+      <section class="glass-card table-card leaderboard-table-card">
+        <div class="leaderboard-scroll-table">
+          <div class="table-row table-head leaderboard-row">
+            <span>H&#7841;ng</span>
+            <span>Ng&#432;&#7901;i ch&#417;i</span>
+            <span>${leaderboardSortButton("total_balance", "T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i (1)")}</span>
+            <span>T&#7893;ng ti&#7873;n hi&#7879;n c&oacute; (2)</span>
+            <span>T&#7893;ng ti&#7873;n &#273;ang c&#432;&#7907;c (3)</span>
+            <span>${leaderboardSortButton("profit_loss", "L&atilde;i/l&#7895;")}</span>
+            <span>% L&atilde;i/l&#7895;</span>
+            <span>T&#7893;ng s&#7889; ti&#7873;n &#273;&atilde; c&#432;&#7907;c</span>
+            <span>S&#7889; l&#7879;nh &#273;&atilde; c&#432;&#7907;c</span>
+            <span>Hi&#7879;u qu&#7843; c&#432;&#7907;c</span>
+            <span>% c&#432;&#7907;c th&#7855;ng</span>
+          </div>
+          ${sortedRows.map((row, index) => {
+            const canInspect = canInspectLeaderboardBets(row.user_id);
+            const tag = canInspect ? "button" : "div";
+            const attrs = canInspect ? `type="button" data-leaderboard-user="${escapeHtml(row.user_id)}"` : "";
+            const profitLoss = number(leaderboardProfitLoss(row));
+            return `
+            <${tag} class="table-row leaderboard-row ${canInspect ? "clickable-row" : ""} ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" ${attrs}>
+              <strong>${leaderboardRankBadge(index)}</strong>
+              <span>${escapeHtml(row.display_name)}</span>
+              <span>${money(leaderboardTotalBalance(row))}</span>
+              <span>${money(leaderboardAvailableBalance(row))}</span>
+              <span>${money(leaderboardOpenStaked(row))}</span>
+              <b class="${profitLoss >= 0 ? "success" : "error"}">${profitLoss >= 0 ? "+" : ""}${money(profitLoss)}</b>
+              <span>${fmtOne.format(number(leaderboardProfitLossPct(row)))}%</span>
+              <span>${money(leaderboardTotalStaked(row))}</span>
+              <span>${fmt.format(number(leaderboardTotalBets(row)))}</span>
+              <span>${money(leaderboardBetEfficiency(row))}</span>
+              <span>${fmtOne.format(number(leaderboardWinPct(row)))}%</span>
+            </${tag}>
+          `;
+          }).join("")}
         </div>
-        ${sortedRows.map((row, index) => {
-          const canInspect = canInspectLeaderboardBets(row.user_id);
-          const tag = canInspect ? "button" : "div";
-          const attrs = canInspect ? `type="button" data-leaderboard-user="${escapeHtml(row.user_id)}"` : "";
-          return `
-          <${tag} class="table-row leaderboard-row ${canInspect ? "clickable-row" : ""} ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" ${attrs}>
-            <strong>#${index + 1}</strong>
-            <span>${escapeHtml(row.display_name)}</span>
-            <span>${fmt.format(number(row.total_bets ?? row.settled_bets))}</span>
-            <span>${fmtOne.format(number(row.accuracy))}%</span>
-            <span>${money(row.settled_staked ?? Math.max(0, number(row.total_staked) - number(row.open_staked)))}</span>
-            <span>${money(row.open_staked)}</span>
-            <span>${money(leaderboardTotalBalance(row))}</span>
-            <b class="${number(leaderboardProfitLoss(row)) >= 0 ? "success" : "error"}">${number(leaderboardProfitLoss(row)) >= 0 ? "+" : ""}${money(leaderboardProfitLoss(row))}</b>
-            <span>${fmtOne.format(number(row.profit_loss_pct ?? row.roi))}%</span>
-          </${tag}>
-        `;
-        }).join("")}
       </section>
-      ${selectedRow ? renderLeaderboardPlayerDetails(selectedRow) : ""}
+      ${selectedRow ? renderLeaderboardPlayerDetails(selectedRow, selectedRankIndex + 1) : ""}
     </div>
   `;
 }
-
 function renderCorrectScorePicks(match, market, draft) {
   const rows = correctScoreDraftPicks(draft);
   return `
@@ -3423,14 +3490,14 @@ function canInspectLeaderboardBets(userId) {
   return state.profile?.role === "admin" || state.profile?.id === userId;
 }
 
-function renderLeaderboardPlayerDetails(row) {
+function renderLeaderboardPlayerDetails(row, rank) {
   const bets = state.selectedLeaderboardBets;
   return `
     <section class="glass-card panel leaderboard-detail-panel">
       <div class="section-heading">
         <div>
           <h2>${escapeHtml(row.display_name)}</h2>
-          <p>#${escapeHtml(row.rank)} · ${fmt.format(number(row.total_bets ?? row.settled_bets))} bets · ${fmtOne.format(number(row.accuracy))}% accuracy · score ${money(row.score)}</p>
+          <p>#${escapeHtml(rank)} &middot; ${fmt.format(number(leaderboardTotalBets(row)))} bets &middot; ${fmtOne.format(number(leaderboardWinPct(row)))}% accuracy &middot; score ${money(row.score)}</p>
         </div>
         <button class="ghost-button compact-button" data-clear-leaderboard-user>Close</button>
       </div>
@@ -3445,7 +3512,6 @@ function renderLeaderboardPlayerDetails(row) {
     </section>
   `;
 }
-
 function renderLeaderboardBetRow(bet) {
   return `
     <article class="history-row bet-detail-row ${escapeHtml(bet.status)}">
@@ -3648,9 +3714,13 @@ function renderAccountBalanceChart() {
     </section>
   `;
 }
+function isFinishedBet(bet) {
+  return ["won", "lost", "refunded"].includes(String(bet?.status || ""));
+}
+
 function settledPredictionRows() {
   return (state.bets || [])
-    .filter((bet) => ["won", "lost"].includes(String(bet.status || "")))
+    .filter(isFinishedBet)
     .map((bet) => ({ ...bet, score: betScoreAmount(bet) }))
     .sort((left, right) => new Date(right.settled_at || right.placed_at || 0).getTime() - new Date(left.settled_at || left.placed_at || 0).getTime());
 }
@@ -3661,8 +3731,8 @@ function renderPredictionPerformancePanel() {
   const losers = [...settled].filter((bet) => bet.score < 0).sort((left, right) => left.score - right.score).slice(0, 3);
   return `
     <section class="prediction-extremes-grid">
-      ${renderPredictionExtremeList("Dự đoán lãi nhất", winners, "profit")}
-      ${renderPredictionExtremeList("Dự đoán lỗ nhất", losers, "loss")}
+      ${renderPredictionExtremeList("D&#7921; &#273;o&aacute;n l&atilde;i nh&#7845;t", winners, "profit")}
+      ${renderPredictionExtremeList("D&#7921; &#273;o&aacute;n l&#7895; nh&#7845;t", losers, "loss")}
     </section>
   `;
 }
@@ -3670,9 +3740,9 @@ function renderPredictionPerformancePanel() {
 function renderPredictionExtremeList(title, rows, kind) {
   return `
     <article class="glass-card panel prediction-extreme-card ${escapeHtml(kind)}">
-      <div class="section-heading"><h2>${escapeHtml(title)}</h2><span>${fmt.format(rows.length)} kèo</span></div>
+      <div class="section-heading"><h2>${title}</h2><span>${fmt.format(rows.length)} k&egrave;o</span></div>
       <div class="compact-stack">
-        ${rows.map(renderPredictionExtremeRow).join("") || `<p>Chưa có kèo đã settle.</p>`}
+        ${rows.map(renderPredictionExtremeRow).join("") || `<p>Ch&#432;a c&oacute; k&egrave;o &#273;&atilde; xong.</p>`}
       </div>
     </article>
   `;
@@ -3686,7 +3756,7 @@ function renderPredictionExtremeRow(bet) {
     <div class="prediction-extreme-row">
       <div>
         <strong>${escapeHtml(title)}</strong>
-        <small>${escapeHtml(bet.selection_label)} · ${escapeHtml(betMarketTitle(bet))} · ${dateText(bet.settled_at || bet.placed_at)}</small>
+        <small>${escapeHtml(bet.selection_label)} &middot; ${escapeHtml(betMarketTitle(bet))} &middot; ${dateText(bet.settled_at || bet.placed_at)}</small>
       </div>
       <b class="${score >= 0 ? "success" : "error"}">${score >= 0 ? "+" : ""}${money(score)}</b>
     </div>
@@ -3695,41 +3765,41 @@ function renderPredictionExtremeRow(bet) {
 
 function renderPredictionStats() {
   const upcoming = state.bets.filter((bet) => bet.status === "placed");
+  const finished = state.bets.filter(isFinishedBet);
   const upcomingMatchCount = new Set(upcoming.map((bet) => bet.match_id).filter(Boolean)).size;
   const totalStake = upcoming.reduce((sum, bet) => sum + number(bet.stake), 0);
-  const net = state.bets.reduce((sum, bet) => sum + number(bet.points_delta) + number(bet.prediction_bonus), 0);
-  const won = state.bets.filter((bet) => bet.status === "won").length;
-  const activeList = state.predictionStatsTab === "upcoming" ? upcoming : state.bets;
+  const net = finished.reduce((sum, bet) => sum + number(bet.points_delta) + number(bet.prediction_bonus), 0);
+  const won = finished.filter((bet) => bet.status === "won").length;
+  const activeList = state.predictionStatsTab === "upcoming" ? upcoming : finished;
   return `
     <div class="stack">
       <section class="hero stadium-surface">
         <span class="pill">Premium Predictor</span>
-        <h1>Thống kê dự đoán</h1>
-        <p>${fmt.format(upcomingMatchCount)} trận đang dự đoán · ${fmt.format(upcoming.length)} phiếu mở · ${money(totalStake)} đang mở · Net ${money(net)}</p>
+        <h1>Th&#7889;ng k&ecirc; d&#7921; &#273;o&aacute;n</h1>
+        <p>${fmt.format(upcomingMatchCount)} tr&#7853;n &#273;ang d&#7921; &#273;o&aacute;n &middot; ${fmt.format(upcoming.length)} phi&#7871;u m&#7903; &middot; ${money(totalStake)} &#273;ang m&#7903; &middot; Net ${money(net)}</p>
       </section>
       <section class="prediction-metrics">
-        <div class="glass-card metric"><span>Trận đang dự đoán</span><strong>${fmt.format(upcomingMatchCount)}</strong></div>
-        <div class="glass-card metric"><span>Phiếu đang mở</span><strong>${fmt.format(upcoming.length)}</strong></div>
-        <div class="glass-card metric"><span>Đã dự đoán</span><strong>${fmt.format(state.bets.length)}</strong></div>
-        <div class="glass-card metric"><span>Dự đoán thắng</span><strong>${fmt.format(won)}</strong></div>
+        <div class="glass-card metric"><span>Tr&#7853;n &#273;ang d&#7921; &#273;o&aacute;n</span><strong>${fmt.format(upcomingMatchCount)}</strong></div>
+        <div class="glass-card metric"><span>Phi&#7871;u &#273;ang m&#7903;</span><strong>${fmt.format(upcoming.length)}</strong></div>
+        <div class="glass-card metric"><span>&#272;&atilde; d&#7921; &#273;o&aacute;n</span><strong>${fmt.format(finished.length)}</strong></div>
+        <div class="glass-card metric"><span>D&#7921; &#273;o&aacute;n th&#7855;ng</span><strong>${fmt.format(won)}</strong></div>
       </section>
       ${renderAccountBalanceChart()}
       ${renderPredictionPerformancePanel()}
       <div class="segmented stats-tabs">
-        <button class="${state.predictionStatsTab === "upcoming" ? "active" : ""}" data-prediction-stats-tab="upcoming">Sắp diễn ra</button>
-        <button class="${state.predictionStatsTab === "history" ? "active" : ""}" data-prediction-stats-tab="history">Đã dự đoán</button>
+        <button class="${state.predictionStatsTab === "upcoming" ? "active" : ""}" data-prediction-stats-tab="upcoming">S&#7855;p di&#7877;n ra</button>
+        <button class="${state.predictionStatsTab === "history" ? "active" : ""}" data-prediction-stats-tab="history">&#272;&atilde; d&#7921; &#273;o&aacute;n</button>
       </div>
       <div class="section-heading">
-        <h2>${state.predictionStatsTab === "upcoming" ? "Dự đoán đang mở" : "Lịch sử dự đoán"}</h2>
+        <h2>${state.predictionStatsTab === "upcoming" ? "D&#7921; &#273;o&aacute;n &#273;ang m&#7903;" : "L&#7883;ch s&#7917; d&#7921; &#273;o&aacute;n"}</h2>
         <span>${fmt.format(activeList.length)} bet</span>
       </div>
       <section class="stack">
-        ${activeList.map((bet) => state.predictionStatsTab === "upcoming" ? renderUpcomingBetRow(bet) : renderHistoryRow(bet)).join("") || `<div class="glass-card panel"><p>Chưa có dự đoán trong nhóm này.</p></div>`}
+        ${activeList.map((bet) => state.predictionStatsTab === "upcoming" ? renderUpcomingBetRow(bet) : renderHistoryRow(bet)).join("") || `<div class="glass-card panel"><p>Ch&#432;a c&oacute; d&#7921; &#273;o&aacute;n trong nh&oacute;m n&agrave;y.</p></div>`}
       </section>
     </div>
   `;
 }
-
 function renderUpcomingBetRow(bet) {
   const match = matchForBet(bet);
   const market = marketForBet(bet, match);
@@ -3966,22 +4036,20 @@ function renderHistory() {
 }
 
 function renderHistoryRow(bet) {
+  if (!isFinishedBet(bet)) return "";
   const match = matchForBet(bet) || bet.match;
-  const market = marketForBet(bet, match);
-  if (canUpdateBet(bet, match, market)) return renderUpcomingBetRow(bet);
   const title = match ? `${match.home_team.name} vs ${match.away_team.name}` : bet.market_key;
   const delta = number(bet.points_delta);
   const bonus = number(bet.prediction_bonus);
   return `
     <article class="history-row ${escapeHtml(bet.status)}">
-      <div><strong>${escapeHtml(title)}</strong><small>${dateText(bet.placed_at)}</small></div>
-      <div><small>Dự đoán</small><b>${escapeHtml(bet.selection_label)}</b></div>
+      <div><strong>${escapeHtml(title)}</strong><small>${dateText(bet.settled_at || bet.placed_at)}</small></div>
+      <div><small>D&#7921; &#273;o&aacute;n</small><b>${escapeHtml(bet.selection_label)}</b></div>
       <div><small>Stake</small><b>${money(bet.stake)}</b></div>
-      <div><small>${escapeHtml(bet.status)}${bonus ? ` · bonus ${money(bonus)}` : ""}</small><b class="${delta + bonus >= 0 ? "success" : "error"}">${delta + bonus >= 0 ? "+" : ""}${money(delta + bonus)}</b></div>
+      <div><small>${escapeHtml(bet.status)}${bonus ? ` &middot; bonus ${money(bonus)}` : ""}</small><b class="${delta + bonus >= 0 ? "success" : "error"}">${delta + bonus >= 0 ? "+" : ""}${money(delta + bonus)}</b></div>
     </article>
   `;
 }
-
 function renderSyncHelpPanel() {
   if (!state.syncHelpOpen) return "";
   const items = [
@@ -6206,18 +6274,18 @@ function exportLeaderboardCsv() {
   const rows = sortedLeaderboardRows().map((row, index) => ({
     "Hạng": index + 1,
     "Người chơi": row.display_name,
-    "Username": row.username,
-    "Số trận cược": row.total_bets ?? row.settled_bets,
-    "Tỷ lệ đúng": row.accuracy,
-    "Số tiền đã cược": row.settled_staked ?? Math.max(0, number(row.total_staked) - number(row.open_staked)),
-    "Số tiền đang cược": row.open_staked,
-    "Tổng tiền": leaderboardTotalBalance(row),
-    "Lãi/Lỗ": leaderboardProfitLoss(row),
-    "% Lãi/Lỗ": row.profit_loss_pct ?? row.roi
+    "Tổng tiền hiện tại (1)": leaderboardTotalBalance(row),
+    "Tổng tiền hiện có (2)": leaderboardAvailableBalance(row),
+    "Tổng tiền đang cược (3)": leaderboardOpenStaked(row),
+    "Lãi/lỗ": leaderboardProfitLoss(row),
+    "% Lãi/lỗ": leaderboardProfitLossPct(row),
+    "Tổng số tiền đã cược": leaderboardTotalStaked(row),
+    "Số lệnh đã cược": leaderboardTotalBets(row),
+    "Hiệu quả cược": leaderboardBetEfficiency(row),
+    "% cược thắng": leaderboardWinPct(row)
   }));
   downloadCsv("worldcup-rankings.csv", rows);
 }
-
 function exportBetsCsv() {
   const rows = state.adminBets.map((bet) => ({
     placed_at: bet.placed_at,

@@ -2378,7 +2378,10 @@ select:focus {
 }
 
 .leaderboard-row {
-  grid-template-columns: 72px minmax(150px, 1fr) 120px 110px 130px 130px 140px 120px 110px;
+  --lb-rank-col: 76px;
+  --lb-player-col: 190px;
+  --lb-total-col: 168px;
+  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 160px 160px 130px 110px 170px 120px 140px 130px;
 }
 
 .guide-grid {
@@ -2402,6 +2405,21 @@ select:focus {
   border: 1px solid var(--border);
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(255, 215, 0, 0.12), rgba(255, 255, 255, 0.04));
+}
+
+.podium-gold {
+  border-color: rgba(255, 193, 7, 0.5);
+  background: linear-gradient(180deg, rgba(255, 193, 7, 0.2), rgba(255, 255, 255, 0.04));
+}
+
+.podium-silver {
+  border-color: rgba(180, 190, 204, 0.5);
+  background: linear-gradient(180deg, rgba(180, 190, 204, 0.18), rgba(255, 255, 255, 0.04));
+}
+
+.podium-bronze {
+  border-color: rgba(205, 127, 50, 0.5);
+  background: linear-gradient(180deg, rgba(205, 127, 50, 0.18), rgba(255, 255, 255, 0.04));
 }
 
 .table-card {
@@ -2483,8 +2501,10 @@ select:focus {
 }
 
 .table-row.leaderboard-row {
-  grid-template-columns: 72px minmax(180px, 1.2fr) minmax(96px, 0.7fr) minmax(96px, 0.7fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) minmax(130px, 0.9fr) minmax(120px, 0.8fr) minmax(96px, 0.7fr);
-  min-width: 1120px;
+  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 160px 160px 130px 110px 170px 120px 140px 130px;
+  gap: 0;
+  min-width: 1554px;
+  padding: 0;
 }
 
 .clickable-row {
@@ -2506,12 +2526,79 @@ select:focus {
 
 .table-row.leaderboard-row > * {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-height: inherit;
+  padding: 0 10px;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .table-card {
   overflow-x: auto;
+}
+
+.leaderboard-table-card {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.leaderboard-scroll-table {
+  min-width: 1554px;
+}
+
+.table-row.leaderboard-row > :nth-child(-n + 3) {
+  position: sticky;
+  z-index: 2;
+  background: var(--surface);
+}
+
+.table-row.leaderboard-row > :nth-child(1) {
+  left: 0;
+}
+
+.table-row.leaderboard-row > :nth-child(2) {
+  left: var(--lb-rank-col);
+}
+
+.table-row.leaderboard-row > :nth-child(3) {
+  left: calc(var(--lb-rank-col) + var(--lb-player-col));
+  box-shadow: 10px 0 18px rgba(12, 37, 30, 0.08);
+}
+
+.table-head.leaderboard-row > :nth-child(-n + 3) {
+  z-index: 3;
+}
+
+.rank-number,
+.rank-medal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rank-number {
+  font-weight: 900;
+}
+
+.rank-medal {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: #2b2100;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 900;
+  box-shadow: inset 0 2px 5px rgba(255, 255, 255, 0.35), 0 10px 20px rgba(12, 37, 30, 0.12);
+}
+
+.rank-medal.gold {
+  background: linear-gradient(145deg, #fff3a6, #f5b700);
+}
+
+.rank-medal.silver {
+  background: linear-gradient(145deg, #f6f8fb, #aab4c2);
+}
+
+.rank-medal.bronze {
+  background: linear-gradient(145deg, #ffd2a1, #b46a2a);
 }
 
 .table-head {
@@ -2629,7 +2716,7 @@ select:focus {
 }
 
 .history-row {
-  grid-template-columns: minmax(0, 1.4fr) 140px 100px 150px;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(140px, 0.9fr) minmax(100px, 0.6fr) minmax(150px, 0.8fr);
   min-height: 92px;
   padding: 18px;
   border: 1px solid var(--border);
@@ -2640,6 +2727,20 @@ select:focus {
 
 .history-row > * {
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.history-row > div {
+  display: grid;
+  gap: 4px;
+}
+
+.history-row b,
+.history-row strong,
+.history-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .bet-detail-row {
@@ -2863,9 +2964,8 @@ select:focus {
 .prediction-extreme-row strong,
 .prediction-extreme-row small {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .prediction-success-page {
@@ -3106,7 +3206,7 @@ select:focus {
 }
 
 .history-row.upcoming {
-  grid-template-columns: minmax(0, 1.45fr) 110px 130px 120px 100px 110px minmax(260px, 0.95fr);
+  grid-template-columns: minmax(180px, 1.45fr) minmax(100px, 0.65fr) minmax(130px, 0.8fr) minmax(120px, 0.7fr) minmax(100px, 0.6fr) minmax(110px, 0.65fr) minmax(260px, 0.95fr);
   gap: 12px;
 }
 
@@ -4855,6 +4955,49 @@ select {
 
   .table-row.leaderboard-row:not(.table-head) > * {
     white-space: normal;
+  }
+
+  .leaderboard-table-card {
+    margin-inline: 0;
+  }
+
+  .leaderboard-scroll-table {
+    min-width: 1478px;
+  }
+
+  .table-head.leaderboard-row {
+    display: grid;
+  }
+
+  .leaderboard-row,
+  .table-row.leaderboard-row,
+  .table-row.leaderboard-row:not(.table-head) {
+    --lb-rank-col: 76px;
+    --lb-player-col: 150px;
+    --lb-total-col: 150px;
+    grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 160px 160px 130px 110px 170px 120px 140px 130px;
+    min-width: 1478px;
+    align-items: center;
+    gap: 0;
+    padding: 0;
+  }
+
+  .table-row.leaderboard-row > * {
+    display: flex;
+    align-items: center;
+    min-height: inherit;
+    padding: 0 10px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .table-row.leaderboard-row span:nth-child(3),
+  .table-row.leaderboard-row span:nth-child(4) {
+    display: flex;
+  }
+
+  .table-row.leaderboard-row > :nth-child(-n + 3) {
+    background: var(--surface);
   }
 
   .prediction-side-column {
