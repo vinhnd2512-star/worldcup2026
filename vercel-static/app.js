@@ -27,6 +27,7 @@ const state = {
   adminBets: [],
   walletLedger: [],
   auditLogs: [],
+  accountLedger: [],
   userReport: [],
   marketReport: [],
   deploymentHealth: null,
@@ -511,6 +512,14 @@ async function loadData() {
       .order("placed_at", { ascending: false });
     throwIfError(betResult.error);
     state.bets = await attachSettlementsToBets(betResult.data || []);
+
+    const accountLedgerResult = await state.client
+      .from("wallet_ledger")
+      .select("id,amount,kind,reason,balance_after,created_at")
+      .eq("user_id", state.profile.id)
+      .order("created_at", { ascending: true })
+      .limit(1000);
+    state.accountLedger = accountLedgerResult.error ? [] : accountLedgerResult.data || [];
 
     if (state.profile.role === "admin") {
       const usersResult = await state.client.from("profiles").select("*").order("created_at", { ascending: false });
@@ -3525,6 +3534,132 @@ function renderPredictionSuccess() {
   `;
 }
 
+function dayKey(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleDateString("sv-SE");
+}
+
+function dayLabel(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+}
+
+function accountBalanceSeries() {
+  const byDay = new Map();
+  [...(state.accountLedger || [])]
+    .filter((entry) => entry.created_at && entry.balance_after !== null && entry.balance_after !== undefined)
+    .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+    .forEach((entry) => {
+      const key = dayKey(entry.created_at);
+      if (!key) return;
+      byDay.set(key, {
+        date: key,
+        label: dayLabel(entry.created_at),
+        balance: number(entry.balance_after)
+      });
+    });
+  if (!byDay.size && state.profile) {
+    const now = new Date().toISOString();
+    byDay.set(dayKey(now), {
+      date: dayKey(now),
+      label: dayLabel(now),
+      balance: number(state.profile.wallet_balance)
+    });
+  }
+  return [...byDay.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function renderAccountBalanceChart() {
+  const series = accountBalanceSeries();
+  const current = series[series.length - 1]?.balance ?? number(state.profile?.wallet_balance);
+  const start = series[0]?.balance ?? current;
+  const change = current - start;
+  const width = 720;
+  const height = 220;
+  const padX = 34;
+  const padY = 26;
+  const values = series.map((point) => point.balance);
+  const min = Math.min(...values, current);
+  const max = Math.max(...values, current);
+  const span = Math.max(1, max - min);
+  const xFor = (index) => series.length <= 1 ? width / 2 : padX + (index / (series.length - 1)) * (width - padX * 2);
+  const yFor = (value) => height - padY - ((value - min) / span) * (height - padY * 2);
+  const points = series.map((point, index) => `${xFor(index).toFixed(1)},${yFor(point.balance).toFixed(1)}`).join(" ");
+  const areaPoints = series.length
+    ? `${padX},${height - padY} ${points} ${xFor(series.length - 1).toFixed(1)},${height - padY}`
+    : "";
+  const lastPoint = series[series.length - 1];
+  return `
+    <section class="glass-card panel account-trend-card">
+      <div class="section-heading">
+        <div><h2>Biến động tài khoản</h2><p>Số dư ví cuối ngày</p></div>
+        <span class="${change >= 0 ? "success" : "error"}">${change >= 0 ? "+" : ""}${money(change)}</span>
+      </div>
+      <div class="account-chart-wrap">
+        <svg class="account-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Biểu đồ biến động tài khoản theo ngày">
+          <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" class="chart-axis"></line>
+          <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" class="chart-axis"></line>
+          ${areaPoints ? `<polygon points="${areaPoints}" class="chart-area"></polygon>` : ""}
+          ${points ? `<polyline points="${points}" class="chart-line"></polyline>` : ""}
+          ${series.map((point, index) => `<circle cx="${xFor(index).toFixed(1)}" cy="${yFor(point.balance).toFixed(1)}" r="${index === series.length - 1 ? 4.5 : 3}" class="chart-point"><title>${escapeHtml(point.label)}: ${escapeHtml(money(point.balance))}</title></circle>`).join("")}
+        </svg>
+      </div>
+      <div class="account-trend-summary">
+        <span><small>Đầu kỳ</small><b>${money(start)}</b></span>
+        <span><small>Hiện tại</small><b>${money(current)}</b></span>
+        <span><small>Ngày gần nhất</small><b>${escapeHtml(lastPoint?.label || "-")}</b></span>
+      </div>
+    </section>
+  `;
+}
+
+function settledPredictionRows() {
+  return (state.bets || [])
+    .filter((bet) => ["won", "lost"].includes(String(bet.status || "")))
+    .map((bet) => ({ ...bet, score: betScoreAmount(bet) }))
+    .sort((left, right) => new Date(right.settled_at || right.placed_at || 0).getTime() - new Date(left.settled_at || left.placed_at || 0).getTime());
+}
+
+function renderPredictionPerformancePanel() {
+  const settled = settledPredictionRows();
+  const winners = [...settled].filter((bet) => bet.score > 0).sort((left, right) => right.score - left.score).slice(0, 3);
+  const losers = [...settled].filter((bet) => bet.score < 0).sort((left, right) => left.score - right.score).slice(0, 3);
+  return `
+    <section class="prediction-extremes-grid">
+      ${renderPredictionExtremeList("Dự đoán lãi nhất", winners, "profit")}
+      ${renderPredictionExtremeList("Dự đoán lỗ nhất", losers, "loss")}
+    </section>
+  `;
+}
+
+function renderPredictionExtremeList(title, rows, kind) {
+  return `
+    <article class="glass-card panel prediction-extreme-card ${escapeHtml(kind)}">
+      <div class="section-heading"><h2>${escapeHtml(title)}</h2><span>${fmt.format(rows.length)} kèo</span></div>
+      <div class="compact-stack">
+        ${rows.map(renderPredictionExtremeRow).join("") || `<p>Chưa có kèo đã settle.</p>`}
+      </div>
+    </article>
+  `;
+}
+
+function renderPredictionExtremeRow(bet) {
+  const match = matchForBet(bet) || bet.match;
+  const title = match ? `${match.home_team?.name || "Home"} vs ${match.away_team?.name || "Away"}` : betMarketTitle(bet);
+  const score = number(bet.score);
+  return `
+    <div class="prediction-extreme-row">
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(bet.selection_label)} · ${escapeHtml(betMarketTitle(bet))} · ${dateText(bet.settled_at || bet.placed_at)}</small>
+      </div>
+      <b class="${score >= 0 ? "success" : "error"}">${score >= 0 ? "+" : ""}${money(score)}</b>
+    </div>
+  `;
+}
+
 function renderPredictionStats() {
   const upcoming = state.bets.filter((bet) => bet.status === "placed");
   const upcomingMatchCount = new Set(upcoming.map((bet) => bet.match_id).filter(Boolean)).size;
@@ -3545,6 +3680,8 @@ function renderPredictionStats() {
         <div class="glass-card metric"><span>Đã dự đoán</span><strong>${fmt.format(state.bets.length)}</strong></div>
         <div class="glass-card metric"><span>Dự đoán thắng</span><strong>${fmt.format(won)}</strong></div>
       </section>
+      ${renderAccountBalanceChart()}
+      ${renderPredictionPerformancePanel()}
       <div class="segmented stats-tabs">
         <button class="${state.predictionStatsTab === "upcoming" ? "active" : ""}" data-prediction-stats-tab="upcoming">Sắp diễn ra</button>
         <button class="${state.predictionStatsTab === "history" ? "active" : ""}" data-prediction-stats-tab="history">Đã dự đoán</button>
