@@ -3547,34 +3547,61 @@ function dayLabel(value) {
 }
 
 function accountBalanceSeries() {
-  const byDay = new Map();
-  [...(state.accountLedger || [])]
+  const dayKeys = new Set();
+  const ledgerRows = [...(state.accountLedger || [])]
     .filter((entry) => entry.created_at && entry.balance_after !== null && entry.balance_after !== undefined)
-    .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
-    .forEach((entry) => {
-      const key = dayKey(entry.created_at);
-      if (!key) return;
-      byDay.set(key, {
-        date: key,
-        label: dayLabel(entry.created_at),
-        balance: number(entry.balance_after)
-      });
-    });
-  if (!byDay.size && state.profile) {
-    const now = new Date().toISOString();
-    byDay.set(dayKey(now), {
-      date: dayKey(now),
-      label: dayLabel(now),
-      balance: number(state.profile.wallet_balance)
-    });
-  }
-  return [...byDay.values()].sort((left, right) => left.date.localeCompare(right.date));
+    .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime());
+  ledgerRows.forEach((entry) => {
+    const key = dayKey(entry.created_at);
+    if (key) dayKeys.add(key);
+  });
+  (state.bets || []).forEach((bet) => {
+    const placedKey = dayKey(bet.placed_at);
+    const settledKey = dayKey(bet.settled_at);
+    if (placedKey) dayKeys.add(placedKey);
+    if (settledKey) dayKeys.add(settledKey);
+  });
+  const todayKey = dayKey(new Date().toISOString());
+  if (todayKey) dayKeys.add(todayKey);
+
+  let ledgerIndex = 0;
+  let walletBalance = ledgerRows[0] ? number(ledgerRows[0].balance_after) : number(state.profile?.wallet_balance);
+  return [...dayKeys].sort().map((key) => {
+    const endOfDay = new Date(`${key}T23:59:59.999`).getTime();
+    while (ledgerIndex < ledgerRows.length && new Date(ledgerRows[ledgerIndex].created_at).getTime() <= endOfDay) {
+      walletBalance = number(ledgerRows[ledgerIndex].balance_after);
+      ledgerIndex += 1;
+    }
+    const openStaked = (state.bets || []).reduce((sum, bet) => {
+      const placedAt = new Date(bet.placed_at || 0).getTime();
+      const settledAt = bet.settled_at ? new Date(bet.settled_at).getTime() : Infinity;
+      if (!Number.isFinite(placedAt) || placedAt > endOfDay || settledAt <= endOfDay) return sum;
+      return sum + number(bet.stake);
+    }, 0);
+    return {
+      date: key,
+      label: dayLabel(`${key}T12:00:00`),
+      balance: walletBalance,
+      openStaked,
+      totalBalance: walletBalance + openStaked
+    };
+  });
+}
+
+function currentOpenStake() {
+  return (state.bets || []).reduce((sum, bet) => {
+    return bet.status === "placed" ? sum + number(bet.stake) : sum;
+  }, 0);
+}
+
+function currentTotalBalance() {
+  return number(state.profile?.wallet_balance) + currentOpenStake();
 }
 
 function renderAccountBalanceChart() {
   const series = accountBalanceSeries();
-  const current = series[series.length - 1]?.balance ?? number(state.profile?.wallet_balance);
-  const start = series[0]?.balance ?? current;
+  const current = series[series.length - 1]?.totalBalance ?? currentTotalBalance();
+  const start = series[0]?.totalBalance ?? current;
   const change = current - start;
   const width = 720;
   const height = 220;
@@ -3582,7 +3609,7 @@ function renderAccountBalanceChart() {
   const padY = 26;
   const chartPoints = series.map((point) => ({
     ...point,
-    change: point.balance - start
+    change: point.totalBalance - start
   }));
   const values = chartPoints.map((point) => point.change);
   const min = Math.min(...values, 0);
@@ -3595,34 +3622,32 @@ function renderAccountBalanceChart() {
   const areaPoints = series.length
     ? `${xFor(0).toFixed(1)},${zeroY.toFixed(1)} ${points} ${xFor(series.length - 1).toFixed(1)},${zeroY.toFixed(1)}`
     : "";
-  const lastPoint = series[series.length - 1];
   return `
     <section class="glass-card panel account-trend-card">
       <div class="section-heading">
-        <div><h2>Biến động tài khoản</h2><p>Số dư ví cuối ngày</p></div>
+        <div><h2>Bi&#7871;n &#273;&#7897;ng t&agrave;i kho&#7843;n</h2><p>T&#7893;ng ti&#7873;n cu&#7889;i ng&agrave;y: v&iacute; + &#273;ang c&#432;&#7907;c</p></div>
         <span class="${change >= 0 ? "success" : "error"}">${change >= 0 ? "+" : ""}${money(change)}</span>
       </div>
       <div class="account-chart-wrap">
-        <svg class="account-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Biểu đồ biến động tài khoản theo ngày">
+        <svg class="account-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Bi&#7875;u &#273;&#7891; bi&#7871;n &#273;&#7897;ng t&agrave;i kho&#7843;n theo ng&agrave;y">
           <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" class="chart-axis"></line>
           <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" class="chart-axis"></line>
           <line x1="${padX}" y1="${zeroY.toFixed(1)}" x2="${width - padX}" y2="${zeroY.toFixed(1)}" class="chart-zero-line"></line>
           <text x="${padX - 10}" y="${(zeroY - 5).toFixed(1)}" class="chart-zero-label">0</text>
           ${areaPoints ? `<polygon points="${areaPoints}" class="chart-area"></polygon>` : ""}
           ${points ? `<polyline points="${points}" class="chart-line"></polyline>` : ""}
-          ${chartPoints.map((point, index) => `<circle cx="${xFor(index).toFixed(1)}" cy="${yFor(point.change).toFixed(1)}" r="${index === series.length - 1 ? 4.5 : 3}" class="chart-point" tabindex="0" data-account-chart-point data-date="${escapeHtml(point.label)}" data-balance="${escapeHtml(money(point.balance))}" data-change="${escapeHtml(`${point.change >= 0 ? "+" : ""}${money(point.change)}`)}"></circle>`).join("")}
+          ${chartPoints.map((point, index) => `<circle cx="${xFor(index).toFixed(1)}" cy="${yFor(point.change).toFixed(1)}" r="${index === series.length - 1 ? 4.5 : 3}" class="chart-point" tabindex="0" data-account-chart-point data-date="${escapeHtml(point.label)}" data-balance="${escapeHtml(money(point.balance))}" data-open-staked="${escapeHtml(money(point.openStaked))}" data-total="${escapeHtml(money(point.totalBalance))}" data-change="${escapeHtml(`${point.change >= 0 ? "+" : ""}${money(point.change)}`)}"></circle>`).join("")}
         </svg>
         <div class="account-chart-tooltip" data-account-chart-tooltip hidden></div>
       </div>
       <div class="account-trend-summary">
-        <span><small>Đầu kỳ</small><b>${money(start)}</b></span>
-        <span><small>Hiện tại</small><b>${money(current)}</b></span>
-        <span><small>Ngày gần nhất</small><b>${escapeHtml(lastPoint?.label || "-")}</b></span>
+        <span><small>&#272;&#7847;u k&#7923;</small><b>${money(start)}</b></span>
+        <span><small>Hi&#7879;n t&#7841;i</small><b>${money(current)}</b></span>
+        <span><small>&#272;ang c&#432;&#7907;c</small><b>${money(currentOpenStake())}</b></span>
       </div>
     </section>
   `;
 }
-
 function settledPredictionRows() {
   return (state.bets || [])
     .filter((bet) => ["won", "lost"].includes(String(bet.status || "")))
@@ -4704,8 +4729,10 @@ function bindAccountChartTooltips() {
     const top = svgRect.top - wrapRect.top + (cy / viewBox.height) * svgRect.height;
     tooltip.innerHTML = `
       <strong>${escapeHtml(point.dataset.date || "")}</strong>
-      <span>Số dư: ${escapeHtml(point.dataset.balance || "")}</span>
-      <span>Biến động: ${escapeHtml(point.dataset.change || "")}</span>
+      <span>V&iacute;: ${escapeHtml(point.dataset.balance || "")}</span>
+      <span>&#272;ang c&#432;&#7907;c: ${escapeHtml(point.dataset.openStaked || "")}</span>
+      <span>T&#7893;ng: ${escapeHtml(point.dataset.total || "")}</span>
+      <span>Bi&#7871;n &#273;&#7897;ng: ${escapeHtml(point.dataset.change || "")}</span>
     `;
     tooltip.hidden = false;
     tooltip.style.left = `${Math.max(84, Math.min(left, wrapRect.width - 84))}px`;
