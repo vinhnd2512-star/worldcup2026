@@ -3331,7 +3331,7 @@ function leaderboardTotalBets(row) {
 
 function leaderboardBetEfficiency(row) {
   const totalBets = number(leaderboardTotalBets(row));
-  return totalBets > 0 ? number(leaderboardTotalStaked(row)) / totalBets : 0;
+  return totalBets > 0 ? number(leaderboardProfitLoss(row)) / totalBets : 0;
 }
 
 function leaderboardWinPct(row) {
@@ -3375,8 +3375,16 @@ function leaderboardMedal(index) {
 function leaderboardRankBadge(index) {
   const medal = leaderboardMedal(index);
   if (!medal) return `<span class="rank-number">#${index + 1}</span>`;
-  const label = medal === "gold" ? "Vàng" : medal === "silver" ? "Bạc" : "Đồng";
-  return `<span class="rank-medal ${medal}" title="Top ${index + 1} - ${label}"><span>${index + 1}</span></span>`;
+  return `<span class="rank-medal ${medal}" title="Top ${index + 1}"><span>${index + 1}</span></span>`;
+}
+
+function leaderboardTotalToneStyle(row, rows) {
+  const totals = rows.map(leaderboardTotalBalance).map(number);
+  const min = Math.min(...totals, 0);
+  const max = Math.max(...totals, 1);
+  const ratio = max === min ? 1 : (number(leaderboardTotalBalance(row)) - min) / (max - min);
+  const alpha = Math.max(0.12, Math.min(0.48, 0.12 + ratio * 0.36));
+  return `--total-tone-alpha:${alpha.toFixed(3)}`;
 }
 
 function renderLeaderboard() {
@@ -3400,21 +3408,26 @@ function renderLeaderboard() {
       <div class="leaderboard-sort-controls">
         ${leaderboardSortButton("total_balance", "T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i")}
         ${leaderboardSortButton("profit_loss", "L&atilde;i/l&#7895;")}
+        ${leaderboardSortButton("bet_efficiency", "Hi&#7879;u qu&#7843;")}
       </div>
       <section class="glass-card table-card leaderboard-table-card">
+        <div class="leaderboard-table-title">
+          <h2>B&#7843;ng x&#7871;p h&#7841;ng ng&#432;&#7901;i ch&#417;i</h2>
+          <span>(1) = (2) + (3)</span>
+        </div>
         <div class="leaderboard-scroll-table">
           <div class="table-row table-head leaderboard-row">
             <span>H&#7841;ng</span>
             <span>Ng&#432;&#7901;i ch&#417;i</span>
             <span>${leaderboardSortButton("total_balance", "T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i (1)")}</span>
-            <span>T&#7893;ng ti&#7873;n hi&#7879;n c&oacute; (2)</span>
-            <span>T&#7893;ng ti&#7873;n &#273;ang c&#432;&#7907;c (3)</span>
+            <span>${leaderboardSortButton("available_balance", "T&#7893;ng ti&#7873;n hi&#7879;n c&oacute; (2)")}</span>
+            <span>${leaderboardSortButton("open_staked", "T&#7893;ng ti&#7873;n &#273;ang c&#432;&#7907;c (3)")}</span>
             <span>${leaderboardSortButton("profit_loss", "L&atilde;i/l&#7895;")}</span>
-            <span>% L&atilde;i/l&#7895;</span>
-            <span>T&#7893;ng s&#7889; ti&#7873;n &#273;&atilde; c&#432;&#7907;c</span>
-            <span>S&#7889; l&#7879;nh &#273;&atilde; c&#432;&#7907;c</span>
-            <span>Hi&#7879;u qu&#7843; c&#432;&#7907;c</span>
-            <span>% c&#432;&#7907;c th&#7855;ng</span>
+            <span>${leaderboardSortButton("profit_loss_pct", "% L&atilde;i/l&#7895;")}</span>
+            <span>${leaderboardSortButton("total_staked", "T&#7893;ng s&#7889; ti&#7873;n &#273;&atilde; c&#432;&#7907;c")}</span>
+            <span>${leaderboardSortButton("total_bets", "S&#7889; l&#7879;nh &#273;&atilde; c&#432;&#7907;c")}</span>
+            <span>${leaderboardSortButton("bet_efficiency", "Hi&#7879;u qu&#7843; c&#432;&#7907;c")}</span>
+            <span>${leaderboardSortButton("accuracy", "% c&#432;&#7907;c th&#7855;ng")}</span>
           </div>
           ${sortedRows.map((row, index) => {
             const canInspect = canInspectLeaderboardBets(row.user_id);
@@ -3425,7 +3438,7 @@ function renderLeaderboard() {
             <${tag} class="table-row leaderboard-row ${canInspect ? "clickable-row" : ""} ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" ${attrs}>
               <strong>${leaderboardRankBadge(index)}</strong>
               <span>${escapeHtml(row.display_name)}</span>
-              <span>${money(leaderboardTotalBalance(row))}</span>
+              <span class="leaderboard-total-cell" style="${leaderboardTotalToneStyle(row, sortedRows)}">${money(leaderboardTotalBalance(row))}</span>
               <span>${money(leaderboardAvailableBalance(row))}</span>
               <span>${money(leaderboardOpenStaked(row))}</span>
               <b class="${profitLoss >= 0 ? "success" : "error"}">${profitLoss >= 0 ? "+" : ""}${money(profitLoss)}</b>
