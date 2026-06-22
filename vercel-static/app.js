@@ -3329,11 +3329,6 @@ function leaderboardTotalBets(row) {
   return row.total_bets ?? row.settled_bets;
 }
 
-function leaderboardBetEfficiency(row) {
-  const totalBets = number(leaderboardTotalBets(row));
-  return totalBets > 0 ? number(leaderboardProfitLoss(row)) / totalBets : 0;
-}
-
 function leaderboardWinPct(row) {
   return row.accuracy;
 }
@@ -3346,7 +3341,6 @@ const LEADERBOARD_SORTERS = {
   profit_loss_pct: leaderboardProfitLossPct,
   total_staked: leaderboardTotalStaked,
   total_bets: leaderboardTotalBets,
-  bet_efficiency: leaderboardBetEfficiency,
   accuracy: leaderboardWinPct
 };
 
@@ -3387,6 +3381,12 @@ function leaderboardTotalToneStyle(row, rows) {
   return `--total-tone-alpha:${alpha.toFixed(3)}`;
 }
 
+function leaderboardWinRateStyle(row) {
+  const pct = Math.max(0, Math.min(100, number(leaderboardWinPct(row))));
+  const weight = Math.round(600 + pct * 3.5);
+  return `--win-rate-weight:${weight}`;
+}
+
 function renderLeaderboard() {
   const sortedRows = sortedLeaderboardRows();
   const selectedRankIndex = sortedRows.findIndex((row) => row.user_id === state.selectedLeaderboardUserId);
@@ -3408,7 +3408,7 @@ function renderLeaderboard() {
       <div class="leaderboard-sort-controls">
         ${leaderboardSortButton("total_balance", "T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i")}
         ${leaderboardSortButton("profit_loss", "L&atilde;i/l&#7895;")}
-        ${leaderboardSortButton("bet_efficiency", "Hi&#7879;u qu&#7843;")}
+        ${leaderboardSortButton("accuracy", "T&#7927; l&#7879; th&#7855;ng")}
       </div>
       <section class="glass-card table-card leaderboard-table-card">
         <div class="leaderboard-table-title">
@@ -3426,14 +3426,14 @@ function renderLeaderboard() {
             <span>${leaderboardSortButton("profit_loss_pct", "% L&atilde;i/l&#7895;")}</span>
             <span>${leaderboardSortButton("total_staked", "T&#7893;ng s&#7889; ti&#7873;n &#273;&atilde; c&#432;&#7907;c")}</span>
             <span>${leaderboardSortButton("total_bets", "S&#7889; l&#7879;nh &#273;&atilde; c&#432;&#7907;c")}</span>
-            <span>${leaderboardSortButton("bet_efficiency", "Hi&#7879;u qu&#7843; c&#432;&#7907;c")}</span>
-            <span>${leaderboardSortButton("accuracy", "% c&#432;&#7907;c th&#7855;ng")}</span>
+            <span>${leaderboardSortButton("accuracy", "T&#7927; l&#7879; th&#7855;ng (%)")}</span>
           </div>
           ${sortedRows.map((row, index) => {
             const canInspect = canInspectLeaderboardBets(row.user_id);
             const tag = canInspect ? "button" : "div";
             const attrs = canInspect ? `type="button" data-leaderboard-user="${escapeHtml(row.user_id)}"` : "";
             const profitLoss = number(leaderboardProfitLoss(row));
+            const profitClass = profitLoss >= 0 ? "success" : "error";
             return `
             <${tag} class="table-row leaderboard-row ${canInspect ? "clickable-row" : ""} ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" ${attrs}>
               <strong>${leaderboardRankBadge(index)}</strong>
@@ -3441,12 +3441,11 @@ function renderLeaderboard() {
               <span class="leaderboard-total-cell" style="${leaderboardTotalToneStyle(row, sortedRows)}">${money(leaderboardTotalBalance(row))}</span>
               <span>${money(leaderboardAvailableBalance(row))}</span>
               <span>${money(leaderboardOpenStaked(row))}</span>
-              <b class="${profitLoss >= 0 ? "success" : "error"}">${profitLoss >= 0 ? "+" : ""}${money(profitLoss)}</b>
-              <span>${fmtOne.format(number(leaderboardProfitLossPct(row)))}%</span>
+              <b class="${profitClass}">${profitLoss >= 0 ? "+" : ""}${money(profitLoss)}</b>
+              <span class="leaderboard-profit-pct ${profitClass}">${fmtOne.format(number(leaderboardProfitLossPct(row)))}%</span>
               <span>${money(leaderboardTotalStaked(row))}</span>
               <span>${fmt.format(number(leaderboardTotalBets(row)))}</span>
-              <span>${money(leaderboardBetEfficiency(row))}</span>
-              <span>${fmtOne.format(number(leaderboardWinPct(row)))}%</span>
+              <span class="leaderboard-win-rate" style="${leaderboardWinRateStyle(row)}">${fmtOne.format(number(leaderboardWinPct(row)))}%</span>
             </${tag}>
           `;
           }).join("")}
@@ -6294,8 +6293,7 @@ function exportLeaderboardCsv() {
     "% Lãi/lỗ": leaderboardProfitLossPct(row),
     "Tổng số tiền đã cược": leaderboardTotalStaked(row),
     "Số lệnh đã cược": leaderboardTotalBets(row),
-    "Hiệu quả cược": leaderboardBetEfficiency(row),
-    "% cược thắng": leaderboardWinPct(row)
+    "Tỷ lệ thắng (%)": leaderboardWinPct(row)
   }));
   downloadCsv("worldcup-rankings.csv", rows);
 }
