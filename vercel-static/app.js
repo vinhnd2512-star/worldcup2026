@@ -2594,7 +2594,7 @@ function modalMarketGroups(markets, group) {
   markets.forEach((market) => {
     groups.set(market.market_key, [...(groups.get(market.market_key) || []), market]);
   });
-  const order = group === "basic" ? ["correct_score", "match_winner", "qualification_method", "total_goals", "match_result", "asian_handicap"] : [];
+  const order = group === "basic" ? ["correct_score", "match_result", "match_winner", "qualification_method", "total_goals", "asian_handicap"] : [];
   return [...groups.entries()]
     .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: sortMarketsForDisplay(items) }))
     .sort((left, right) => {
@@ -2708,9 +2708,9 @@ function renderModalSelectionOptions(group, draft) {
 function modalMarketTitle(marketKey, fallback = "") {
   const labels = {
     correct_score: "Dự đoán tỷ số",
-    match_winner: "Doi di tiep",
+    match_winner: "Thắng chung cuộc / đội đi tiếp",
     qualification_method: "Cach di tiep",
-    match_result: "Đội thắng / hòa / thua",
+    match_result: "Thắng / hòa / thua chung cuộc",
     draw_no_bet: "Draw no bet",
     total_goals: "Tài/Xỉu bàn thắng",
     btts: "Hai đội cùng ghi bàn",
@@ -2726,6 +2726,7 @@ function modalMarketHelpText(marketKey) {
     return "He thong suy ra fair odds tung ty so tu rate 1X2 va Tai/Xiu hien tai bang mo hinh Poisson.";
   }
   const notes = {
+    match_result: "Rate 1X2 ưu tiên lấy trực tiếp từ nhà cái qua The Odds API; nếu provider chưa có dữ liệu thì dùng fallback đang mở của hệ thống.",
     match_winner: "Keo doi di tiep chi mo khi nha cai tra market hai lua chon, tinh ca hiep phu va penalty.",
     qualification_method: "Keo doi thang bang hiep phu hoac penalty chi mo khi nha cai tra dung market nay.",
     total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal.",
@@ -2828,8 +2829,8 @@ function correctScoreOddsHint(market, draft = {}) {
   const score = `${homeScore}-${awayScore}`;
   const multiplier = correctScoreFairOdds(market, homeScore, awayScore);
   const extra = marketExtra(market);
-  if (!extra.score_odds?.[score]) return `Ty le ${score}: chua co odds nha cai`;
-  return `Ty le ${score}: x${fmtOne.format(multiplier)} (model nha cai)`;
+  if (!extra.score_odds?.[score]) return `Ty le ${score}: chua co odds mo hinh`;
+  return `Ty le ${score}: x${fmtOne.format(multiplier)} (tu odds nha cai)`;
 }
 
 function existingOpenBet(match, marketKey, selectionKey = "") {

@@ -1111,7 +1111,7 @@ function correctScoreCandidateFromMarkets(candidates, match) {
     .filter((candidate) => candidate.market_key === "match_result")
     .map((candidate) => [candidate.selection_key, candidate]));
   const totalMarkets = candidates.filter((candidate) => candidate.market_key === "total_goals");
-  if (!resultMarkets.home || !resultMarkets.draw || !resultMarkets.away || totalMarkets.length < 2) return null;
+  if (!resultMarkets.home || !resultMarkets.draw || !resultMarkets.away) return null;
 
   const homeRaw = 1 / Number(resultMarkets.home.odds_multiplier);
   const drawRaw = 1 / Number(resultMarkets.draw.odds_multiplier);
@@ -1122,6 +1122,7 @@ function correctScoreCandidateFromMarkets(candidates, match) {
   const pHome = homeRaw / margin;
   const pDraw = drawRaw / margin;
   const pAway = awayRaw / margin;
+  const hasBookmakerTotals = totalMarkets.length >= 2;
   const expectedTotalGoals = deriveExpectedTotalGoals(totalMarkets);
   const initialGoalDiff = clamp((pHome - pAway) * 2.2, -expectedTotalGoals + 0.1, expectedTotalGoals - 0.1);
   const initialHomeXg = Math.max(0.05, (expectedTotalGoals + initialGoalDiff) / 2);
@@ -1173,8 +1174,9 @@ function correctScoreCandidateFromMarkets(candidates, match) {
     bookmaker_last_update: new Date().toISOString(),
     extra_json: {
       provider: "model-from-odds-api",
-      model: "poisson_1x2_totals_v1",
-      source_markets: ["h2h", "totals"],
+      model: "poisson_1x2_totals_or_default_v1",
+      source_markets: hasBookmakerTotals ? ["h2h", "totals"] : ["h2h", "default_total_goals"],
+      totals_source: hasBookmakerTotals ? "bookmaker_totals" : "default_total_goals",
       p_home: Number(pHome.toFixed(6)),
       p_draw: Number(pDraw.toFixed(6)),
       p_away: Number(pAway.toFixed(6)),
@@ -1186,7 +1188,7 @@ function correctScoreCandidateFromMarkets(candidates, match) {
       score_odds: scoreOdds,
       top_scores: scoreRows.slice(0, 12)
     },
-    payload_json: { model: "poisson_1x2_totals_v1", score_odds: scoreOdds }
+    payload_json: { model: "poisson_1x2_totals_or_default_v1", score_odds: scoreOdds }
   };
 }
 

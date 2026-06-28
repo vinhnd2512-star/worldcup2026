@@ -32,7 +32,7 @@ Use The Odds API for bookmaker-style markets where available.
 - If the provider rejects the match-market combination for the current plan/region, retry with `h2h` only so 1X2 odds can still update.
 - Sync tournament-winner outrights separately from `soccer_fifa_world_cup_winner` with `outrights`, because outrights cannot be mixed with match markets for `soccer_fifa_world_cup`.
 - Keep `draw_no_bet` on internal/admin odds unless a separate event-odds sync is added, because The Odds API rejects `draw_no_bet` on the main `/odds` endpoint.
-- The Odds API currently rejects direct `correct_score` for `soccer_fifa_world_cup` with `INVALID_MARKET`; derive correct-score fair odds from synced `h2h` and `totals` instead of using a fixed multiplier.
+- The Odds API currently rejects direct `correct_score` for `soccer_fifa_world_cup` with `INVALID_MARKET`; derive correct-score fair odds from synced `h2h` and, when present, `totals` instead of using a fixed multiplier. If totals are missing, keep the correct-score market open from bookmaker 1X2 odds with a documented default total-goals assumption.
 - Keep regions narrow, for example `eu`, because each market/region consumes quota.
 - Map odds into `match_markets` conservatively; verify real 2026 provider event names after API keys are configured.
 
@@ -42,7 +42,7 @@ Current implementation:
 - Events map to Supabase matches only when both team names match after normalization and kickoff times are within a 36-hour window.
 - Matched events update `match_markets` for 1X2 (`h2h`), total goals (`totals`), and Asian handicap (`spreads`).
 - Total-goals markets use the provider's line per match, for example 2.25, 2.5, 2.75, or 3.0. The internal 2.5 fallback is closed for matches where provider totals exist, and remains open only when the provider has no totals for that match.
-- Correct-score markets store a Poisson model in `match_markets.extra_json.score_odds`. The model normalizes 1X2 probabilities, estimates expected total goals from the closest balanced totals line, calibrates home/away expected goals, then locks the fair odds for the exact submitted score in `place_bet` and `update_bet`.
+- Correct-score markets store a Poisson model in `match_markets.extra_json.score_odds`. The model normalizes bookmaker 1X2 probabilities, estimates expected total goals from the closest balanced totals line when available, otherwise uses the default total-goals assumption, calibrates home/away expected goals, then locks the fair odds for the exact submitted score in `place_bet` and `update_bet`.
 - Outright outcomes update `outright_markets` for tournament winner when the provider team name matches a Supabase team.
 - Provider payloads are stored in `odds_snapshots`.
 - Player-facing markets show the odds source, bookmaker when available, and last provider update time from `extra_json`.

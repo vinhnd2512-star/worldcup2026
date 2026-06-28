@@ -99,7 +99,7 @@ The Vercel Function `/api/sync-football-data` currently:
 - maps The Odds API 1X2, total-goals, and spreads/handicap odds into `match_markets` when event names and kickoff times match confidently;
 - keeps provider total-goals lines per match instead of forcing 2.5, and only uses the internal 2.5 fallback when provider totals are missing;
 - keeps internal Asian handicap fallback lines open unless provider `spreads` exist for that match;
-- derives correct-score fair odds from synced 1X2 and total-goals lines because The Odds API rejects direct `correct_score` for this World Cup sport key;
+- derives correct-score fair odds from synced 1X2 odds and total-goals lines when available because The Odds API rejects direct `correct_score` for this World Cup sport key; when totals are missing, it still opens correct-score odds from bookmaker 1X2 with a documented default total-goals assumption;
 - prefers configured bookmaker odds from `ODDS_API_BOOKMAKERS`; otherwise it uses the best available odds from `ODDS_API_REGIONS`;
 - maps The Odds API tournament-winner outrights into `outright_markets` when team names match confidently;
 - falls back to football-data.org World Cup fixtures when API-FOOTBALL is unavailable on the current plan;
