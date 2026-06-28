@@ -30,6 +30,7 @@ const LIVE_STATUSES = new Set(["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"]
 const FINAL_STATUSES = new Set(["FT", "AET", "PEN", "FT_PEN"]);
 const ODDS_API_MAIN_MARKETS = "h2h,totals,spreads";
 const ODDS_API_OPTIONAL_KNOCKOUT_MARKETS = "to_qualify,method_of_victory";
+const ODDS_API_ALTERNATE_MARKETS = "alternate_spreads";
 const ODDS_API_TOTALS_FALLBACK_MARKETS = "h2h,totals";
 const ODDS_API_MATCH_FALLBACK_MARKETS = "h2h";
 const ODDS_API_OUTRIGHT_MARKETS = "outrights";
@@ -919,6 +920,15 @@ function oddsApiMainMarkets() {
   return uniqueList([...commaList(ODDS_API_MAIN_MARKETS), ...optional]).join(",");
 }
 
+function oddsApiAlternateMarkets() {
+  return uniqueList(commaList(env("ODDS_API_ALTERNATE_MARKETS") || ODDS_API_ALTERNATE_MARKETS)).join(",");
+}
+
+function oddsApiMaxAlternateEvents() {
+  const parsed = Number(env("ODDS_API_MAX_ALTERNATE_EVENTS") || 32);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 32;
+}
+
 function oddsOutlierMaxDeviationPct() {
   const parsed = Number(env("ODDS_OUTLIER_MAX_DEV_PCT") || 25);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 25;
@@ -1516,7 +1526,7 @@ function bestPricesForEvent(event, match, reversed) {
         }
       }
 
-      if (market.key === "spreads") {
+      if (market.key === "spreads" || market.key === "alternate_spreads") {
         for (const outcome of market.outcomes || []) {
           const outcomeName = normalizeTeamName(outcome.name);
           const point = decimal(outcome.point);
@@ -1563,6 +1573,41 @@ function bestPricesForEvent(event, match, reversed) {
   return [...prices.values()]
     .filter((price) => price.odds_multiplier !== null)
     .map(({ odds_key, ...price }) => price);
+}
+
+function mergeOddsEventMarkets(baseEvent, extraEvent) {
+  if (!extraEvent?.bookmakers?.length) return baseEvent;
+  const bookmakers = new Map();
+  for (const bookmaker of baseEvent.bookmakers || []) {
+    const key = bookmaker.key || bookmaker.title || JSON.stringify(bookmaker);
+    bookmakers.set(key, {
+      ...bookmaker,
+      markets: [...(bookmaker.markets || [])]
+    });
+  }
+  for (const bookmaker of extraEvent.bookmakers || []) {
+    const key = bookmaker.key || bookmaker.title || JSON.stringify(bookmaker);
+    const current = bookmakers.get(key);
+    if (!current) {
+      bookmakers.set(key, {
+        ...bookmaker,
+        markets: [...(bookmaker.markets || [])]
+      });
+      continue;
+    }
+    const seenMarkets = new Set((current.markets || []).map((market) => `${market.key}:${JSON.stringify(market.outcomes || [])}`));
+    for (const market of bookmaker.markets || []) {
+      const marketKey = `${market.key}:${JSON.stringify(market.outcomes || [])}`;
+      if (seenMarkets.has(marketKey)) continue;
+      current.markets.push(market);
+      seenMarkets.add(marketKey);
+    }
+    current.last_update = bookmaker.last_update || current.last_update;
+  }
+  return {
+    ...baseEvent,
+    bookmakers: [...bookmakers.values()]
+  };
 }
 
 function marketFilterPath(candidate) {
@@ -3079,12 +3124,36 @@ async function syncOddsSummary() {
   let updatedOutrights = 0;
   const providerTotalMatchIds = new Set();
   const providerHandicapMatchIds = new Set();
+  const alternateMarkets = oddsApiAlternateMarkets();
+  const maxAlternateEvents = oddsApiMaxAlternateEvents();
+  let alternateRequests = 0;
+  let alternateQuota = null;
+  let alternateWarning = "";
+  let alternateDisabled = !alternateMarkets || maxAlternateEvents <= 0;
 
   for (const event of events) {
     const matched = matchOddsEvent(event, matches);
     if (!matched) continue;
     matchedEvents += 1;
-    const candidates = bestPricesForEvent(event, matched.match, matched.reversed)
+    let oddsEvent = event;
+    if (!alternateDisabled && alternateRequests < maxAlternateEvents && event.id) {
+      try {
+        const alternateOdds = await fetchAlternateOddsEvent(event.id, alternateMarkets);
+        alternateRequests += 1;
+        alternateQuota = alternateOdds.quota;
+        oddsEvent = mergeOddsEventMarkets(event, alternateOdds.event);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (isOddsMarketCompatibilityError(message)) {
+          alternateWarning = `Alternate markets request with ${alternateMarkets} failed; continuing with main spreads only.`;
+          alternateDisabled = true;
+        } else {
+          alternateWarning = `Alternate markets request failed; continuing with main spreads only.`;
+          alternateDisabled = true;
+        }
+      }
+    }
+    const candidates = bestPricesForEvent(oddsEvent, matched.match, matched.reversed)
       .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at }));
     candidates.push(...derivedMatchResultCandidatesFromBookmakerLines(candidates, matched.match)
       .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at })));
@@ -3126,11 +3195,11 @@ async function syncOddsSummary() {
   }
 
   const totalEvents = events.length + outrightOdds.events.length;
-  const quota = mergeOddsQuota(matchQuota, outrightOdds.quota);
-  const requests = matchOdds.requests + (outrightOdds.attempted ? 1 : 0);
+  const quota = mergeOddsQuota(matchQuota, alternateQuota, outrightOdds.quota);
+  const requests = matchOdds.requests + alternateRequests + (outrightOdds.attempted ? 1 : 0);
   const oddsDataStatus = oddsProviderDataStatus(totalEvents, matchedEvents, updatedMarkets, updatedOutrights);
   const quotaText = oddsQuotaText(quota);
-  const warningText = [matchOdds.warning, outrightOdds.error].filter(Boolean).join(" ");
+  const warningText = [matchOdds.warning, alternateWarning, outrightOdds.error].filter(Boolean).join(" ");
   const message = oddsSyncMessage(oddsDataStatus, events.length, outrightOdds.events.length, matchedEvents, updatedMarkets, updatedOutrights, quotaText, warningText);
 
   await recordSyncRun({
@@ -3153,6 +3222,8 @@ async function syncOddsSummary() {
     updatedOutrights,
     quota,
     matchWarning: matchOdds.warning,
+    alternateWarning,
+    alternateRequests,
     outrightError: outrightOdds.error,
     message
   };
@@ -3179,6 +3250,11 @@ async function fetchOutrightOddsEvents() {
   }
 }
 
+async function fetchAlternateOddsEvent(eventId, markets) {
+  const result = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/events/${eventId}/odds`, oddsApiRequestParams(markets));
+  return { event: result.data, quota: result.quota };
+}
+
 async function fetchMatchOddsEvents() {
   const mainMarkets = oddsApiMainMarkets();
   try {
@@ -3189,23 +3265,35 @@ async function fetchMatchOddsEvents() {
     const message = error instanceof Error ? error.message : String(error);
     if (!isOddsMarketCompatibilityError(message)) throw error;
     try {
-      const totalsFallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_TOTALS_FALLBACK_MARKETS));
+      const mainFallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_MAIN_MARKETS));
       return {
-        events: totalsFallback.data,
-        quota: totalsFallback.quota,
+        events: mainFallback.data,
+        quota: mainFallback.quota,
         requests: 2,
-        warning: `Match odds request with ${mainMarkets} failed; retried with ${ODDS_API_TOTALS_FALLBACK_MARKETS}.`
+        warning: `Match odds request with ${mainMarkets} failed; retried with ${ODDS_API_MAIN_MARKETS}.`
       };
-    } catch (fallbackError) {
-      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      if (!isOddsMarketCompatibilityError(fallbackMessage)) throw fallbackError;
-      const h2hFallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_MATCH_FALLBACK_MARKETS));
-      return {
-        events: h2hFallback.data,
-        quota: h2hFallback.quota,
-        requests: 3,
-        warning: `Match odds request with ${mainMarkets} failed; retried with ${ODDS_API_TOTALS_FALLBACK_MARKETS}, then ${ODDS_API_MATCH_FALLBACK_MARKETS}.`
-      };
+    } catch (mainFallbackError) {
+      const mainFallbackMessage = mainFallbackError instanceof Error ? mainFallbackError.message : String(mainFallbackError);
+      if (!isOddsMarketCompatibilityError(mainFallbackMessage)) throw mainFallbackError;
+      try {
+        const totalsFallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_TOTALS_FALLBACK_MARKETS));
+        return {
+          events: totalsFallback.data,
+          quota: totalsFallback.quota,
+          requests: 3,
+          warning: `Match odds request with ${mainMarkets} failed; retried with ${ODDS_API_MAIN_MARKETS}, then ${ODDS_API_TOTALS_FALLBACK_MARKETS}.`
+        };
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        if (!isOddsMarketCompatibilityError(fallbackMessage)) throw fallbackError;
+        const h2hFallback = await oddsApi(`/sports/${WORLD_CUP_SPORT_KEY}/odds`, oddsApiRequestParams(ODDS_API_MATCH_FALLBACK_MARKETS));
+        return {
+          events: h2hFallback.data,
+          quota: h2hFallback.quota,
+          requests: 4,
+          warning: `Match odds request with ${mainMarkets} failed; retried with ${ODDS_API_MAIN_MARKETS}, ${ODDS_API_TOTALS_FALLBACK_MARKETS}, then ${ODDS_API_MATCH_FALLBACK_MARKETS}.`
+        };
+      }
     }
   }
 }
