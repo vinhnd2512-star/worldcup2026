@@ -907,6 +907,10 @@ function commaList(value) {
     .filter(Boolean);
 }
 
+function uniqueList(values) {
+  return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
 function oddsApiBookmakers() {
   return commaList(env("ODDS_API_BOOKMAKERS"));
 }
