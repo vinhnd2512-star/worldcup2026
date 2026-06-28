@@ -2312,7 +2312,7 @@ declare
   v_away_dnb_odds numeric;
   v_count integer := 0;
 begin
-  if not public.is_admin() then
+  if not (public.is_admin() or auth.role() = 'service_role') then
     raise exception 'admin role required';
   end if;
 
