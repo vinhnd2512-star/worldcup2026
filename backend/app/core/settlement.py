@@ -100,6 +100,42 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
             reason="Selection did not match the team that advanced.",
         )
 
+    if bet.market_key == "qualification_method":
+        winner = _match_winner_selection_key(result)
+        if winner is None:
+            return SettlementOutcome(
+                status="pending",
+                result="pending",
+                payout=Decimal("0.00"),
+                net_points=Decimal("0.00"),
+                prediction_bonus=Decimal("0.00"),
+                reason="Knockout qualification method is not final until a team advances.",
+            )
+        won = (
+            (bet.selection_key == "home_extra_time" and result.status == "AET" and winner == "home")
+            or (bet.selection_key == "away_extra_time" and result.status == "AET" and winner == "away")
+            or (bet.selection_key == "home_penalties" and result.status in {"PEN", "FT_PEN"} and winner == "home")
+            or (bet.selection_key == "away_penalties" and result.status in {"PEN", "FT_PEN"} and winner == "away")
+        )
+        if won:
+            payout = money(bet.stake * bet.multiplier)
+            return SettlementOutcome(
+                status="won",
+                result="win",
+                payout=payout,
+                net_points=money(payout - bet.stake),
+                prediction_bonus=prediction_bonus(bet.market_key),
+                reason="Selection matched the knockout qualification method; leaderboard bonus applied.",
+            )
+        return SettlementOutcome(
+            status="lost",
+            result="loss",
+            payout=Decimal("0.00"),
+            net_points=money(Decimal("0.00") - bet.stake),
+            prediction_bonus=Decimal("0.00"),
+            reason="Selection did not match the knockout qualification method.",
+        )
+
     if bet.market_key == "draw_no_bet" and result.home_score == result.away_score:
         return SettlementOutcome(
             status="refunded",
@@ -174,6 +210,7 @@ def prediction_bonus(market_key: str) -> Decimal:
         "correct_score": Decimal("50.00"),
         "match_result": Decimal("10.00"),
         "match_winner": Decimal("10.00"),
+        "qualification_method": Decimal("15.00"),
         "draw_no_bet": Decimal("8.00"),
         "handicap": Decimal("8.00"),
         "total_goals": Decimal("8.00"),

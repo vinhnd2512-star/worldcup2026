@@ -265,6 +265,16 @@ set name = excluded.name,
     display_order = excluded.display_order;
 
 insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
+values ('qualification_method', 'Cach di tiep', 'single', 'qualification_method', false, 3.50, 4)
+on conflict (key) do update
+set name = excluded.name,
+    market_type = excluded.market_type,
+    settlement_rule = excluded.settlement_rule,
+    internal_only = excluded.internal_only,
+    default_multiplier = excluded.default_multiplier,
+    display_order = excluded.display_order;
+
+insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
 values ('asian_handicap', 'Keo Chau A', 'line', 'asian_handicap', false, 1.90, 8)
 on conflict (key) do update
 set name = excluded.name,

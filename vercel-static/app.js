@@ -2581,7 +2581,7 @@ function modalMarketGroups(markets, group) {
   markets.forEach((market) => {
     groups.set(market.market_key, [...(groups.get(market.market_key) || []), market]);
   });
-  const order = group === "basic" ? ["correct_score", "match_winner", "total_goals", "match_result", "asian_handicap"] : [];
+  const order = group === "basic" ? ["correct_score", "match_winner", "qualification_method", "total_goals", "match_result", "asian_handicap"] : [];
   return [...groups.entries()]
     .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: sortMarketsForDisplay(items) }))
     .sort((left, right) => {
@@ -2605,7 +2605,7 @@ function sortMarketsForDisplay(markets) {
 }
 
 function marketSelectionOrder(selectionKey) {
-  return { home: 1, draw: 2, away: 3, over: 4, under: 5, yes: 6, no: 7, exact: 8 }[selectionKey] || 99;
+  return { home: 1, draw: 2, away: 3, home_extra_time: 4, away_extra_time: 5, home_penalties: 6, away_penalties: 7, over: 8, under: 9, yes: 10, no: 11, exact: 12 }[selectionKey] || 99;
 }
 
 function renderModalBetSection(match, group) {
@@ -2696,6 +2696,7 @@ function modalMarketTitle(marketKey, fallback = "") {
   const labels = {
     correct_score: "Dự đoán tỷ số",
     match_winner: "Doi di tiep",
+    qualification_method: "Cach di tiep",
     match_result: "Đội thắng / hòa / thua",
     draw_no_bet: "Draw no bet",
     total_goals: "Tài/Xỉu bàn thắng",
@@ -2713,6 +2714,7 @@ function modalMarketHelpText(marketKey) {
   }
   const notes = {
     match_winner: "Keo doi di tiep chi mo khi nha cai tra market hai lua chon, tinh ca hiep phu va penalty.",
+    qualification_method: "Keo doi thang bang hiep phu hoac penalty chi mo khi nha cai tra dung market nay.",
     total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal.",
     asian_handicap: "Kèo châu Á chỉ mở khi có handicap/spreads từ nhà cái. Nếu tỷ số sau handicap bằng nhau, cược được hoàn tiền."
   };
@@ -2995,6 +2997,7 @@ function collectModalBetPayloads(match, options = {}) {
 
 function isBasicMarket(key, market = null) {
   if (key === "match_winner") return market?.source === "odds-api";
+  if (key === "qualification_method") return market?.source === "odds-api";
   if (key === "total_goals") return true;
   if (key === "draw_no_bet") return false;
   if (key === "asian_handicap") return market?.source === "odds-api";
@@ -3005,6 +3008,7 @@ function isBasicMarket(key, market = null) {
 function isBettableMarket(market) {
   if (!market || market.is_open !== true) return false;
   if (market.market_key === "match_winner") return market.source === "odds-api";
+  if (market.market_key === "qualification_method") return market.source === "odds-api";
   if (market.market_key === "draw_no_bet") return false;
   if (market.market_key === "asian_handicap") return market.source === "odds-api";
   if (market.market_key === "correct_score") return correctScoreMarketHasOdds(market);
@@ -3945,6 +3949,20 @@ function matchWinnerText(match) {
   return "Pending penalties";
 }
 
+function qualificationMethodText(match) {
+  if (!match || match.home_score === null || match.home_score === undefined || match.away_score === null || match.away_score === undefined) return "pending";
+  if (String(match.status || "") === "AET") {
+    if (number(match.home_score) > number(match.away_score)) return `${match.home_team?.name || "Home"} win in extra time`;
+    if (number(match.away_score) > number(match.home_score)) return `${match.away_team?.name || "Away"} win in extra time`;
+  }
+  if (["PEN", "FT_PEN"].includes(String(match.status || ""))) {
+    if (match.home_penalties === null || match.home_penalties === undefined || match.away_penalties === null || match.away_penalties === undefined) return "Pending penalties";
+    if (number(match.home_penalties) > number(match.away_penalties)) return `${match.home_team?.name || "Home"} win on penalties`;
+    if (number(match.away_penalties) > number(match.home_penalties)) return `${match.away_team?.name || "Away"} win on penalties`;
+  }
+  return "No extra-time/penalty method";
+}
+
 function betActualText(bet) {
   const match = matchForBet(bet);
   const market = marketForBet(bet, match);
@@ -3964,6 +3982,7 @@ function betActualText(bet) {
   const totalGoals = number(match.home_score) + number(match.away_score);
   const line = market?.line === null || market?.line === undefined ? null : number(market.line);
   if (bet.market_key === "match_winner") return `${matchScoreText(match)} · ${matchWinnerText(match)}`;
+  if (bet.market_key === "qualification_method") return `${matchScoreText(match)} · ${qualificationMethodText(match)}`;
   if (bet.market_key === "match_result") return `${matchScoreText(match)} · ${matchResultText(match)}`;
   if (bet.market_key === "draw_no_bet") return `${matchScoreText(match)} · ${matchResultText(match)}${number(match.home_score) === number(match.away_score) ? " · stake refunded" : ""}`;
   if (bet.market_key === "total_goals") return `${matchScoreText(match)} · total goals ${fmtOne.format(totalGoals)}${line !== null ? ` vs line ${fmtOne.format(line)}` : ""}`;
@@ -4603,7 +4622,7 @@ function oddsTrackingMatches() {
     .slice(0, 16)
     .map((match) => {
       const trackedMarkets = (match.match_markets || [])
-        .filter((market) => market.is_open && ["match_winner", "match_result", "total_goals"].includes(market.market_key))
+        .filter((market) => market.is_open && ["match_winner", "qualification_method", "match_result", "total_goals"].includes(market.market_key))
         .map((market) => ({ ...market, extra: marketExtra(market), updatedAt: oddsMarketUpdatedAt(market) }));
       const providerMarkets = trackedMarkets.filter((market) => market.source === "odds-api");
       return {
@@ -4618,7 +4637,7 @@ function oddsTrackingMatches() {
 
 function renderOddsTrackingRow(row) {
   const match = row.match;
-  const resultMarketKey = row.trackedMarkets.some((market) => market.market_key === "match_winner") ? "match_winner" : "match_result";
+  const resultMarketKey = row.trackedMarkets.some((market) => market.market_key === "match_result") ? "match_result" : "match_winner";
   const oneXTwo = (resultMarketKey === "match_winner" ? ["home", "away"] : ["home", "draw", "away"])
     .map((key) => row.trackedMarkets.find((market) => market.market_key === resultMarketKey && market.selection_key === key))
     .filter(Boolean);
@@ -4653,6 +4672,9 @@ function marketOddsInline(markets) {
 function shortSelectionLabel(market) {
   if (market.market_key === "match_result" || market.market_key === "match_winner") {
     return { home: "H", draw: "D", away: "A" }[market.selection_key] || market.selection_key;
+  }
+  if (market.market_key === "qualification_method") {
+    return { home_extra_time: "H ET", away_extra_time: "A ET", home_penalties: "H PEN", away_penalties: "A PEN" }[market.selection_key] || market.selection_key;
   }
   const line = market.line === null || market.line === undefined ? "" : ` ${fmtOne.format(number(market.line))}`;
   return `${String(market.selection_key || "").slice(0, 1).toUpperCase()}${line}`;

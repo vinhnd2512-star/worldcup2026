@@ -46,7 +46,7 @@ type NavItem = {
 
 const fmt = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
 const fmtOne = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
-const marketOrder = ["match_winner", "match_result", "handicap", "asian_handicap", "total_goals", "btts", "corners_total", "cards_total"];
+const marketOrder = ["match_winner", "qualification_method", "match_result", "handicap", "asian_handicap", "total_goals", "btts", "corners_total", "cards_total"];
 
 function num(value: string | number | null | undefined): number {
   return Number(value ?? 0);
@@ -68,6 +68,7 @@ function isOpenUpcomingMatch(match: Match): boolean {
 function isBettableMarket(market: Match["markets"][number]): boolean {
   if (!market.is_open) return false;
   if (market.market_key === "match_winner") return market.source === "odds-api";
+  if (market.market_key === "qualification_method") return market.source === "odds-api";
   if (market.market_key === "draw_no_bet") return false;
   if (["handicap", "asian_handicap"].includes(market.market_key)) return market.source === "odds-api";
   if (market.market_key === "correct_score") return market.source === "odds-model";

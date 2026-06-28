@@ -1024,6 +1024,9 @@ begin
   if v_market.market_key = 'match_winner' and v_market.source <> 'odds-api' then
     raise exception 'match winner requires bookmaker odds';
   end if;
+  if v_market.market_key = 'qualification_method' and v_market.source <> 'odds-api' then
+    raise exception 'qualification method requires bookmaker odds';
+  end if;
   if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
     raise exception 'handicap requires bookmaker odds';
   end if;
@@ -1270,6 +1273,9 @@ begin
   end if;
   if v_market.market_key = 'match_winner' and v_market.source <> 'odds-api' then
     raise exception 'match winner requires bookmaker odds';
+  end if;
+  if v_market.market_key = 'qualification_method' and v_market.source <> 'odds-api' then
+    raise exception 'qualification method requires bookmaker odds';
   end if;
   if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
     raise exception 'handicap requires bookmaker odds';
@@ -2371,9 +2377,10 @@ begin
   set is_open = false
   where match_id = v_match.id
     and (
-      market_key in ('draw_no_bet', 'asian_handicap')
+      market_key = 'draw_no_bet'
+      or (market_key = 'asian_handicap' and source <> 'odds-api')
       or (market_key = 'correct_score' and source = 'internal')
-      or (public.is_knockout_match(v_match) and market_key = 'match_result')
+      or (public.is_knockout_match(v_match) and market_key = 'match_result' and source <> 'odds-api')
     );
 
   get diagnostics v_count = row_count;
@@ -3593,6 +3600,15 @@ begin
       end if;
       v_won := (v_bet.selection_key = 'home' and v_winner_team_id = v_match.home_team_id)
         or (v_bet.selection_key = 'away' and v_winner_team_id = v_match.away_team_id);
+    elsif v_bet.market_key = 'qualification_method' then
+      v_winner_team_id := public.match_winner_team_id(p_match_id);
+      if v_winner_team_id is null then
+        continue;
+      end if;
+      v_won := (v_bet.selection_key = 'home_extra_time' and v_match.status = 'AET' and v_winner_team_id = v_match.home_team_id)
+        or (v_bet.selection_key = 'away_extra_time' and v_match.status = 'AET' and v_winner_team_id = v_match.away_team_id)
+        or (v_bet.selection_key = 'home_penalties' and v_match.status in ('PEN', 'FT_PEN') and v_winner_team_id = v_match.home_team_id)
+        or (v_bet.selection_key = 'away_penalties' and v_match.status in ('PEN', 'FT_PEN') and v_winner_team_id = v_match.away_team_id);
     elsif v_bet.market_key = 'correct_score' then
       v_won := (coalesce((v_bet.selection_json->>'home_score')::integer, -1) = v_match.home_score)
         and (coalesce((v_bet.selection_json->>'away_score')::integer, -1) = v_match.away_score);
@@ -3693,6 +3709,7 @@ begin
         when v_bet.market_key = 'correct_score' then 50
         when v_bet.market_key = 'match_result' then 10
         when v_bet.market_key = 'match_winner' then 10
+        when v_bet.market_key = 'qualification_method' then 15
         when v_bet.market_key in ('draw_no_bet', 'total_goals', 'btts') then 8
         when v_bet.market_key in ('corners_total', 'cards_total') then 6
         when v_bet.market_key = 'asian_handicap' then 8
@@ -3718,6 +3735,7 @@ begin
         v_payout,
         case
           when v_bet.market_key = 'match_winner' then 'Selection matched the team that advanced; leaderboard bonus applied.'
+          when v_bet.market_key = 'qualification_method' then 'Selection matched the knockout qualification method; leaderboard bonus applied.'
           else 'Selection matched the final 90-minute result; leaderboard bonus applied.'
         end
       );
@@ -3734,6 +3752,7 @@ begin
         v_payout,
         case
           when v_bet.market_key = 'match_winner' then 'Selection did not match the team that advanced.'
+          when v_bet.market_key = 'qualification_method' then 'Selection did not match the knockout qualification method.'
           else 'Selection did not match the final 90-minute result.'
         end
       );

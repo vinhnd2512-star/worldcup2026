@@ -64,6 +64,38 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(outcome.status, "refunded")
         self.assertEqual(outcome.payout, Decimal("100.00"))
 
+    def test_qualification_method_extra_time(self) -> None:
+        outcome = settle_bet(
+            BetSelection("qualification_method", "home_extra_time", Decimal("100"), Decimal("4.50"), {}),
+            MatchResult(status="AET", home_score=2, away_score=1),
+        )
+        self.assertEqual(outcome.status, "won")
+        self.assertEqual(outcome.payout, Decimal("450.00"))
+        self.assertEqual(outcome.prediction_bonus, Decimal("15.00"))
+
+    def test_qualification_method_penalties(self) -> None:
+        outcome = settle_bet(
+            BetSelection("qualification_method", "away_penalties", Decimal("100"), Decimal("5.00"), {}),
+            MatchResult(status="PEN", home_score=1, away_score=1, home_penalties=3, away_penalties=4),
+        )
+        self.assertEqual(outcome.status, "won")
+        self.assertEqual(outcome.reason, "Selection matched the knockout qualification method; leaderboard bonus applied.")
+
+    def test_qualification_method_wrong_method_loses(self) -> None:
+        outcome = settle_bet(
+            BetSelection("qualification_method", "home_penalties", Decimal("100"), Decimal("5.50"), {}),
+            MatchResult(status="AET", home_score=2, away_score=1),
+        )
+        self.assertEqual(outcome.status, "lost")
+        self.assertEqual(outcome.net_points, Decimal("-100.00"))
+
+    def test_qualification_method_tied_without_penalties_is_pending(self) -> None:
+        outcome = settle_bet(
+            BetSelection("qualification_method", "home_penalties", Decimal("100"), Decimal("5.50"), {}),
+            MatchResult(status="PEN", home_score=1, away_score=1),
+        )
+        self.assertEqual(outcome.status, "pending")
+
     def test_draw_no_bet_win_and_draw_refund(self) -> None:
         win = settle_bet(
             BetSelection("draw_no_bet", "home", Decimal("100"), Decimal("1.65"), {}),
