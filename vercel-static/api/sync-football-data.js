@@ -1180,6 +1180,161 @@ function correctScoreCandidateFromMarkets(candidates, match) {
   };
 }
 
+function hasMarketSelections(candidates, marketKey, selectionKeys) {
+  const selections = new Set(candidates
+    .filter((candidate) => candidate.market_key === marketKey)
+    .map((candidate) => candidate.selection_key));
+  return selectionKeys.every((selectionKey) => selections.has(selectionKey));
+}
+
+function pairedSpreadProbabilities(candidates) {
+  const pairs = new Map();
+  for (const market of candidates.filter((candidate) => candidate.market_key === "asian_handicap")) {
+    const line = Number(market.line);
+    if (!Number.isFinite(line) || !["home", "away"].includes(market.selection_key)) continue;
+    const row = pairs.get(line) || { line };
+    row[market.selection_key] = market;
+    pairs.set(line, row);
+  }
+  return [...pairs.values()]
+    .filter((row) => row.home?.odds_multiplier > 1 && row.away?.odds_multiplier > 1)
+    .map((row) => {
+      const homeRaw = 1 / Number(row.home.odds_multiplier);
+      const awayRaw = 1 / Number(row.away.odds_multiplier);
+      const margin = homeRaw + awayRaw;
+      return {
+        ...row,
+        pHomeSide: margin ? homeRaw / margin : 0.5,
+        pAwaySide: margin ? awayRaw / margin : 0.5
+      };
+    });
+}
+
+function nearestSpreadPair(spreadPairs, targetLine) {
+  return [...spreadPairs].sort((left, right) => Math.abs(left.line - targetLine) - Math.abs(right.line - targetLine))[0] || null;
+}
+
+function derivedDrawProbability(expectedTotalGoals, pHome, pAway) {
+  const balance = Math.abs(Number(pHome || 0.5) - Number(pAway || 0.5));
+  const totalAdjustment = (Number(expectedTotalGoals || 2.5) - 2.5) * 0.045;
+  return clamp(0.27 - balance * 0.18 - totalAdjustment, 0.16, 0.34);
+}
+
+function derivedResultProbabilitiesFromBookmakerLines(candidates) {
+  const totalMarkets = candidates.filter((candidate) => candidate.market_key === "total_goals");
+  const spreadPairs = pairedSpreadProbabilities(candidates);
+  if (totalMarkets.length < 2 || !spreadPairs.length) return null;
+
+  const expectedTotalGoals = deriveExpectedTotalGoals(totalMarkets);
+  const homeWinPair = nearestSpreadPair(spreadPairs, -0.5);
+  const awayWinPair = nearestSpreadPair(spreadPairs, 0.5);
+  let pHome = homeWinPair ? homeWinPair.pHomeSide : null;
+  let pAway = awayWinPair ? awayWinPair.pAwaySide : null;
+
+  if (pHome === null && pAway === null) return null;
+  if (pHome === null) pHome = clamp(1 - pAway - derivedDrawProbability(expectedTotalGoals, 1 - pAway, pAway), 0.05, 0.8);
+  if (pAway === null) pAway = clamp(1 - pHome - derivedDrawProbability(expectedTotalGoals, pHome, 1 - pHome), 0.05, 0.8);
+
+  let pDraw = clamp(1 - pHome - pAway, 0.08, 0.38);
+  if (pHome + pAway + pDraw < 0.98 || pHome + pAway + pDraw > 1.02) {
+    pDraw = derivedDrawProbability(expectedTotalGoals, pHome, pAway);
+  }
+  const total = pHome + pDraw + pAway || 1;
+  return {
+    home: clamp(pHome / total, 0.03, 0.9),
+    draw: clamp(pDraw / total, 0.05, 0.5),
+    away: clamp(pAway / total, 0.03, 0.9),
+    expectedTotalGoals,
+    spreadLines: spreadPairs.map((pair) => pair.line).sort((a, b) => a - b)
+  };
+}
+
+function derivedMatchResultCandidatesFromBookmakerLines(candidates, match) {
+  if (hasMarketSelections(candidates, "match_result", ["home", "draw", "away"])) return [];
+  const probabilities = derivedResultProbabilitiesFromBookmakerLines(candidates);
+  if (!probabilities) return [];
+  const labels = {
+    home: "Đội nhà thắng",
+    draw: "Hòa",
+    away: "Đội khách thắng"
+  };
+  return ["home", "draw", "away"].map((selectionKey) => ({
+    match_id: match.id,
+    market_key: "match_result",
+    label: "Kết quả 1X2",
+    selection_key: selectionKey,
+    selection_label: labels[selectionKey],
+    line: null,
+    odds_multiplier: decimal(clamp(1 / probabilities[selectionKey], 1.01, 25)),
+    bookmaker: "derived from bookmaker lines",
+    bookmaker_key: "derived_spreads_totals",
+    bookmaker_rank: Number.MAX_SAFE_INTEGER - 1,
+    bookmaker_last_update: new Date().toISOString(),
+    source: "odds-api",
+    extra_json: {
+      provider: "derived-from-odds-api",
+      derivation: "spreads_totals_to_1x2",
+      expected_total_goals: Number(probabilities.expectedTotalGoals.toFixed(3)),
+      spread_lines: probabilities.spreadLines,
+      probabilities: {
+        home: Number(probabilities.home.toFixed(6)),
+        draw: Number(probabilities.draw.toFixed(6)),
+        away: Number(probabilities.away.toFixed(6))
+      }
+    },
+    payload_json: { model: "spreads_totals_to_1x2", probabilities }
+  }));
+}
+
+function derivedMatchWinnerCandidatesFromResult(candidates, match) {
+  if (!isKnockoutMatch(match)) return [];
+  if (hasMarketSelections(candidates, "match_winner", ["home", "away"])) return [];
+  const resultMarkets = Object.fromEntries(candidates
+    .filter((candidate) => candidate.market_key === "match_result")
+    .map((candidate) => [candidate.selection_key, candidate]));
+  if (!resultMarkets.home || !resultMarkets.away) return [];
+  const homeRaw = 1 / Number(resultMarkets.home.odds_multiplier);
+  const awayRaw = 1 / Number(resultMarkets.away.odds_multiplier);
+  const margin = homeRaw + awayRaw;
+  if (!Number.isFinite(margin) || margin <= 0) return [];
+  const pHome = homeRaw / margin;
+  const pAway = awayRaw / margin;
+  return [
+    {
+      match_id: match.id,
+      market_key: "match_winner",
+      label: "Đội đi tiếp",
+      selection_key: "home",
+      selection_label: "Đội nhà đi tiếp",
+      line: null,
+      odds_multiplier: decimal(clamp(1 / pHome, 1.01, 20)),
+      bookmaker: "derived from bookmaker lines",
+      bookmaker_key: "derived_result_no_draw",
+      bookmaker_rank: Number.MAX_SAFE_INTEGER - 1,
+      bookmaker_last_update: new Date().toISOString(),
+      source: "odds-api",
+      extra_json: { provider: "derived-from-odds-api", derivation: "1x2_to_advance", probabilities: { home: Number(pHome.toFixed(6)), away: Number(pAway.toFixed(6)) } },
+      payload_json: { model: "1x2_to_advance", probabilities: { home: pHome, away: pAway } }
+    },
+    {
+      match_id: match.id,
+      market_key: "match_winner",
+      label: "Đội đi tiếp",
+      selection_key: "away",
+      selection_label: "Đội khách đi tiếp",
+      line: null,
+      odds_multiplier: decimal(clamp(1 / pAway, 1.01, 20)),
+      bookmaker: "derived from bookmaker lines",
+      bookmaker_key: "derived_result_no_draw",
+      bookmaker_rank: Number.MAX_SAFE_INTEGER - 1,
+      bookmaker_last_update: new Date().toISOString(),
+      source: "odds-api",
+      extra_json: { provider: "derived-from-odds-api", derivation: "1x2_to_advance", probabilities: { home: Number(pHome.toFixed(6)), away: Number(pAway.toFixed(6)) } },
+      payload_json: { model: "1x2_to_advance", probabilities: { home: pHome, away: pAway } }
+    }
+  ];
+}
+
 function integerStat(value) {
   if (value === null || value === undefined || value === "") return 0;
   const numeric = Number.parseInt(String(value).replace("%", ""), 10);
@@ -1550,7 +1705,7 @@ async function ensureCorrectScoreMarketsFromCurrentMarkets(matches) {
   if (!ids.length) return 0;
 
   const response = await supabaseFetch(
-    `/rest/v1/match_markets?select=id,match_id,market_key,label,selection_key,selection_label,line,odds_multiplier,is_open,source,closes_at,extra_json&match_id=in.(${ids.join(",")})&market_key=in.(match_result,total_goals)&is_open=eq.true&source=eq.odds-api`
+    `/rest/v1/match_markets?select=id,match_id,market_key,label,selection_key,selection_label,line,odds_multiplier,is_open,source,closes_at,extra_json&match_id=in.(${ids.join(",")})&market_key=in.(match_result,total_goals,asian_handicap,match_winner)&is_open=eq.true&source=eq.odds-api`
   );
   if (!response.ok) {
     throw new Error(`Supabase read current markets for correct score failed: ${response.status} ${await response.text()}`);
@@ -1563,8 +1718,22 @@ async function ensureCorrectScoreMarketsFromCurrentMarkets(matches) {
   }
 
   const correctScoreCandidates = [];
+  const derivedResultCandidates = [];
+  const derivedWinnerCandidates = [];
   for (const match of matches || []) {
     const candidates = candidatesByMatch.get(Number(match.id)) || [];
+    const resultFallbacks = derivedMatchResultCandidatesFromBookmakerLines(candidates, match)
+      .map((candidate) => ({ ...candidate, closes_at: match.starts_at }));
+    if (resultFallbacks.length) {
+      derivedResultCandidates.push(...resultFallbacks);
+      candidates.push(...resultFallbacks);
+    }
+    const winnerFallbacks = derivedMatchWinnerCandidatesFromResult(candidates, match)
+      .map((candidate) => ({ ...candidate, closes_at: match.starts_at }));
+    if (winnerFallbacks.length) {
+      derivedWinnerCandidates.push(...winnerFallbacks);
+      candidates.push(...winnerFallbacks);
+    }
     const correctScoreCandidate = correctScoreCandidateFromMarkets(candidates, match);
     if (correctScoreCandidate) {
       correctScoreCandidates.push({
@@ -1580,7 +1749,7 @@ async function ensureCorrectScoreMarketsFromCurrentMarkets(matches) {
     }
   }
 
-  const markets = await upsertMarketsFromOdds(correctScoreCandidates);
+  const markets = await upsertMarketsFromOdds([...derivedResultCandidates, ...derivedWinnerCandidates, ...correctScoreCandidates]);
   return markets.length;
 }
 
@@ -2917,6 +3086,10 @@ async function syncOddsSummary() {
     matchedEvents += 1;
     const candidates = bestPricesForEvent(event, matched.match, matched.reversed)
       .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at }));
+    candidates.push(...derivedMatchResultCandidatesFromBookmakerLines(candidates, matched.match)
+      .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at })));
+    candidates.push(...derivedMatchWinnerCandidatesFromResult(candidates, matched.match)
+      .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at })));
     const correctScoreCandidate = correctScoreCandidateFromMarkets(candidates, matched.match);
     if (correctScoreCandidate) {
       candidates.push({ ...correctScoreCandidate, closes_at: matched.match.starts_at });
