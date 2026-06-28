@@ -651,7 +651,7 @@ async function upsertProviderTeamsByCode(teams) {
 
 async function getMatchesForOddsMapping() {
   const response = await supabaseFetch(
-    "/rest/v1/matches?select=id,stage,group_name,starts_at,status,home_team_id,away_team_id,home_team:teams!matches_home_team_id_fkey(id,code,name),away_team:teams!matches_away_team_id_fkey(id,code,name)&order=starts_at.asc"
+    "/rest/v1/matches?select=id,stage,group_name,starts_at,status,home_team_id,away_team_id,home_team:teams!matches_home_team_id_fkey(id,code,name,fifa_rank,squad_market_value_eur,squad_value_rank),away_team:teams!matches_away_team_id_fkey(id,code,name,fifa_rank,squad_market_value_eur,squad_value_rank)&order=starts_at.asc"
   );
   if (!response.ok) {
     throw new Error(`Supabase read matches failed: ${response.status} ${await response.text()}`);
@@ -1367,6 +1367,67 @@ function derivedMatchWinnerCandidatesFromResult(candidates, match) {
   ];
 }
 
+function internalResultCandidatesFromTeamStrength(candidates, match) {
+  if (hasMarketSelections(candidates, "match_result", ["home", "draw", "away"])) return [];
+  const hasBookmakerTotals = candidates.some((candidate) => candidate.market_key === "total_goals" && candidate.source !== "internal");
+  if (!hasBookmakerTotals) return [];
+  const homeStrength = teamStrengthScore(match.home_team || {});
+  const awayStrength = teamStrengthScore(match.away_team || {});
+  const homeOdds = teamWinMultiplier(homeStrength, awayStrength, 1.35, 4.50);
+  const awayOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
+  const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
+  return [
+    {
+      match_id: match.id,
+      market_key: "match_result",
+      label: "Kết quả 1X2",
+      selection_key: "home",
+      selection_label: "Đội nhà thắng",
+      line: null,
+      odds_multiplier: homeOdds,
+      bookmaker: "internal strength fallback",
+      bookmaker_key: "internal_strength_with_bookmaker_totals",
+      bookmaker_rank: Number.MAX_SAFE_INTEGER,
+      bookmaker_last_update: new Date().toISOString(),
+      source: "internal",
+      extra_json: { provider: "internal-strength-with-bookmaker-totals", home_strength: homeStrength, away_strength: awayStrength },
+      payload_json: { model: "internal_strength_with_bookmaker_totals" }
+    },
+    {
+      match_id: match.id,
+      market_key: "match_result",
+      label: "Kết quả 1X2",
+      selection_key: "draw",
+      selection_label: "Hòa",
+      line: null,
+      odds_multiplier: drawOdds,
+      bookmaker: "internal strength fallback",
+      bookmaker_key: "internal_strength_with_bookmaker_totals",
+      bookmaker_rank: Number.MAX_SAFE_INTEGER,
+      bookmaker_last_update: new Date().toISOString(),
+      source: "internal",
+      extra_json: { provider: "internal-strength-with-bookmaker-totals", home_strength: homeStrength, away_strength: awayStrength },
+      payload_json: { model: "internal_strength_with_bookmaker_totals" }
+    },
+    {
+      match_id: match.id,
+      market_key: "match_result",
+      label: "Kết quả 1X2",
+      selection_key: "away",
+      selection_label: "Đội khách thắng",
+      line: null,
+      odds_multiplier: awayOdds,
+      bookmaker: "internal strength fallback",
+      bookmaker_key: "internal_strength_with_bookmaker_totals",
+      bookmaker_rank: Number.MAX_SAFE_INTEGER,
+      bookmaker_last_update: new Date().toISOString(),
+      source: "internal",
+      extra_json: { provider: "internal-strength-with-bookmaker-totals", home_strength: homeStrength, away_strength: awayStrength },
+      payload_json: { model: "internal_strength_with_bookmaker_totals" }
+    }
+  ];
+}
+
 function integerStat(value) {
   if (value === null || value === undefined || value === "") return 0;
   const numeric = Number.parseInt(String(value).replace("%", ""), 10);
@@ -1801,6 +1862,8 @@ async function ensureCorrectScoreMarketsFromCurrentMarkets(matches) {
       derivedWinnerCandidates.push(...winnerFallbacks);
       candidates.push(...winnerFallbacks);
     }
+    candidates.push(...internalResultCandidatesFromTeamStrength(candidates, match)
+      .map((candidate) => ({ ...candidate, closes_at: match.starts_at })));
     const correctScoreCandidate = correctScoreCandidateFromMarkets(candidates, match);
     if (correctScoreCandidate) {
       correctScoreCandidates.push({
@@ -3180,6 +3243,8 @@ async function syncOddsSummary() {
     candidates.push(...derivedMatchResultCandidatesFromBookmakerLines(candidates, matched.match)
       .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at })));
     candidates.push(...derivedMatchWinnerCandidatesFromResult(candidates, matched.match)
+      .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at })));
+    candidates.push(...internalResultCandidatesFromTeamStrength(candidates, matched.match)
       .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at })));
     const correctScoreCandidate = correctScoreCandidateFromMarkets(candidates, matched.match);
     if (correctScoreCandidate) {
