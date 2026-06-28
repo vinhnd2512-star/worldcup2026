@@ -91,6 +91,8 @@ const state = {
   error: ""
 };
 
+const MATCH_ACTIVE_GRACE_MS = 4 * 60 * 60 * 1000;
+
 const flags = {
   ALG: "🇩🇿",
   ARG: "🇦🇷",
@@ -827,8 +829,8 @@ function renderActiveView() {
 
 function renderMatches() {
   const filteredMatches = filteredScheduleMatches({ includeAllStatusesForTabs: true });
-  const upcomingMatches = filteredMatches.filter((match) => !isCompletedScore(match));
-  const completedMatches = filteredMatches.filter(isCompletedScore);
+  const upcomingMatches = filteredMatches.filter(isScheduleUpcomingMatch);
+  const completedMatches = filteredMatches.filter((match) => !isScheduleUpcomingMatch(match));
   const activeSheet = state.scheduleSheet === "completed" ? "completed" : "upcoming";
   const activeMatches = activeSheet === "completed" ? completedMatches : upcomingMatches;
   const featured = spotlightMatchFor(upcomingMatches) || spotlightMatchFor(filteredScheduleMatches()) || spotlightMatchFor(filteredMatches) || spotlightMatchFor(state.matches);
@@ -882,8 +884,8 @@ function renderMatches() {
 
 function renderFixtureTable(matches, options = {}) {
   const activeSheet = options.activeSheet === "completed" ? "completed" : "upcoming";
-  const tableTitle = activeSheet === "completed" ? "Trận đã kết thúc" : "Trận sắp diễn ra";
-  const tableHint = activeSheet === "completed" ? "trận có kết quả" : "trận để dự đoán";
+  const tableTitle = activeSheet === "completed" ? "Trận đã kết thúc / đã qua" : "Trận sắp diễn ra";
+  const tableHint = activeSheet === "completed" ? "trận đã qua lịch" : "trận để dự đoán";
   return `
     <section class="fixture-table glass-card">
       <div class="section-heading">
@@ -909,7 +911,7 @@ function renderFixtureTable(matches, options = {}) {
 function renderScheduleSheetTabs(activeSheet, options = {}) {
   const tabs = [
     ["upcoming", "Sắp diễn ra", options.upcomingCount || 0],
-    ["completed", "Đã kết thúc", options.completedCount || 0]
+    ["completed", "Đã kết thúc / đã qua", options.completedCount || 0]
   ];
   return `
     <div class="schedule-sheet-tabs" role="tablist" aria-label="Schedule sheets">
@@ -927,11 +929,12 @@ function renderFixtureRow(match) {
   const openMarkets = (match.match_markets || []).filter(isBettableMarket).length;
   const group = match.group_name ? formatGroupName(match.group_name) : "Knockout";
   const done = isCompletedScore(match);
+  const archived = !isScheduleUpcomingMatch(match);
   const scoreSep = done
     ? `<b class="fixture-score">${match.home_score} - ${match.away_score}</b>`
     : `<b>VS</b>`;
   return `
-    <article class="fixture-row${done ? " fixture-row--done" : ""}" data-group="${escapeHtml(match.group_name || "knockout")}">
+    <article class="fixture-row${archived ? " fixture-row--done" : ""}" data-group="${escapeHtml(match.group_name || "knockout")}">
       <span class="fixture-number">#${escapeHtml(fixtureNumber(match))}</span>
       <time>${dateText(match.starts_at)}</time>
       <div class="fixture-pair">
@@ -943,9 +946,9 @@ function renderFixtureRow(match) {
         <strong><span class="group-badge">${escapeHtml(group)}</span></strong>
         <small>${escapeHtml(matchLocation(match))}</small>
       </div>
-      <span class="fixture-market-count">${done ? escapeHtml(match.status) : `${fmt.format(openMarkets)} open`}</span>
-      ${done ? renderCompletedFixtureBetSummary(match) : ""}
-      <button class="compact-button${done ? "" : " primary-button"}" data-open-bet-modal="${match.id}">${done ? "Xem chi tiết" : "Dự đoán"}</button>
+      <span class="fixture-market-count">${archived ? escapeHtml(done ? match.status : "Chờ kết quả") : `${fmt.format(openMarkets)} open`}</span>
+      ${archived ? renderCompletedFixtureBetSummary(match) : ""}
+      <button class="compact-button${archived ? "" : " primary-button"}" data-open-bet-modal="${match.id}">${archived ? "Xem chi tiết" : "Dự đoán"}</button>
     </article>
   `;
 }
@@ -1003,21 +1006,22 @@ function renderMatchCard(match) {
   const odd = match.match_markets.find((market) => market.market_key === "match_result" && market.selection_key === "home")?.odds_multiplier || 1.8;
   const openMarkets = match.match_markets.filter(isBettableMarket).length;
   const done = isCompletedScore(match);
+  const archived = !isScheduleUpcomingMatch(match);
   const separator = done
     ? `<span class="match-score-result">${match.home_score} - ${match.away_score}</span>`
     : `<span class="muted">VS</span>`;
   return `
-    <article class="match-card glass-card${done ? " match-card--done" : ""}">
+    <article class="match-card glass-card${archived ? " match-card--done" : ""}">
       <div class="section-heading"><span>${dateText(match.starts_at)}</span><span class="status-badge status-${match.status.toLowerCase()}">${escapeHtml(match.status)}</span></div>
       <div class="match-teams">${teamLockup(match.home_team, false, "home")}${separator}${teamLockup(match.away_team, false, "away")}</div>
       <div class="match-meta-grid">
         <span>${escapeHtml(scheduleLabel(match))}</span>
         <span>${escapeHtml(matchLocation(match))}</span>
-        ${done ? `<span class="result-final">Kết quả chính thức</span>` : `<span>${fmt.format(openMarkets)} markets open</span>`}
-        ${done ? "" : `<span>x${fmtOne.format(number(odd))}</span>`}
+        ${archived ? `<span class="result-final">${done ? "Kết quả chính thức" : "Chờ kết quả"}</span>` : `<span>${fmt.format(openMarkets)} markets open</span>`}
+        ${archived ? "" : `<span>x${fmtOne.format(number(odd))}</span>`}
       </div>
       <div class="consensus"><div style="width:58%"></div></div>
-      <p><button class="ghost-button wide" data-open-bet-modal="${match.id}">${done ? "Xem chi tiết" : "Dự đoán ngay"}</button></p>
+      <p><button class="ghost-button wide" data-open-bet-modal="${match.id}">${archived ? "Xem chi tiết" : "Dự đoán ngay"}</button></p>
     </article>
   `;
 }
@@ -1700,6 +1704,15 @@ function isCompletedScore(match) {
   return ["FT", "AET", "PEN", "FT_PEN"].includes(match.status)
     && match.home_score !== null
     && match.away_score !== null;
+}
+
+function isScheduleUpcomingMatch(match) {
+  const status = String(match?.status || "");
+  if (["FT", "AET", "PEN", "FT_PEN", "PST", "CANC", "ABD", "SUSP", "VOID"].includes(status)) return false;
+  const kickoff = new Date(match?.starts_at || "").getTime();
+  if (!Number.isFinite(kickoff)) return ["SCHEDULED", "NS", "TBD"].includes(status);
+  if (["1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"].includes(status)) return true;
+  return kickoff + MATCH_ACTIVE_GRACE_MS >= Date.now();
 }
 
 function teamPlayersFor(teamId) {
