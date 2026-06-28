@@ -1220,8 +1220,25 @@ function pairedSpreadProbabilities(candidates) {
     });
 }
 
+function singleSpreadSignals(candidates) {
+  return candidates
+    .filter((candidate) => candidate.market_key === "asian_handicap" && ["home", "away"].includes(candidate.selection_key))
+    .map((candidate) => ({
+      line: Number(candidate.line),
+      side: candidate.selection_key,
+      odds: Number(candidate.odds_multiplier)
+    }))
+    .filter((signal) => Number.isFinite(signal.line) && signal.odds > 1);
+}
+
 function nearestSpreadPair(spreadPairs, targetLine) {
   return [...spreadPairs].sort((left, right) => Math.abs(left.line - targetLine) - Math.abs(right.line - targetLine))[0] || null;
+}
+
+function nearestSpreadSignal(signals, side, targetLine) {
+  return signals
+    .filter((signal) => signal.side === side)
+    .sort((left, right) => Math.abs(left.line - targetLine) - Math.abs(right.line - targetLine))[0] || null;
 }
 
 function derivedDrawProbability(expectedTotalGoals, pHome, pAway) {
@@ -1233,13 +1250,16 @@ function derivedDrawProbability(expectedTotalGoals, pHome, pAway) {
 function derivedResultProbabilitiesFromBookmakerLines(candidates) {
   const totalMarkets = candidates.filter((candidate) => candidate.market_key === "total_goals");
   const spreadPairs = pairedSpreadProbabilities(candidates);
-  if (totalMarkets.length < 2 || !spreadPairs.length) return null;
+  const spreadSignals = singleSpreadSignals(candidates);
+  if (totalMarkets.length < 2 || (!spreadPairs.length && !spreadSignals.length)) return null;
 
   const expectedTotalGoals = deriveExpectedTotalGoals(totalMarkets);
   const homeWinPair = nearestSpreadPair(spreadPairs, -0.5);
   const awayWinPair = nearestSpreadPair(spreadPairs, 0.5);
-  let pHome = homeWinPair ? homeWinPair.pHomeSide : null;
-  let pAway = awayWinPair ? awayWinPair.pAwaySide : null;
+  const homeSignal = nearestSpreadSignal(spreadSignals, "home", -0.5);
+  const awaySignal = nearestSpreadSignal(spreadSignals, "away", 0.5);
+  let pHome = homeWinPair ? homeWinPair.pHomeSide : (homeSignal ? clamp((1 / homeSignal.odds) - homeSignal.line * 0.08, 0.08, 0.82) : null);
+  let pAway = awayWinPair ? awayWinPair.pAwaySide : (awaySignal ? clamp((1 / awaySignal.odds) + awaySignal.line * 0.08, 0.08, 0.82) : null);
 
   if (pHome === null && pAway === null) return null;
   if (pHome === null) pHome = clamp(1 - pAway - derivedDrawProbability(expectedTotalGoals, 1 - pAway, pAway), 0.05, 0.8);
@@ -1255,7 +1275,8 @@ function derivedResultProbabilitiesFromBookmakerLines(candidates) {
     draw: clamp(pDraw / total, 0.05, 0.5),
     away: clamp(pAway / total, 0.03, 0.9),
     expectedTotalGoals,
-    spreadLines: spreadPairs.map((pair) => pair.line).sort((a, b) => a - b)
+    spreadLines: uniqueList([...spreadPairs.map((pair) => pair.line), ...spreadSignals.map((signal) => signal.line)]).map(Number).sort((a, b) => a - b),
+    spreadMode: spreadPairs.length ? "paired" : "single_side"
   };
 }
 
@@ -1286,6 +1307,7 @@ function derivedMatchResultCandidatesFromBookmakerLines(candidates, match) {
       derivation: "spreads_totals_to_1x2",
       expected_total_goals: Number(probabilities.expectedTotalGoals.toFixed(3)),
       spread_lines: probabilities.spreadLines,
+      spread_mode: probabilities.spreadMode,
       probabilities: {
         home: Number(probabilities.home.toFixed(6)),
         draw: Number(probabilities.draw.toFixed(6)),

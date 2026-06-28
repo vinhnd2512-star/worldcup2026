@@ -4613,7 +4613,7 @@ function renderOddsTrackingReport() {
         ${oddsReportMetric("Latest update", latestUpdatedAt ? dateText(latestUpdatedAt) : "No provider odds")}
       </div>
       <div class="table-row table-head odds-report-row">
-        <span>Match</span><span>Kickoff</span><span>Coverage</span><span>1X2</span><span>Totals</span><span>Updated</span>
+        <span>Match</span><span>Kickoff</span><span>Coverage</span><span>1X2 / Advance</span><span>Markets</span><span>Updated</span>
       </div>
       ${rows.map(renderOddsTrackingRow).join("") || `<div class="table-row odds-report-row"><span>No upcoming matches</span><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div>`}
     </section>
@@ -4630,22 +4630,40 @@ function oddsReportMetric(label, value) {
 }
 
 function oddsTrackingMatches() {
+  const now = Date.now();
   return state.matches
-    .filter((match) => ["SCHEDULED", "TBD", "NS"].includes(String(match.status || "SCHEDULED")))
-    .slice(0, 16)
+    .filter((match) => {
+      const status = String(match.status || "SCHEDULED");
+      const kickoff = new Date(match.starts_at).getTime();
+      if (!["SCHEDULED", "TBD", "NS", "1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE"].includes(status)) return false;
+      return !Number.isFinite(kickoff) || kickoff + MATCH_ACTIVE_GRACE_MS >= now;
+    })
     .map((match) => {
       const trackedMarkets = (match.match_markets || [])
-        .filter((market) => market.is_open && ["match_winner", "qualification_method", "match_result", "total_goals"].includes(market.market_key))
+        .filter((market) => market.is_open && ["correct_score", "match_winner", "qualification_method", "match_result", "total_goals", "asian_handicap"].includes(market.market_key))
         .map((market) => ({ ...market, extra: marketExtra(market), updatedAt: oddsMarketUpdatedAt(market) }));
       const providerMarkets = trackedMarkets.filter((market) => market.source === "odds-api");
+      const latestUpdatedAt = providerMarkets
+        .map((market) => market.updatedAt)
+        .filter(Boolean)
+        .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] || "";
       return {
         match,
         trackedMarkets,
         providerMarkets,
         totalSelections: trackedMarkets.length,
-        providerSelections: providerMarkets.length
+        providerSelections: providerMarkets.length,
+        latestUpdatedAt
       };
-    });
+    })
+    .sort((left, right) => {
+      const leftUpdated = new Date(left.latestUpdatedAt || 0).getTime();
+      const rightUpdated = new Date(right.latestUpdatedAt || 0).getTime();
+      return rightUpdated - leftUpdated
+        || right.providerSelections - left.providerSelections
+        || new Date(left.match.starts_at).getTime() - new Date(right.match.starts_at).getTime();
+    })
+    .slice(0, 16);
 }
 
 function renderOddsTrackingRow(row) {
@@ -4658,10 +4676,12 @@ function renderOddsTrackingRow(row) {
     .filter((market) => market.market_key === "total_goals")
     .sort((left, right) => number(left.line) - number(right.line) || marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key))
     .slice(0, 4);
-  const latestUpdatedAt = row.providerMarkets
-    .map((market) => market.updatedAt)
-    .filter(Boolean)
-    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] || "";
+  const handicap = row.trackedMarkets
+    .filter((market) => market.market_key === "asian_handicap")
+    .sort((left, right) => number(left.line) - number(right.line) || marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key))
+    .slice(0, 4);
+  const score = row.trackedMarkets.filter((market) => market.market_key === "correct_score").slice(0, 1);
+  const latestUpdatedAt = row.latestUpdatedAt || "";
   const coverageKind = row.providerSelections === 0 ? "internal" : row.providerSelections === row.totalSelections ? "complete" : "partial";
   const bookmakers = uniqueList(row.providerMarkets.map((market) => market.extra.bookmaker || market.extra.bookmaker_key || "").filter(Boolean)).slice(0, 3);
   return `
@@ -4670,7 +4690,7 @@ function renderOddsTrackingRow(row) {
       <span>${escapeHtml(dateText(match.starts_at))}</span>
       <span>${escapeHtml(oddsCoverageText(row))}${bookmakers.length ? `<small>${escapeHtml(bookmakers.join(", "))}</small>` : ""}</span>
       <span>${marketOddsInline(oneXTwo)}</span>
-      <span>${marketOddsInline(totals)}</span>
+      <span>${marketOddsInline([...score, ...totals, ...handicap])}</span>
       <span>${latestUpdatedAt ? escapeHtml(dateText(latestUpdatedAt)) : "internal"}<small>${escapeHtml(coverageKind)}</small></span>
     </div>
   `;
