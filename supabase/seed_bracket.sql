@@ -198,8 +198,7 @@ end;
 $$;
 
 update public.match_markets mm
-set closes_at = m.starts_at,
-    updated_at = now()
+set closes_at = m.starts_at
 from public.matches m
 where mm.match_id = m.id
   and m.provider_id between 'fifa-2026-073' and 'fifa-2026-104'
