@@ -2607,7 +2607,12 @@ function modalMarketGroups(markets, group) {
 
 function sortMarketsForDisplay(markets) {
   return [...(markets || [])].sort((left, right) => {
-    if (["total_goals", "asian_handicap"].includes(left.market_key) && left.market_key === right.market_key) {
+    if (left.market_key === "asian_handicap" && left.market_key === right.market_key) {
+      return number(left.line) - number(right.line)
+        || handicapSelectionOrder(left.selection_key) - handicapSelectionOrder(right.selection_key)
+        || Number(left.id) - Number(right.id);
+    }
+    if (left.market_key === "total_goals" && left.market_key === right.market_key) {
       return number(left.line) - number(right.line)
         || marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key)
         || Number(left.id) - Number(right.id);
@@ -2615,6 +2620,10 @@ function sortMarketsForDisplay(markets) {
     return marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key)
       || Number(left.id) - Number(right.id);
   });
+}
+
+function handicapSelectionOrder(selectionKey) {
+  return { home: 1, away: 2 }[selectionKey] || 99;
 }
 
 function marketSelectionOrder(selectionKey) {
@@ -2691,18 +2700,67 @@ function renderModalSelectionOptions(group, draft) {
     <div class="modal-selection-list">
       ${group.markets.map((market) => {
         const checked = Number(draft.marketId) === Number(market.id);
+        const label = group.marketKey === "asian_handicap" ? handicapSelectionLabel(market) : market.selection_label;
+        const detail = group.marketKey === "asian_handicap" ? `${handicapLineGroupLabel(market)} - ${handicapOutcomeHint(market)}` : oddsFreshnessLabel(market);
         return `
           <label class="modal-selection-card ${checked ? "selected" : ""}">
             <input type="radio" name="modal-market-${escapeHtml(group.marketKey)}" data-modal-market-choice="${escapeHtml(group.marketKey)}" value="${market.id}" ${checked ? "checked" : ""}>
             <span>
-              <strong>${escapeHtml(market.selection_label)}</strong>
-              <small>x${fmtOne.format(number(market.odds_multiplier))} · ${escapeHtml(oddsFreshnessLabel(market))}</small>
+              <strong>${escapeHtml(label)}</strong>
+              <small>x${fmtOne.format(number(market.odds_multiplier))} - ${escapeHtml(detail)}</small>
             </span>
           </label>
         `;
       }).join("")}
     </div>
   `;
+}
+
+function handicapTeam(market) {
+  const match = state.matches.find((item) => Number(item.id) === Number(market?.match_id)) || selectedMatch();
+  return market?.selection_key === "away" ? match?.away_team : match?.home_team;
+}
+
+function handicapSelectionPoint(market) {
+  const line = number(market?.line);
+  return market?.selection_key === "away" ? -line : line;
+}
+
+function handicapLineText(value) {
+  const line = number(value);
+  if (!line) return "0";
+  return `${line > 0 ? "+" : ""}${fmtOne.format(line)}`;
+}
+
+function handicapSideText(point) {
+  const value = number(point);
+  if (value < 0) return `chấp ${fmtOne.format(Math.abs(value))}`;
+  if (value > 0) return `được chấp ${handicapLineText(value)}`;
+  return "đồng banh";
+}
+
+function handicapSelectionLabel(market) {
+  const team = handicapTeam(market);
+  const teamName = team?.name || (market?.selection_key === "away" ? "Đội khách" : "Đội nhà");
+  return `${teamName} ${handicapSideText(handicapSelectionPoint(market))}`;
+}
+
+function marketDisplaySelectionLabel(market) {
+  return market?.market_key === "asian_handicap" ? handicapSelectionLabel(market) : market?.selection_label;
+}
+
+function handicapLineGroupLabel(market) {
+  const match = state.matches.find((item) => Number(item.id) === Number(market?.match_id)) || selectedMatch();
+  const homeName = match?.home_team?.name || "Đội nhà";
+  const awayName = match?.away_team?.name || "đội khách";
+  const homePoint = number(market?.line);
+  const awayPoint = -homePoint;
+  return `${homeName} ${handicapLineText(homePoint)} / ${awayName} ${handicapLineText(awayPoint)}`;
+}
+
+function handicapOutcomeHint(market) {
+  const side = market?.selection_key === "away" ? "đội khách" : "đội nhà";
+  return `Thắng kèo khi ${side} thắng sau handicap`;
 }
 
 function modalMarketTitle(marketKey, fallback = "") {
@@ -2997,7 +3055,7 @@ function collectModalBetPayloads(match, options = {}) {
         p_match_id: match.id,
         p_market_id: market.id,
         p_selection_key: market.selection_key,
-        p_selection_label: market.selection_label,
+        p_selection_label: marketDisplaySelectionLabel(market),
         p_stake: stake,
         p_selection_json: { line: market.line }
       });

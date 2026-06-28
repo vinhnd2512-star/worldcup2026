@@ -896,6 +896,18 @@ function formatSignedLine(value) {
   return `${numeric > 0 ? "+" : ""}${Number(numeric.toFixed(2))}`;
 }
 
+function handicapSideText(point) {
+  const value = Number(point);
+  if (!Number.isFinite(value) || value === 0) return "đồng banh";
+  return value < 0 ? `chấp ${Number(Math.abs(value).toFixed(2))}` : `được chấp ${formatSignedLine(value)}`;
+}
+
+function handicapSelectionLabel(match, selectionKey, homePerspectiveLine) {
+  const team = selectionKey === "away" ? match.away_team : match.home_team;
+  const selectedPoint = selectionKey === "away" ? -Number(homePerspectiveLine) : Number(homePerspectiveLine);
+  return `${team?.name || (selectionKey === "away" ? "Đội khách" : "Đội nhà")} ${handicapSideText(selectedPoint)}`;
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -1624,14 +1636,13 @@ function bestPricesForEvent(event, match, reversed) {
           let line = null;
           if (outcomeName === normalizeTeamName(event.home_team)) {
             selectionKey = reversed ? "away" : "home";
-            selectionLabel = `${selectionKey === "home" ? "Home" : "Away"} ${formatSignedLine(point)}`;
             line = reversed ? invertLine(point) : point;
           } else if (outcomeName === normalizeTeamName(event.away_team)) {
             selectionKey = reversed ? "home" : "away";
-            selectionLabel = `${selectionKey === "home" ? "Home" : "Away"} ${formatSignedLine(point)}`;
             line = reversed ? point : invertLine(point);
           }
           if (!selectionKey || line === null) continue;
+          selectionLabel = handicapSelectionLabel(match, selectionKey, line);
 
           setBest(`asian_handicap:${selectionKey}:${line}`, {
             match_id: match.id,
