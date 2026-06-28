@@ -81,6 +81,8 @@ def place_bet(payload: PlaceBetRequest, db: DbSession, user: CurrentUser) -> Bet
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Market is not available")
     if market.market_key == "draw_no_bet":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Draw no bet is temporarily locked")
+    if market.market_key == "match_winner" and market.source != "odds-api":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Match winner requires bookmaker odds")
     if market.market_key in {"handicap", "asian_handicap"} and market.source != "odds-api":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Handicap requires bookmaker odds")
     locked_multiplier = market.odds_multiplier

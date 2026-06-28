@@ -132,3 +132,63 @@ on conflict (match_no, slot) do update
 set source_type = excluded.source_type,
     source_match_no = excluded.source_match_no,
     updated_at = now();
+
+-- Confirmed Round of 32 teams. This block is intentionally idempotent so it
+-- can be rerun after group-stage standings are imported.
+with confirmed(match_no, home_code, away_code) as (
+  values
+    (73, 'RSA', 'CAN'),
+    (74, 'GER', 'PAR'),
+    (75, 'NED', 'MAR'),
+    (76, 'BRA', 'JPN'),
+    (77, 'FRA', 'SWE'),
+    (78, 'CIV', 'NOR'),
+    (79, 'MEX', 'ECU'),
+    (80, 'ENG', 'COD'),
+    (81, 'USA', 'BIH'),
+    (82, 'BEL', 'SEN'),
+    (83, 'POR', 'CRO'),
+    (84, 'ESP', 'AUT'),
+    (85, 'SUI', 'ALG'),
+    (86, 'ARG', 'CPV'),
+    (87, 'COL', 'GHA'),
+    (88, 'AUS', 'EGY')
+),
+resolved as (
+  select
+    c.match_no,
+    ht.id as home_team_id,
+    at.id as away_team_id,
+    ht.name as home_label,
+    at.name as away_label
+  from confirmed c
+  join public.teams ht on ht.code = c.home_code
+  join public.teams at on at.code = c.away_code
+)
+update public.bracket_matches bm
+set home_team_id = resolved.home_team_id,
+    away_team_id = resolved.away_team_id,
+    home_label = resolved.home_label,
+    away_label = resolved.away_label,
+    is_confirmed = true,
+    source = 'confirmed_knockout',
+    updated_at = now()
+from resolved
+where bm.match_no = resolved.match_no;
+
+do $$
+declare
+  v_match_no integer;
+begin
+  for v_match_no in
+    select match_no
+    from public.bracket_matches
+    where match_no between 73 and 88
+      and home_team_id is not null
+      and away_team_id is not null
+    order by match_no
+  loop
+    perform public.ensure_bracket_match(v_match_no);
+  end loop;
+end;
+$$;

@@ -234,11 +234,18 @@ export default function App() {
     }
   }
 
-  async function handleUpdateScore(matchId: number, homeScore: number, awayScore: number, status: string) {
+  async function handleUpdateScore(matchId: number, homeScore: number, awayScore: number, status: string, homePenalties?: number | null, awayPenalties?: number | null) {
     if (!token) return;
     try {
-      const result = await api.updateMatchScore(token, matchId, { home_score: homeScore, away_score: awayScore, status });
-      setMessage(`Đã cập nhật tỷ số ${result.home_score}:${result.away_score} (${result.status}). Settle ${result.settled} cược.`);
+      const result = await api.updateMatchScore(token, matchId, {
+        home_score: homeScore,
+        away_score: awayScore,
+        home_penalties: homePenalties ?? null,
+        away_penalties: awayPenalties ?? null,
+        status
+      });
+      const penalties = result.home_penalties != null && result.away_penalties != null ? `, pen ${result.home_penalties}:${result.away_penalties}` : "";
+      setMessage(`Đã cập nhật tỷ số ${result.home_score}:${result.away_score}${penalties} (${result.status}). Settle ${result.settled} cược.`);
       setError(null);
       await refresh();
     } catch (err) {

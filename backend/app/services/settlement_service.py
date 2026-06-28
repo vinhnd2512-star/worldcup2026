@@ -36,6 +36,8 @@ def settle_pending_bets(db: Session) -> int:
                 status=bet.match.status,
                 home_score=bet.match.home_score,
                 away_score=bet.match.away_score,
+                home_penalties=bet.match.home_penalties,
+                away_penalties=bet.match.away_penalties,
                 corners_home=stats.corners_home if stats else 0,
                 corners_away=stats.corners_away if stats else 0,
                 yellow_cards_home=stats.yellow_cards_home if stats else 0,

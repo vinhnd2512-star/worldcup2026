@@ -88,8 +88,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({})
     }),
-  updateMatchScore: (token: string, matchId: number, payload: { home_score?: number | null; away_score?: number | null; status?: string }) =>
-    request<{ match_id: number; home_score: number | null; away_score: number | null; status: string; settled: number }>(
+  updateMatchScore: (token: string, matchId: number, payload: { home_score?: number | null; away_score?: number | null; home_penalties?: number | null; away_penalties?: number | null; status?: string }) =>
+    request<{ match_id: number; home_score: number | null; away_score: number | null; home_penalties: number | null; away_penalties: number | null; status: string; settled: number }>(
       `/admin/matches/${matchId}/score`, token, {
         method: "PATCH",
         body: JSON.stringify(payload)

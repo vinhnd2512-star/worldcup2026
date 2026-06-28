@@ -13,6 +13,8 @@ class MatchResult:
     status: str
     home_score: int | None = None
     away_score: int | None = None
+    home_penalties: int | None = None
+    away_penalties: int | None = None
     corners_home: int = 0
     corners_away: int = 0
     yellow_cards_home: int = 0
@@ -65,6 +67,37 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
             net_points=Decimal("0.00"),
             prediction_bonus=Decimal("0.00"),
             reason="Match result is not final.",
+        )
+
+    if bet.market_key == "match_winner":
+        winner = _match_winner_selection_key(result)
+        if winner is None:
+            return SettlementOutcome(
+                status="pending",
+                result="pending",
+                payout=Decimal("0.00"),
+                net_points=Decimal("0.00"),
+                prediction_bonus=Decimal("0.00"),
+                reason="Knockout winner is not final until a team advances.",
+            )
+        won = bet.selection_key == winner
+        if won:
+            payout = money(bet.stake * bet.multiplier)
+            return SettlementOutcome(
+                status="won",
+                result="win",
+                payout=payout,
+                net_points=money(payout - bet.stake),
+                prediction_bonus=prediction_bonus(bet.market_key),
+                reason="Selection matched the team that advanced; leaderboard bonus applied.",
+            )
+        return SettlementOutcome(
+            status="lost",
+            result="loss",
+            payout=Decimal("0.00"),
+            net_points=money(Decimal("0.00") - bet.stake),
+            prediction_bonus=Decimal("0.00"),
+            reason="Selection did not match the team that advanced.",
         )
 
     if bet.market_key == "draw_no_bet" and result.home_score == result.away_score:
@@ -140,6 +173,7 @@ def prediction_bonus(market_key: str) -> Decimal:
     bonuses = {
         "correct_score": Decimal("50.00"),
         "match_result": Decimal("10.00"),
+        "match_winner": Decimal("10.00"),
         "draw_no_bet": Decimal("8.00"),
         "handicap": Decimal("8.00"),
         "total_goals": Decimal("8.00"),
@@ -230,3 +264,21 @@ def _handicap_adjusted_result(bet: BetSelection, result: MatchResult) -> int:
     if selected == opponent:
         return 0
     return -1
+
+
+def _match_winner_selection_key(result: MatchResult) -> str | None:
+    if result.home_score is None or result.away_score is None:
+        return None
+    if result.home_score > result.away_score:
+        return "home"
+    if result.away_score > result.home_score:
+        return "away"
+    if result.status not in {"PEN", "FT_PEN"}:
+        return None
+    if result.home_penalties is None or result.away_penalties is None:
+        return None
+    if result.home_penalties > result.away_penalties:
+        return "home"
+    if result.away_penalties > result.home_penalties:
+        return "away"
+    return None

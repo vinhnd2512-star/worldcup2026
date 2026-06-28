@@ -71,6 +71,8 @@ class Match(Base):
     status: Mapped[str] = mapped_column(String(24), default="SCHEDULED", nullable=False, index=True)
     home_score: Mapped[int | None] = mapped_column(Integer)
     away_score: Mapped[int | None] = mapped_column(Integer)
+    home_penalties: Mapped[int | None] = mapped_column(Integer)
+    away_penalties: Mapped[int | None] = mapped_column(Integer)
     venue: Mapped[str | None] = mapped_column(String(120))
     city: Mapped[str | None] = mapped_column(String(120))
     current_minute: Mapped[int | None] = mapped_column(Integer)

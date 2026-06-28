@@ -116,6 +116,7 @@ def _apply_fixture(match: Match, payload: dict[str, Any]) -> bool:
     goals = payload.get("goals") or {}
     score = payload.get("score") or {}
     fulltime = score.get("fulltime") or {}
+    penalty = score.get("penalty") or {}
 
     provider_status = status.get("short") or match.status
     home_score = goals.get("home")
@@ -137,6 +138,12 @@ def _apply_fixture(match: Match, payload: dict[str, Any]) -> bool:
         changed = True
     if away_score is not None and match.away_score != away_score:
         match.away_score = int(away_score)
+        changed = True
+    if penalty.get("home") is not None and match.home_penalties != penalty.get("home"):
+        match.home_penalties = int(penalty["home"])
+        changed = True
+    if penalty.get("away") is not None and match.away_penalties != penalty.get("away"):
+        match.away_penalties = int(penalty["away"])
         changed = True
     return changed
 

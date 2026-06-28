@@ -67,6 +67,8 @@ class MatchOut(BaseModel):
     status: str
     home_score: int | None
     away_score: int | None
+    home_penalties: int | None = None
+    away_penalties: int | None = None
     venue: str | None
     city: str | None
     current_minute: int | None
@@ -156,6 +158,8 @@ class AdminReport(BaseModel):
 class UpdateScoreRequest(BaseModel):
     home_score: int | None = None
     away_score: int | None = None
+    home_penalties: int | None = None
+    away_penalties: int | None = None
     status: str | None = None
 
 

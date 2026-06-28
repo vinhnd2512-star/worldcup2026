@@ -46,7 +46,7 @@ type NavItem = {
 
 const fmt = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
 const fmtOne = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
-const marketOrder = ["match_result", "handicap", "asian_handicap", "total_goals", "btts", "corners_total", "cards_total"];
+const marketOrder = ["match_winner", "match_result", "handicap", "asian_handicap", "total_goals", "btts", "corners_total", "cards_total"];
 
 function num(value: string | number | null | undefined): number {
   return Number(value ?? 0);
@@ -67,6 +67,7 @@ function isOpenUpcomingMatch(match: Match): boolean {
 
 function isBettableMarket(market: Match["markets"][number]): boolean {
   if (!market.is_open) return false;
+  if (market.market_key === "match_winner") return market.source === "odds-api";
   if (market.market_key === "draw_no_bet") return false;
   if (["handicap", "asian_handicap"].includes(market.market_key)) return market.source === "odds-api";
   if (market.market_key === "correct_score") return market.source === "odds-model";
@@ -80,6 +81,12 @@ function initials(name: string): string {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function scoreText(match: Match): string {
+  const base = `${match.home_score ?? "?"} : ${match.away_score ?? "?"}`;
+  if (match.home_penalties == null || match.away_penalties == null) return base;
+  return `${base} (p ${match.home_penalties}:${match.away_penalties})`;
 }
 
 export function LoginScreen({ loading, error, onLogin }: LoginScreenProps) {
@@ -411,7 +418,7 @@ export function MatchDetailView({
         <div className="score-center">
           <span className={match.status === "SCHEDULED" ? "status-pill" : "status-pill live"}>{match.status}</span>
           <div className="score-display">
-            {match.home_score ?? "?"} : {match.away_score ?? "?"}
+            {scoreText(match)}
           </div>
           <span>{match.stage}</span>
         </div>
@@ -654,12 +661,12 @@ export function AdminView({
   onRetrySettlements: () => Promise<void>;
   onMetadataSync: () => Promise<void>;
   onResultSync: () => Promise<void>;
-  onUpdateScore: (matchId: number, homeScore: number, awayScore: number, status: string) => Promise<void>;
+  onUpdateScore: (matchId: number, homeScore: number, awayScore: number, status: string, homePenalties?: number | null, awayPenalties?: number | null) => Promise<void>;
 }) {
   const [createForm, setCreateForm] = useState({ username: "", display_name: "", password: "demo123", starting_points: 1000 });
   const [topUp, setTopUp] = useState({ userId: 0, amount: 500, reason: "Admin top-up" });
   const [resetPassword, setResetPassword] = useState("demo123");
-  const [scoreForm, setScoreForm] = useState({ matchId: 0, homeScore: 0, awayScore: 0, status: "FT" });
+  const [scoreForm, setScoreForm] = useState({ matchId: 0, homeScore: 0, awayScore: 0, homePenalties: 0, awayPenalties: 0, status: "FT" });
 
   const playerOptions = users.filter((user) => user.role.name === "player");
 
@@ -815,6 +822,8 @@ export function AdminView({
                 matchId: Number(e.target.value),
                 homeScore: match?.home_score ?? 0,
                 awayScore: match?.away_score ?? 0,
+                homePenalties: match?.home_penalties ?? 0,
+                awayPenalties: match?.away_penalties ?? 0,
                 status: match?.status ?? "FT",
               });
             }}
@@ -843,6 +852,23 @@ export function AdminView({
               onChange={(e) => setScoreForm({ ...scoreForm, awayScore: Number(e.target.value) })}
             />
           </div>
+          <div className="score-inputs">
+            <input
+              type="number"
+              min={0}
+              placeholder="Pen nhà"
+              value={scoreForm.homePenalties}
+              onChange={(e) => setScoreForm({ ...scoreForm, homePenalties: Number(e.target.value) })}
+            />
+            <span className="score-sep">p</span>
+            <input
+              type="number"
+              min={0}
+              placeholder="Pen khách"
+              value={scoreForm.awayPenalties}
+              onChange={(e) => setScoreForm({ ...scoreForm, awayPenalties: Number(e.target.value) })}
+            />
+          </div>
           <select value={scoreForm.status} onChange={(e) => setScoreForm({ ...scoreForm, status: e.target.value })}>
             <option value="SCHEDULED">SCHEDULED</option>
             <option value="NS">NS (Not Started)</option>
@@ -852,13 +878,21 @@ export function AdminView({
             <option value="FT">FT (Kết thúc)</option>
             <option value="AET">AET (Hiệp phụ)</option>
             <option value="PEN">PEN (Penalty)</option>
+            <option value="FT_PEN">FT_PEN (After penalties)</option>
             <option value="PST">PST (Hoãn)</option>
             <option value="CANC">CANC (Hủy)</option>
           </select>
           <button
             className="primary-button"
             disabled={!scoreForm.matchId}
-            onClick={() => void onUpdateScore(scoreForm.matchId, scoreForm.homeScore, scoreForm.awayScore, scoreForm.status)}
+            onClick={() => void onUpdateScore(
+              scoreForm.matchId,
+              scoreForm.homeScore,
+              scoreForm.awayScore,
+              scoreForm.status,
+              ["PEN", "FT_PEN"].includes(scoreForm.status) ? scoreForm.homePenalties : null,
+              ["PEN", "FT_PEN"].includes(scoreForm.status) ? scoreForm.awayPenalties : null
+            )}
           >
             Cập nhật &amp; Settle
           </button>
@@ -870,9 +904,9 @@ export function AdminView({
               <span className="match-score-teams">
                 {m.home_team.name} <b>vs</b> {m.away_team.name}
               </span>
-              <span className={`status-pill ${["FT","AET","PEN"].includes(m.status) ? "live" : ""}`}>{m.status}</span>
+              <span className={`status-pill ${["FT","AET","PEN","FT_PEN"].includes(m.status) ? "live" : ""}`}>{m.status}</span>
               <strong className="match-score-result">
-                {m.home_score ?? "?"} : {m.away_score ?? "?"}
+                {scoreText(m)}
               </strong>
             </div>
           ))}

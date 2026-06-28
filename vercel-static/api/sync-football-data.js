@@ -32,7 +32,7 @@ const ODDS_API_MAIN_MARKETS = "h2h,totals,spreads";
 const ODDS_API_TOTALS_FALLBACK_MARKETS = "h2h,totals";
 const ODDS_API_MATCH_FALLBACK_MARKETS = "h2h";
 const ODDS_API_OUTRIGHT_MARKETS = "outrights";
-const PROVIDER_MANAGED_MARKETS = ["match_result", "total_goals", "correct_score", "asian_handicap"];
+const PROVIDER_MANAGED_MARKETS = ["match_result", "match_winner", "total_goals", "correct_score", "asian_handicap"];
 const DEFAULT_ODDS_API_REGIONS = "eu";
 const WORLD_CUP_TITLE_YEARS = {
   ARG: [1978, 1986, 2022],
@@ -649,7 +649,7 @@ async function upsertProviderTeamsByCode(teams) {
 
 async function getMatchesForOddsMapping() {
   const response = await supabaseFetch(
-    "/rest/v1/matches?select=id,starts_at,status,home_team_id,away_team_id,home_team:teams!matches_home_team_id_fkey(id,code,name),away_team:teams!matches_away_team_id_fkey(id,code,name)&order=starts_at.asc"
+    "/rest/v1/matches?select=id,stage,group_name,starts_at,status,home_team_id,away_team_id,home_team:teams!matches_home_team_id_fkey(id,code,name),away_team:teams!matches_away_team_id_fkey(id,code,name)&order=starts_at.asc"
   );
   if (!response.ok) {
     throw new Error(`Supabase read matches failed: ${response.status} ${await response.text()}`);
@@ -874,6 +874,10 @@ function matchOddsEvent(event, matches) {
   return candidates[0] || null;
 }
 
+function isKnockoutMatch(match) {
+  return !match?.group_name && !/group/i.test(String(match?.stage || ""));
+}
+
 function decimal(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : null;
@@ -905,6 +909,15 @@ function oddsApiBookmakers() {
   return commaList(env("ODDS_API_BOOKMAKERS"));
 }
 
+function oddsApiExcludedBookmakers() {
+  return commaList(env("ODDS_API_EXCLUDED_BOOKMAKERS")).map((bookmaker) => normalizeTeamName(bookmaker));
+}
+
+function oddsOutlierMaxDeviationPct() {
+  const parsed = Number(env("ODDS_OUTLIER_MAX_DEV_PCT") || 25);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 25;
+}
+
 function oddsApiRequestParams(markets) {
   const bookmakers = oddsApiBookmakers();
   const params = {
@@ -934,6 +947,12 @@ function preferredBookmakerRank(bookmaker, preferredBookmakers) {
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
+function isExcludedBookmaker(bookmaker, excludedBookmakers) {
+  if (!excludedBookmakers.length) return false;
+  const identities = new Set(bookmakerIdentity(bookmaker));
+  return excludedBookmakers.some((item) => identities.has(item) || identities.has(normalizeTeamName(item)));
+}
+
 function shouldReplaceOddsCandidate(current, candidate, preferredBookmakers) {
   if (!current) return true;
   if (!preferredBookmakers.length) {
@@ -943,6 +962,45 @@ function shouldReplaceOddsCandidate(current, candidate, preferredBookmakers) {
     return candidate.bookmaker_rank < current.bookmaker_rank;
   }
   return new Date(candidate.bookmaker_last_update || 0).getTime() > new Date(current.bookmaker_last_update || 0).getTime();
+}
+
+function median(values) {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((left, right) => left - right);
+  if (!sorted.length) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function filterOutlierOddsCandidates(candidates, excludedBookmakersCount = 0) {
+  const byKey = new Map();
+  for (const candidate of candidates) {
+    byKey.set(candidate.odds_key, [...(byKey.get(candidate.odds_key) || []), candidate]);
+  }
+
+  const maxDeviation = oddsOutlierMaxDeviationPct() / 100;
+  const filtered = [];
+  for (const group of byKey.values()) {
+    const prices = group.map((candidate) => Number(candidate.odds_multiplier)).filter((price) => Number.isFinite(price) && price > 1);
+    const midpoint = prices.length >= 3 ? median(prices) : null;
+    const kept = midpoint && maxDeviation > 0
+      ? group.filter((candidate) => Math.abs(Number(candidate.odds_multiplier) - midpoint) / midpoint <= maxDeviation)
+      : group;
+    const finalGroup = kept.length ? kept : group;
+    const outlierCount = group.length - finalGroup.length;
+    for (const candidate of finalGroup) {
+      filtered.push({
+        ...candidate,
+        filter_metadata: {
+          candidate_count: group.length,
+          outlier_count: outlierCount,
+          excluded_bookmakers: excludedBookmakersCount,
+          median_odds: midpoint ? Number(midpoint.toFixed(4)) : null,
+          max_deviation_pct: oddsOutlierMaxDeviationPct()
+        }
+      });
+    }
+  }
+  return filtered;
 }
 
 function isSuspiciousH2hMarket(market) {
@@ -1136,43 +1194,57 @@ function teamStatsByProviderId(payload) {
 }
 
 function bestPricesForEvent(event, match, reversed) {
-  const prices = new Map();
+  const candidates = [];
   const preferredBookmakers = oddsApiBookmakers().map((bookmaker) => normalizeTeamName(bookmaker));
+  const excludedBookmakers = oddsApiExcludedBookmakers();
+  let excludedBookmakersCount = 0;
 
   function setBest(key, candidate) {
-    const current = prices.get(key);
-    if (shouldReplaceOddsCandidate(current, candidate, preferredBookmakers)) {
-      prices.set(key, candidate);
-    }
+    candidates.push({ ...candidate, odds_key: key });
   }
 
   for (const bookmaker of event.bookmakers || []) {
+    if (isExcludedBookmaker(bookmaker, excludedBookmakers)) {
+      excludedBookmakersCount += 1;
+      continue;
+    }
     const bookmakerRank = preferredBookmakerRank(bookmaker, preferredBookmakers);
     if (preferredBookmakers.length && bookmakerRank === Number.MAX_SAFE_INTEGER) continue;
 
     for (const market of bookmaker.markets || []) {
       if (market.key === "h2h") {
         if (isSuspiciousH2hMarket(market)) continue;
-        for (const outcome of market.outcomes || []) {
+        const outcomes = market.outcomes || [];
+        const teamOutcomeCount = outcomes.filter((outcome) => normalizeTeamName(outcome.name) !== "draw").length;
+        const hasDraw = outcomes.some((outcome) => normalizeTeamName(outcome.name) === "draw");
+        const marketKey = hasDraw ? "match_result" : "match_winner";
+        const marketLabel = hasDraw ? "Kết quả 1X2" : "Đội đi tiếp";
+        if (marketKey === "match_winner" && teamOutcomeCount !== 2) continue;
+        for (const outcome of outcomes) {
           const outcomeName = normalizeTeamName(outcome.name);
           let selectionKey = null;
           let selectionLabel = outcome.name;
           if (outcomeName === "draw") {
+            if (marketKey === "match_winner") continue;
             selectionKey = "draw";
             selectionLabel = "Hòa";
           } else if (outcomeName === normalizeTeamName(event.home_team)) {
             selectionKey = reversed ? "away" : "home";
-            selectionLabel = reversed ? "Đội khách thắng" : "Đội nhà thắng";
+            selectionLabel = marketKey === "match_winner"
+              ? (reversed ? "Đội khách đi tiếp" : "Đội nhà đi tiếp")
+              : (reversed ? "Đội khách thắng" : "Đội nhà thắng");
           } else if (outcomeName === normalizeTeamName(event.away_team)) {
             selectionKey = reversed ? "home" : "away";
-            selectionLabel = reversed ? "Đội nhà thắng" : "Đội khách thắng";
+            selectionLabel = marketKey === "match_winner"
+              ? (reversed ? "Đội nhà đi tiếp" : "Đội khách đi tiếp")
+              : (reversed ? "Đội nhà thắng" : "Đội khách thắng");
           }
           if (!selectionKey) continue;
 
-          setBest(`match_result:${selectionKey}:`, {
+          setBest(`${marketKey}:${selectionKey}:`, {
             match_id: match.id,
-            market_key: "match_result",
-            label: "Kết quả 1X2",
+            market_key: marketKey,
+            label: marketLabel,
             selection_key: selectionKey,
             selection_label: selectionLabel,
             line: null,
@@ -1248,7 +1320,16 @@ function bestPricesForEvent(event, match, reversed) {
     }
   }
 
-  return [...prices.values()].filter((price) => price.odds_multiplier !== null);
+  const prices = new Map();
+  for (const candidate of filterOutlierOddsCandidates(candidates, excludedBookmakersCount)) {
+    const current = prices.get(candidate.odds_key);
+    if (shouldReplaceOddsCandidate(current, candidate, preferredBookmakers)) {
+      prices.set(candidate.odds_key, candidate);
+    }
+  }
+  return [...prices.values()]
+    .filter((price) => price.odds_multiplier !== null)
+    .map(({ odds_key, ...price }) => price);
 }
 
 function marketFilterPath(candidate) {
@@ -1315,6 +1396,7 @@ function marketRowFromOddsCandidate(candidate) {
       bookmaker_key: candidate.bookmaker_key,
       bookmaker_last_update: candidate.bookmaker_last_update,
       selection_mode: oddsApiBookmakers().length ? "preferred_bookmaker" : "best_available",
+      odds_filter: candidate.filter_metadata || null,
       updated_at: new Date().toISOString(),
       ...(candidate.extra_json || {})
     }
@@ -2199,6 +2281,14 @@ async function closeLockedMarketFallbacks(matchIds) {
   await closeInternalMarketFallbacks(matchIds, "asian_handicap");
 }
 
+async function closeKnockoutDrawMarkets(matches) {
+  const knockoutIds = [...new Set((matches || []).filter(isKnockoutMatch).map((match) => Number(match.id)).filter(Boolean))];
+  if (!knockoutIds.length) return 0;
+  await closeMatchMarketByKey(knockoutIds, "draw_no_bet");
+  await closeMatchMarketByKey(knockoutIds, "match_result");
+  return knockoutIds.length;
+}
+
 async function fetchTeamsForDefaultMarkets(matches) {
   const ids = [...new Set((matches || [])
     .flatMap((match) => [match.home_team_id, match.away_team_id, match.home_team?.id, match.away_team?.id])
@@ -2735,6 +2825,7 @@ async function syncOddsSummary() {
   const matches = await getMatchesForOddsMapping();
   await resetProviderManagedMarketsToInternal(matches);
   await closeLockedMarketFallbacks(matches.map((match) => match.id));
+  await closeKnockoutDrawMarkets(matches);
   await closeOutrightMarkets("tournament_winner", "eq.internal");
   await closeOutrightMarkets("golden_boot", "neq.odds-api");
   let matchedEvents = 0;
@@ -2748,6 +2839,7 @@ async function syncOddsSummary() {
     if (!matched) continue;
     matchedEvents += 1;
     const candidates = bestPricesForEvent(event, matched.match, matched.reversed)
+      .filter((candidate) => !(isKnockoutMatch(matched.match) && candidate.market_key === "match_result"))
       .map((candidate) => ({ ...candidate, closes_at: matched.match.starts_at }));
     const correctScoreCandidate = correctScoreCandidateFromMarkets(candidates, matched.match);
     if (correctScoreCandidate) {
@@ -2767,6 +2859,7 @@ async function syncOddsSummary() {
     }
   }
 
+  await closeKnockoutDrawMarkets(matches);
   await closeInternalTotalGoalFallbacks([...providerTotalMatchIds]);
   await closeInternalHandicapFallbacks([...providerHandicapMatchIds]);
   const derivedCorrectScoreMarkets = await ensureCorrectScoreMarketsFromCurrentMarkets(matches);

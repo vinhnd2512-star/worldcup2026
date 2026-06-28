@@ -2581,7 +2581,7 @@ function modalMarketGroups(markets, group) {
   markets.forEach((market) => {
     groups.set(market.market_key, [...(groups.get(market.market_key) || []), market]);
   });
-  const order = group === "basic" ? ["correct_score", "total_goals", "match_result", "asian_handicap"] : [];
+  const order = group === "basic" ? ["correct_score", "match_winner", "total_goals", "match_result", "asian_handicap"] : [];
   return [...groups.entries()]
     .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: sortMarketsForDisplay(items) }))
     .sort((left, right) => {
@@ -2695,6 +2695,7 @@ function renderModalSelectionOptions(group, draft) {
 function modalMarketTitle(marketKey, fallback = "") {
   const labels = {
     correct_score: "Dự đoán tỷ số",
+    match_winner: "Doi di tiep",
     match_result: "Đội thắng / hòa / thua",
     draw_no_bet: "Draw no bet",
     total_goals: "Tài/Xỉu bàn thắng",
@@ -2711,6 +2712,7 @@ function modalMarketHelpText(marketKey) {
     return "He thong suy ra fair odds tung ty so tu rate 1X2 va Tai/Xiu hien tai bang mo hinh Poisson.";
   }
   const notes = {
+    match_winner: "Keo doi di tiep chi mo khi nha cai tra market hai lua chon, tinh ca hiep phu va penalty.",
     total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal.",
     asian_handicap: "Kèo châu Á chỉ mở khi có handicap/spreads từ nhà cái. Nếu tỷ số sau handicap bằng nhau, cược được hoàn tiền."
   };
@@ -2992,6 +2994,7 @@ function collectModalBetPayloads(match, options = {}) {
 }
 
 function isBasicMarket(key, market = null) {
+  if (key === "match_winner") return market?.source === "odds-api";
   if (key === "total_goals") return true;
   if (key === "draw_no_bet") return false;
   if (key === "asian_handicap") return market?.source === "odds-api";
@@ -3001,6 +3004,7 @@ function isBasicMarket(key, market = null) {
 
 function isBettableMarket(market) {
   if (!market || market.is_open !== true) return false;
+  if (market.market_key === "match_winner") return market.source === "odds-api";
   if (market.market_key === "draw_no_bet") return false;
   if (market.market_key === "asian_handicap") return market.source === "odds-api";
   if (market.market_key === "correct_score") return correctScoreMarketHasOdds(market);
@@ -3930,6 +3934,17 @@ function matchResultText(match) {
   return "Draw";
 }
 
+function matchWinnerText(match) {
+  if (!match || match.home_score === null || match.home_score === undefined || match.away_score === null || match.away_score === undefined) return "pending";
+  if (number(match.home_score) > number(match.away_score)) return `${match.home_team?.name || "Home"} advance`;
+  if (number(match.away_score) > number(match.home_score)) return `${match.away_team?.name || "Away"} advance`;
+  if (!["PEN", "FT_PEN"].includes(String(match.status || ""))) return "Pending penalties";
+  if (match.home_penalties === null || match.home_penalties === undefined || match.away_penalties === null || match.away_penalties === undefined) return "Pending penalties";
+  if (number(match.home_penalties) > number(match.away_penalties)) return `${match.home_team?.name || "Home"} advance on penalties`;
+  if (number(match.away_penalties) > number(match.home_penalties)) return `${match.away_team?.name || "Away"} advance on penalties`;
+  return "Pending penalties";
+}
+
 function betActualText(bet) {
   const match = matchForBet(bet);
   const market = marketForBet(bet, match);
@@ -3948,6 +3963,7 @@ function betActualText(bet) {
   const stats = statsForMatch(match);
   const totalGoals = number(match.home_score) + number(match.away_score);
   const line = market?.line === null || market?.line === undefined ? null : number(market.line);
+  if (bet.market_key === "match_winner") return `${matchScoreText(match)} · ${matchWinnerText(match)}`;
   if (bet.market_key === "match_result") return `${matchScoreText(match)} · ${matchResultText(match)}`;
   if (bet.market_key === "draw_no_bet") return `${matchScoreText(match)} · ${matchResultText(match)}${number(match.home_score) === number(match.away_score) ? " · stake refunded" : ""}`;
   if (bet.market_key === "total_goals") return `${matchScoreText(match)} · total goals ${fmtOne.format(totalGoals)}${line !== null ? ` vs line ${fmtOne.format(line)}` : ""}`;
@@ -4587,7 +4603,7 @@ function oddsTrackingMatches() {
     .slice(0, 16)
     .map((match) => {
       const trackedMarkets = (match.match_markets || [])
-        .filter((market) => market.is_open && ["match_result", "total_goals"].includes(market.market_key))
+        .filter((market) => market.is_open && ["match_winner", "match_result", "total_goals"].includes(market.market_key))
         .map((market) => ({ ...market, extra: marketExtra(market), updatedAt: oddsMarketUpdatedAt(market) }));
       const providerMarkets = trackedMarkets.filter((market) => market.source === "odds-api");
       return {
@@ -4602,8 +4618,9 @@ function oddsTrackingMatches() {
 
 function renderOddsTrackingRow(row) {
   const match = row.match;
-  const oneXTwo = ["home", "draw", "away"]
-    .map((key) => row.trackedMarkets.find((market) => market.market_key === "match_result" && market.selection_key === key))
+  const resultMarketKey = row.trackedMarkets.some((market) => market.market_key === "match_winner") ? "match_winner" : "match_result";
+  const oneXTwo = (resultMarketKey === "match_winner" ? ["home", "away"] : ["home", "draw", "away"])
+    .map((key) => row.trackedMarkets.find((market) => market.market_key === resultMarketKey && market.selection_key === key))
     .filter(Boolean);
   const totals = row.trackedMarkets
     .filter((market) => market.market_key === "total_goals")
@@ -4634,7 +4651,7 @@ function marketOddsInline(markets) {
 }
 
 function shortSelectionLabel(market) {
-  if (market.market_key === "match_result") {
+  if (market.market_key === "match_result" || market.market_key === "match_winner") {
     return { home: "H", draw: "D", away: "A" }[market.selection_key] || market.selection_key;
   }
   const line = market.line === null || market.line === undefined ? "" : ` ${fmtOne.format(number(market.line))}`;

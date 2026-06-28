@@ -49,6 +49,8 @@ export interface Match {
   status: string;
   home_score?: number | null;
   away_score?: number | null;
+  home_penalties?: number | null;
+  away_penalties?: number | null;
   venue?: string | null;
   city?: string | null;
   current_minute?: number | null;

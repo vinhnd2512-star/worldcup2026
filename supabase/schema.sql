@@ -776,6 +776,15 @@ as $$
   ))::numeric, 2);
 $$;
 
+create or replace function public.is_knockout_match(p_match public.matches)
+returns boolean
+language sql
+immutable
+as $$
+  select coalesce(p_match.group_name, '') = ''
+    and p_match.stage !~* 'group';
+$$;
+
 -- Recreate report views because CREATE OR REPLACE VIEW cannot reorder or
 -- rename columns on an existing view.
 drop view if exists public.admin_market_report;
@@ -805,8 +814,8 @@ user_scores as (
     count(b.id) filter (where b.status = 'won')::integer as won_bets,
     count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
     coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)::numeric(18,2) as open_staked,
-    coalesce(sum(case when b.status in ('won', 'lost', 'refunded') then b.stake else 0 end), 0)::numeric(18,2) as settled_staked,
-    coalesce(sum(b.stake), 0)::numeric(18,2) as total_staked,
+    coalesce(sum(case when b.status in ('won', 'lost') then b.stake else 0 end), 0)::numeric(18,2) as settled_staked,
+    coalesce(sum(case when b.status in ('placed', 'won', 'lost') then b.stake else 0 end), 0)::numeric(18,2) as total_staked,
     coalesce(
       nullif(le.initial_equity, 0),
       p.wallet_balance
@@ -851,7 +860,7 @@ select
   (select coalesce(sum(wallet_balance), 0)::numeric(18,2) from public.profiles where deleted_at is null) as total_wallet_balance,
   (select coalesce(sum(wallet_balance), 0)::numeric(18,2) from public.profiles where role = 'player' and deleted_at is null) as total_available_to_bet,
   (select coalesce(sum(stake), 0)::numeric(18,2) from public.bets where status = 'placed') as total_open_staked,
-  (select coalesce(sum(stake), 0)::numeric(18,2) from public.bets) as total_staked,
+  (select coalesce(sum(stake), 0)::numeric(18,2) from public.bets where status in ('placed','won','lost')) as total_staked,
   (select coalesce(sum(points_delta), 0)::numeric(18,2) from public.bets where status in ('won','lost','refunded')) as settled_net_points,
   (select coalesce(sum(prediction_bonus), 0)::numeric(18,2) from public.bets where status in ('won','lost','refunded')) as prediction_bonus_points,
   (select count(*)::integer from public.bets where status = 'placed') as open_bets,
@@ -878,8 +887,8 @@ user_scores as (
     count(b.id) filter (where b.status = 'won')::integer as won_bets,
     count(b.id) filter (where b.status = 'won' and b.market_key = 'correct_score')::integer as correct_score_count,
     coalesce(sum(case when b.status = 'placed' then b.stake else 0 end), 0)::numeric(18,2) as open_staked,
-    coalesce(sum(case when b.status in ('won','lost','refunded') then b.stake else 0 end), 0)::numeric(18,2) as settled_staked,
-    coalesce(sum(b.stake), 0)::numeric(18,2) as total_staked,
+    coalesce(sum(case when b.status in ('won','lost') then b.stake else 0 end), 0)::numeric(18,2) as settled_staked,
+    coalesce(sum(case when b.status in ('placed','won','lost') then b.stake else 0 end), 0)::numeric(18,2) as total_staked,
     coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as net_points,
     coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as bonus_points,
     coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as score,
@@ -931,7 +940,7 @@ select
   count(b.id) filter (where b.status = 'placed')::integer as open_bets,
   count(b.id) filter (where b.status in ('won','lost','refunded'))::integer as settled_bets,
   count(b.id) filter (where b.status = 'won')::integer as won_bets,
-  coalesce(sum(b.stake), 0)::numeric(18,2) as total_staked,
+  coalesce(sum(b.stake) filter (where b.status in ('placed','won','lost')), 0)::numeric(18,2) as total_staked,
   coalesce(sum(b.points_delta) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as net_points,
   coalesce(sum(b.prediction_bonus) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as bonus_points,
   coalesce(sum((b.points_delta + b.prediction_bonus)) filter (where b.status in ('won','lost','refunded')), 0)::numeric(18,2) as score,
@@ -1011,6 +1020,9 @@ begin
   end if;
   if v_market.market_key = 'draw_no_bet' then
     raise exception 'draw no bet is temporarily locked';
+  end if;
+  if v_market.market_key = 'match_winner' and v_market.source <> 'odds-api' then
+    raise exception 'match winner requires bookmaker odds';
   end if;
   if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
     raise exception 'handicap requires bookmaker odds';
@@ -1255,6 +1267,9 @@ begin
   end if;
   if v_market.market_key = 'draw_no_bet' then
     raise exception 'draw no bet is temporarily locked';
+  end if;
+  if v_market.market_key = 'match_winner' and v_market.source <> 'odds-api' then
+    raise exception 'match winner requires bookmaker odds';
   end if;
   if v_market.market_key = 'asian_handicap' and v_market.source <> 'odds-api' then
     raise exception 'handicap requires bookmaker odds';
@@ -2358,6 +2373,7 @@ begin
     and (
       market_key in ('draw_no_bet', 'asian_handicap')
       or (market_key = 'correct_score' and source = 'internal')
+      or (public.is_knockout_match(v_match) and market_key = 'match_result')
     );
 
   get diagnostics v_count = row_count;
@@ -3521,6 +3537,7 @@ declare
   v_advanced integer := 0;
   v_round_of_32 integer := 0;
   v_ah_adjusted numeric;
+  v_winner_team_id bigint;
 begin
   if not (public.is_admin() or auth.role() = 'service_role') then
     raise exception 'admin role required';
@@ -3569,7 +3586,14 @@ begin
     end if;
 
     v_won := false;
-    if v_bet.market_key = 'correct_score' then
+    if v_bet.market_key = 'match_winner' then
+      v_winner_team_id := public.match_winner_team_id(p_match_id);
+      if v_winner_team_id is null then
+        continue;
+      end if;
+      v_won := (v_bet.selection_key = 'home' and v_winner_team_id = v_match.home_team_id)
+        or (v_bet.selection_key = 'away' and v_winner_team_id = v_match.away_team_id);
+    elsif v_bet.market_key = 'correct_score' then
       v_won := (coalesce((v_bet.selection_json->>'home_score')::integer, -1) = v_match.home_score)
         and (coalesce((v_bet.selection_json->>'away_score')::integer, -1) = v_match.away_score);
     elsif v_bet.market_key = 'match_result' then
@@ -3668,6 +3692,7 @@ begin
       v_bonus := case
         when v_bet.market_key = 'correct_score' then 50
         when v_bet.market_key = 'match_result' then 10
+        when v_bet.market_key = 'match_winner' then 10
         when v_bet.market_key in ('draw_no_bet', 'total_goals', 'btts') then 8
         when v_bet.market_key in ('corners_total', 'cards_total') then 6
         when v_bet.market_key = 'asian_handicap' then 8
@@ -3686,14 +3711,32 @@ begin
       from public.profiles
       where id = v_bet.user_id;
       insert into public.settlements (bet_id, result, status, payout, reason)
-      values (v_bet.id, 'win', 'won', v_payout, 'Selection matched the final 90-minute result; leaderboard bonus applied.');
+      values (
+        v_bet.id,
+        'win',
+        'won',
+        v_payout,
+        case
+          when v_bet.market_key = 'match_winner' then 'Selection matched the team that advanced; leaderboard bonus applied.'
+          else 'Selection matched the final 90-minute result; leaderboard bonus applied.'
+        end
+      );
     else
       v_payout := 0;
       v_delta := -v_bet.stake;
       v_bonus := 0;
       update public.bets set status = 'lost', points_delta = v_delta, prediction_bonus = v_bonus, settled_at = now() where id = v_bet.id;
       insert into public.settlements (bet_id, result, status, payout, reason)
-      values (v_bet.id, 'loss', 'lost', v_payout, 'Selection did not match the final 90-minute result.');
+      values (
+        v_bet.id,
+        'loss',
+        'lost',
+        v_payout,
+        case
+          when v_bet.market_key = 'match_winner' then 'Selection did not match the team that advanced.'
+          else 'Selection did not match the final 90-minute result.'
+        end
+      );
     end if;
 
     v_count := v_count + 1;
