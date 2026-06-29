@@ -978,7 +978,7 @@ function renderFixtureBetSummaryItem(bet) {
   return `
     <div class="fixture-bet-item">
       <div><small>Kèo đã bet</small><b>${escapeHtml(betMarketTitle(bet))}</b></div>
-      <div><small>Dự đoán</small><b>${escapeHtml(bet.selection_label || "-")}</b><span>${money(bet.stake)} x${fmtOne.format(number(bet.locked_multiplier))}</span></div>
+      <div><small>Dự đoán</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b><span>${money(bet.stake)} x${fmtOne.format(number(bet.locked_multiplier))}</span></div>
       <div><small>Thực tế</small><b>${escapeHtml(betActualText(bet))}</b></div>
       <div><small>Kết luận</small><b class="${escapeHtml(outcome.className)}">${escapeHtml(outcome.label)}</b><span>Nhận về: ${escapeHtml(receivedLabel)} | Điểm: ${score >= 0 ? "+" : ""}${money(score)}</span></div>
     </div>
@@ -1421,7 +1421,7 @@ function getSettlementNotifications() {
         priority: bet.status === "won" ? 25 : 15,
         sortTime: Number.isFinite(settledAt.getTime()) ? settledAt.getTime() : 0,
         title: `${statusLabel}: ${match ? matchTitle(match) : bet.market_key}`,
-        body: `${amountText} - ${bet.selection_label || bet.market_key}`,
+        body: `${amountText} - ${betDisplaySelectionLabel(bet) || bet.market_key}`,
         timeText: Number.isFinite(settledAt.getTime()) ? dateText(settledAt) : ""
       };
     });
@@ -2500,7 +2500,7 @@ function renderRebetConfirmModal() {
               return `
               <span>
                 <b>${escapeHtml(modalMarketTitle(bet.market_key, bet.market_key))}</b>
-                ${escapeHtml(bet.market_key === "correct_score" ? scoreLabelFromBet(bet) : bet.selection_label)} · ${money(bet.stake)}
+                ${escapeHtml(betDisplaySelectionLabel(bet))} · ${money(bet.stake)}
                 ${canCancel ? `<button class="danger-button compact-button" type="button" data-cancel-bet="${bet.id}" ${state.isSubmittingBet ? "disabled" : ""}>Hủy kèo</button>` : ""}
               </span>
             `;
@@ -2650,7 +2650,7 @@ function renderModalBetSection(match, group) {
   const openCopy = group.marketKey === "correct_score" && existing
     ? `Đang mở ${fmt.format(existingBets.length)} kèo tỷ số`
     : existing
-      ? `Đang mở: ${escapeHtml(existing.selection_label)} · ${money(existing.stake)}`
+      ? `Đang mở: ${escapeHtml(betDisplaySelectionLabel(existing))} · ${money(existing.stake)}`
       : `${fmt.format(group.markets.length)} lựa chọn`;
   return `
     <section class="modal-market-card ${enabled ? "open" : ""}" data-bet-market-card="${escapeHtml(group.marketKey)}">
@@ -2700,8 +2700,14 @@ function renderModalSelectionOptions(group, draft) {
     <div class="modal-selection-list">
       ${group.markets.map((market) => {
         const checked = Number(draft.marketId) === Number(market.id);
-        const label = group.marketKey === "asian_handicap" ? handicapSelectionLabel(market) : market.selection_label;
-        const detail = group.marketKey === "asian_handicap" ? `${handicapLineGroupLabel(market)} - ${handicapOutcomeHint(market)}` : oddsFreshnessLabel(market);
+        const label = marketDisplaySelectionLabel(market);
+        const detail = group.marketKey === "asian_handicap"
+          ? `${handicapLineGroupLabel(market)} - ${handicapOutcomeHint(market)}`
+          : group.marketKey === "match_result"
+            ? "Tính kết quả sau 90 phút chính thức"
+            : group.marketKey === "match_winner"
+              ? "Tính cả hiệp phụ và penalty, không có hòa"
+              : oddsFreshnessLabel(market);
         return `
           <label class="modal-selection-card ${checked ? "selected" : ""}">
             <input type="radio" name="modal-market-${escapeHtml(group.marketKey)}" data-modal-market-choice="${escapeHtml(group.marketKey)}" value="${market.id}" ${checked ? "checked" : ""}>
@@ -2746,7 +2752,25 @@ function handicapSelectionLabel(market) {
 }
 
 function marketDisplaySelectionLabel(market) {
-  return market?.market_key === "asian_handicap" ? handicapSelectionLabel(market) : market?.selection_label;
+  if (market?.market_key === "asian_handicap") return handicapSelectionLabel(market);
+  if (market?.market_key === "match_result") return matchResultSelectionLabel(market);
+  if (market?.market_key === "match_winner") return matchWinnerSelectionLabel(market);
+  return market?.selection_label;
+}
+
+function matchResultSelectionLabel(market) {
+  const match = market?.match || state.matches.find((item) => Number(item.id) === Number(market?.match_id)) || selectedMatch();
+  if (market?.selection_key === "draw") return "Hòa sau 90 phút";
+  const team = market?.selection_key === "away" ? match?.away_team : match?.home_team;
+  const teamName = team?.name || market?.selection_label || (market?.selection_key === "away" ? "Đội khách" : "Đội nhà");
+  return `${teamName} thắng sau 90 phút`;
+}
+
+function matchWinnerSelectionLabel(market) {
+  const match = market?.match || state.matches.find((item) => Number(item.id) === Number(market?.match_id)) || selectedMatch();
+  const team = market?.selection_key === "away" ? match?.away_team : match?.home_team;
+  const teamName = team?.name || market?.selection_label || (market?.selection_key === "away" ? "Đội khách" : "Đội nhà");
+  return `${teamName} đi tiếp / thắng chung cuộc`;
 }
 
 function handicapLineGroupLabel(market) {
@@ -2768,7 +2792,7 @@ function modalMarketTitle(marketKey, fallback = "") {
     correct_score: "Dự đoán tỷ số",
     match_winner: "Thắng chung cuộc / đội đi tiếp",
     qualification_method: "Cach di tiep",
-    match_result: "Thắng / hòa / thua chung cuộc",
+    match_result: "Thắng / hòa / thua sau 90 phút",
     draw_no_bet: "Draw no bet",
     total_goals: "Tài/Xỉu bàn thắng",
     btts: "Hai đội cùng ghi bàn",
@@ -2784,8 +2808,8 @@ function modalMarketHelpText(marketKey) {
     return "He thong suy ra fair odds tung ty so tu rate 1X2 va Tai/Xiu hien tai bang mo hinh Poisson.";
   }
   const notes = {
-    match_result: "Rate 1X2 ưu tiên lấy trực tiếp từ nhà cái qua The Odds API; nếu provider chưa có dữ liệu thì dùng fallback đang mở của hệ thống.",
-    match_winner: "Keo doi di tiep chi mo khi nha cai tra market hai lua chon, tinh ca hiep phu va penalty.",
+    match_result: "Kèo 1X2 tính kết quả sau 90 phút chính thức. Hòa chỉ tính trong 90 phút, không tính hiệp phụ hoặc penalty.",
+    match_winner: "Kèo đội đi tiếp/thắng chung cuộc tính cả hiệp phụ và penalty, không có lựa chọn hòa.",
     qualification_method: "Keo doi thang bang hiep phu hoac penalty chi mo khi nha cai tra dung market nay.",
     total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal.",
     asian_handicap: "Kèo châu Á chỉ mở khi có handicap/spreads từ nhà cái. Nếu tỷ số sau handicap bằng nhau, cược được hoàn tiền."
@@ -3095,7 +3119,7 @@ function renderMarketButton(market) {
   return `
     <button class="market-button" data-market="${market.id}" ${state.isSubmittingBet ? "disabled" : ""}>
       <span>${escapeHtml(market.label)}</span>
-      <strong>${escapeHtml(market.selection_label)}</strong>
+      <strong>${escapeHtml(marketDisplaySelectionLabel(market))}</strong>
       <small>x${fmtOne.format(number(market.odds_multiplier))} · ${escapeHtml(oddsFreshnessLabel(market))}</small>
     </button>
   `;
@@ -3670,7 +3694,7 @@ function renderPredictionSuccess() {
       <section class="success-hero stadium-surface">
         <span class="pill">Đã lưu dự đoán</span>
         <h1>Dự đoán thành công</h1>
-        <p>${escapeHtml(title)} · ${escapeHtml(bet.selection_label)}</p>
+        <p>${escapeHtml(title)} · ${escapeHtml(betDisplaySelectionLabel(bet))}</p>
       </section>
       <section class="prediction-success-grid">
         ${profileMetric("Tiền còn lại", money(remaining))}
@@ -3681,7 +3705,7 @@ function renderPredictionSuccess() {
       <article class="glass-card panel prediction-success-card">
         <div>
           <h2>${escapeHtml(title)}</h2>
-          <p>${escapeHtml(bet.market_key)} · ${escapeHtml(bet.selection_label)} · ${dateText(bet.placed_at)}</p>
+          <p>${escapeHtml(bet.market_key)} · ${escapeHtml(betDisplaySelectionLabel(bet))} · ${dateText(bet.placed_at)}</p>
         </div>
         <div class="success-actions">
           <button class="primary-button" data-success-continue>Tiếp tục dự đoán</button>
@@ -3848,7 +3872,7 @@ function renderPredictionExtremeRow(bet) {
     <div class="prediction-extreme-row">
       <div>
         <strong>${escapeHtml(title)}</strong>
-        <small>${escapeHtml(bet.selection_label)} &middot; ${escapeHtml(betMarketTitle(bet))} &middot; ${dateText(bet.settled_at || bet.placed_at)}</small>
+        <small>${escapeHtml(betDisplaySelectionLabel(bet))} &middot; ${escapeHtml(betMarketTitle(bet))} &middot; ${dateText(bet.settled_at || bet.placed_at)}</small>
       </div>
       <b class="${score >= 0 ? "success" : "error"}">${score >= 0 ? "+" : ""}${money(score)}</b>
     </div>
@@ -3913,7 +3937,7 @@ function renderUpcomingBetRow(bet) {
         <small>${match ? `${dateText(match.starts_at)} · lock ${dateText(closesAt)}` : dateText(bet.placed_at)}</small>
       </div>
       <div><small>Market</small><b>${escapeHtml(bet.market_key)}</b></div>
-      <div><small>Dự đoán</small><b>${escapeHtml(bet.selection_label)}</b></div>
+      <div><small>Dự đoán</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b></div>
       <div><small>Hệ số</small><b>x${fmtOne.format(locked)} / x${fmtOne.format(current)}</b></div>
       <div><small>Stake</small><b>${money(bet.stake)}</b></div>
       <div><small>Payout</small><b>${money(bet.potential_payout)}</b></div>
@@ -3925,7 +3949,7 @@ function renderUpcomingBetRow(bet) {
                   bet.market_key === "correct_score"
                     ? `<label>Home<input name="home_score" type="number" min="0" step="1" value="${homeScore}"></label>
                        <label>Away<input name="away_score" type="number" min="0" step="1" value="${awayScore}"></label>`
-                    : `<label>Selection<input value="${escapeHtml(bet.selection_label)}" disabled></label>`
+                    : `<label>Selection<input value="${escapeHtml(betDisplaySelectionLabel(bet))}" disabled></label>`
                 }
                 <label>Stake<input id="update-stake-${bet.id}" name="stake" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(bet.stake)}">${renderStakeWalletShare(bet.stake, { forId: `update-stake-${bet.id}` })}</label>
                 <button class="primary-button compact-button" ${state.isSubmittingBet ? "disabled" : ""}>${state.isSubmittingBet ? renderBouncingBall("Dang cap nhat...") : "Cập nhật"}</button>
@@ -3951,6 +3975,26 @@ function marketForBet(bet, match = matchForBet(bet)) {
     || (match.match_markets || []).find((market) => market.market_key === bet.market_key && market.selection_key === bet.selection_key)
     || (match.match_markets || []).find((market) => market.market_key === bet.market_key)
     || null;
+}
+
+function betDisplaySelectionLabel(bet) {
+  if (!bet) return "-";
+  if (bet.market_key === "correct_score") return scoreLabelFromBet(bet);
+  const match = matchForBet(bet);
+  const pseudoMarket = {
+    match_id: bet.match_id,
+    market_key: bet.market_key,
+    selection_key: bet.selection_key,
+    selection_label: bet.selection_label
+  };
+  if (match) pseudoMarket.match = match;
+  if (bet.market_key === "match_result") return matchResultSelectionLabel(pseudoMarket);
+  if (bet.market_key === "match_winner") return matchWinnerSelectionLabel(pseudoMarket);
+  if (bet.market_key === "asian_handicap") {
+    const market = marketForBet(bet, match);
+    return market ? handicapSelectionLabel(market) : bet.selection_label || "-";
+  }
+  return bet.selection_label || "-";
 }
 
 function outrightMarketForBet(bet) {
@@ -4040,7 +4084,7 @@ function betActualText(bet) {
   const market = marketForBet(bet, match);
   if (!match) {
     if (bet.status === "placed") return "Pending outright result";
-    if (bet.status === "won") return `Settled winner: ${bet.selection_label}`;
+    if (bet.status === "won") return `Settled winner: ${betDisplaySelectionLabel(bet)}`;
     if (bet.status === "lost") return "Settled outright: selection did not win";
     if (bet.status === "refunded") return "Outright refunded";
     return bet.status || "Outright market";
@@ -4122,7 +4166,7 @@ function renderBetDetailCells(bet, { includeUser = false, allowVoid = false } = 
   return `
     ${includeUser ? `<div><small>User</small><strong>${escapeHtml(bet.user?.display_name || bet.user_id)}</strong><small>${dateText(bet.placed_at)}</small></div>` : `<div><small>Match</small><strong>${escapeHtml(title)}</strong><small>${dateText(bet.placed_at)}</small></div>`}
     <div><small>Bet type</small><b>${escapeHtml(betMarketTitle(bet))}</b><small>${escapeHtml(bet.market_key)}</small></div>
-    <div class="prediction-cell ${escapeHtml(outcomeClass)}"><small>Prediction</small><b>${escapeHtml(bet.selection_label)}</b><small>${money(bet.stake)} · x${fmtOne.format(number(bet.locked_multiplier))}</small></div>
+    <div class="prediction-cell ${escapeHtml(outcomeClass)}"><small>Prediction</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b><small>${money(bet.stake)} · x${fmtOne.format(number(bet.locked_multiplier))}</small></div>
     <div><small>Actual</small><b>${escapeHtml(betActualText(bet))}</b></div>
     <div class="outcome-cell ${escapeHtml(outcomeClass)}">
       <small>Outcome</small>
@@ -4163,7 +4207,7 @@ function renderHistoryRow(bet) {
   return `
     <article class="history-row ${escapeHtml(bet.status)}">
       <div><strong>${escapeHtml(title)}</strong><small>${dateText(bet.settled_at || bet.placed_at)}</small></div>
-      <div><small>D&#7921; &#273;o&aacute;n</small><b>${escapeHtml(bet.selection_label)}</b></div>
+      <div><small>D&#7921; &#273;o&aacute;n</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b></div>
       <div><small>Stake</small><b>${money(bet.stake)}</b></div>
       <div><small>${escapeHtml(bet.status)}${bonus ? ` &middot; bonus ${money(bonus)}` : ""}</small><b class="${delta + bonus >= 0 ? "success" : "error"}">${delta + bonus >= 0 ? "+" : ""}${money(delta + bonus)}</b></div>
     </article>
@@ -5680,7 +5724,7 @@ async function cancelBet(betId) {
   if (state.isSubmittingBet) return;
   const bet = state.bets.find((item) => Number(item.id) === Number(betId));
   if (!bet) return;
-  const confirmed = confirm(`Hủy kèo ${bet.selection_label} và hoàn ${money(bet.stake)} vào ví?`);
+  const confirmed = confirm(`Hủy kèo ${betDisplaySelectionLabel(bet)} và hoàn ${money(bet.stake)} vào ví?`);
   if (!confirmed) return;
 
   state.isSubmittingBet = true;
@@ -5740,7 +5784,7 @@ async function placeMarketBet(marketId) {
     p_match_id: match.id,
     p_market_id: market.id,
     p_selection_key: market.selection_key,
-    p_selection_label: market.selection_label,
+    p_selection_label: marketDisplaySelectionLabel(market),
     p_stake: stake,
     p_selection_json: { line: market.line }
   });
@@ -5781,7 +5825,7 @@ async function submitOutrightBet(marketId, stake) {
       state.message = "";
     } else {
       const marketName = market.market_key === "golden_boot" ? "Vua phá lưới" : "vô địch";
-      state.message = `Đã đặt kèo ${marketName}: ${market.selection_label}.`;
+      state.message = `Đã đặt kèo ${marketName}: ${marketDisplaySelectionLabel(market)}.`;
       state.error = "";
       state.lastPredictionBetId = data?.id || null;
       state.betModalMatchId = null;

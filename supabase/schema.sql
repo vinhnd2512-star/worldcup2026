@@ -2340,9 +2340,9 @@ begin
   insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
   values
     (v_match.id, 'correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null, 6.00, 'internal', v_match.starts_at),
-    (v_match.id, 'match_result', 'Kết quả 1X2', 'home', coalesce(v_home.name, 'Đội nhà') || ' thắng', null, v_home_win_odds, 'internal', v_match.starts_at),
-    (v_match.id, 'match_result', 'Kết quả 1X2', 'draw', 'Hòa', null, v_draw_odds, 'internal', v_match.starts_at),
-    (v_match.id, 'match_result', 'Kết quả 1X2', 'away', coalesce(v_away.name, 'Đội khách') || ' thắng', null, v_away_win_odds, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2 (90 phút)', 'home', coalesce(v_home.name, 'Đội nhà') || ' thắng sau 90 phút', null, v_home_win_odds, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2 (90 phút)', 'draw', 'Hòa sau 90 phút', null, v_draw_odds, 'internal', v_match.starts_at),
+    (v_match.id, 'match_result', 'Kết quả 1X2 (90 phút)', 'away', coalesce(v_away.name, 'Đội khách') || ' thắng sau 90 phút', null, v_away_win_odds, 'internal', v_match.starts_at),
     (v_match.id, 'draw_no_bet', 'Draw no bet', 'home', coalesce(v_home.name, 'Đội nhà') || ' DNB', null, v_home_dnb_odds, 'internal', v_match.starts_at),
     (v_match.id, 'draw_no_bet', 'Draw no bet', 'away', coalesce(v_away.name, 'Đội khách') || ' DNB', null, v_away_dnb_odds, 'internal', v_match.starts_at),
     (v_match.id, 'total_goals', 'Tổng bàn thắng 2.5', 'over', 'Tài 2.5', 2.5, 1.92, 'internal', v_match.starts_at),

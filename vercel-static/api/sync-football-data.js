@@ -1303,14 +1303,14 @@ function derivedMatchResultCandidatesFromBookmakerLines(candidates, match) {
   const probabilities = derivedResultProbabilitiesFromBookmakerLines(candidates);
   if (!probabilities) return [];
   const labels = {
-    home: "Đội nhà thắng",
-    draw: "Hòa",
-    away: "Đội khách thắng"
+    home: "Đội nhà thắng sau 90 phút",
+    draw: "Hòa sau 90 phút",
+    away: "Đội khách thắng sau 90 phút"
   };
   return ["home", "draw", "away"].map((selectionKey) => ({
     match_id: match.id,
     market_key: "match_result",
-    label: "Kết quả 1X2",
+    label: "Kết quả 1X2 (90 phút)",
     selection_key: selectionKey,
     selection_label: labels[selectionKey],
     line: null,
@@ -1353,9 +1353,9 @@ function derivedMatchWinnerCandidatesFromResult(candidates, match) {
     {
       match_id: match.id,
       market_key: "match_winner",
-      label: "Đội đi tiếp",
+      label: "Đội đi tiếp / thắng chung cuộc",
       selection_key: "home",
-      selection_label: "Đội nhà đi tiếp",
+      selection_label: "Đội nhà đi tiếp / thắng chung cuộc",
       line: null,
       odds_multiplier: decimal(clamp(1 / pHome, 1.01, 20)),
       bookmaker: "derived from bookmaker lines",
@@ -1369,9 +1369,9 @@ function derivedMatchWinnerCandidatesFromResult(candidates, match) {
     {
       match_id: match.id,
       market_key: "match_winner",
-      label: "Đội đi tiếp",
+      label: "Đội đi tiếp / thắng chung cuộc",
       selection_key: "away",
-      selection_label: "Đội khách đi tiếp",
+      selection_label: "Đội khách đi tiếp / thắng chung cuộc",
       line: null,
       odds_multiplier: decimal(clamp(1 / pAway, 1.01, 20)),
       bookmaker: "derived from bookmaker lines",
@@ -1398,9 +1398,9 @@ function internalResultCandidatesFromTeamStrength(candidates, match) {
     {
       match_id: match.id,
       market_key: "match_result",
-      label: "Kết quả 1X2",
+      label: "Kết quả 1X2 (90 phút)",
       selection_key: "home",
-      selection_label: "Đội nhà thắng",
+      selection_label: "Đội nhà thắng sau 90 phút",
       line: null,
       odds_multiplier: homeOdds,
       bookmaker: "internal strength fallback",
@@ -1414,9 +1414,9 @@ function internalResultCandidatesFromTeamStrength(candidates, match) {
     {
       match_id: match.id,
       market_key: "match_result",
-      label: "Kết quả 1X2",
+      label: "Kết quả 1X2 (90 phút)",
       selection_key: "draw",
-      selection_label: "Hòa",
+      selection_label: "Hòa sau 90 phút",
       line: null,
       odds_multiplier: drawOdds,
       bookmaker: "internal strength fallback",
@@ -1430,9 +1430,9 @@ function internalResultCandidatesFromTeamStrength(candidates, match) {
     {
       match_id: match.id,
       market_key: "match_result",
-      label: "Kết quả 1X2",
+      label: "Kết quả 1X2 (90 phút)",
       selection_key: "away",
-      selection_label: "Đội khách thắng",
+      selection_label: "Đội khách thắng sau 90 phút",
       line: null,
       odds_multiplier: awayOdds,
       bookmaker: "internal strength fallback",
@@ -1516,7 +1516,7 @@ function bestPricesForEvent(event, match, reversed) {
         const teamOutcomeCount = outcomes.filter((outcome) => normalizeTeamName(outcome.name) !== "draw").length;
         const hasDraw = outcomes.some((outcome) => normalizeTeamName(outcome.name) === "draw");
         const marketKey = hasDraw ? "match_result" : "match_winner";
-        const marketLabel = hasDraw ? "Kết quả 1X2" : "Đội đi tiếp";
+        const marketLabel = hasDraw ? "Kết quả 1X2 (90 phút)" : "Đội đi tiếp / thắng chung cuộc";
         if (marketKey === "match_winner" && teamOutcomeCount !== 2) continue;
         for (const outcome of outcomes) {
           const outcomeName = normalizeTeamName(outcome.name);
@@ -1525,17 +1525,17 @@ function bestPricesForEvent(event, match, reversed) {
           if (outcomeName === "draw") {
             if (marketKey === "match_winner") continue;
             selectionKey = "draw";
-            selectionLabel = "Hòa";
+            selectionLabel = "Hòa sau 90 phút";
           } else if (outcomeName === normalizeTeamName(event.home_team)) {
             selectionKey = reversed ? "away" : "home";
             selectionLabel = marketKey === "match_winner"
-              ? (reversed ? "Đội khách đi tiếp" : "Đội nhà đi tiếp")
-              : (reversed ? "Đội khách thắng" : "Đội nhà thắng");
+              ? (reversed ? "Đội khách đi tiếp / thắng chung cuộc" : "Đội nhà đi tiếp / thắng chung cuộc")
+              : (reversed ? "Đội khách thắng sau 90 phút" : "Đội nhà thắng sau 90 phút");
           } else if (outcomeName === normalizeTeamName(event.away_team)) {
             selectionKey = reversed ? "home" : "away";
             selectionLabel = marketKey === "match_winner"
-              ? (reversed ? "Đội nhà đi tiếp" : "Đội khách đi tiếp")
-              : (reversed ? "Đội nhà thắng" : "Đội khách thắng");
+              ? (reversed ? "Đội nhà đi tiếp / thắng chung cuộc" : "Đội khách đi tiếp / thắng chung cuộc")
+              : (reversed ? "Đội nhà thắng sau 90 phút" : "Đội khách thắng sau 90 phút");
           }
           if (!selectionKey) continue;
 
@@ -1563,9 +1563,9 @@ function bestPricesForEvent(event, match, reversed) {
           setBest(`match_winner:${selectionKey}:`, {
             match_id: match.id,
             market_key: "match_winner",
-            label: "Đội đi tiếp",
+            label: "Đội đi tiếp / thắng chung cuộc",
             selection_key: selectionKey,
-            selection_label: selectionKey === "home" ? "Đội nhà đi tiếp" : "Đội khách đi tiếp",
+            selection_label: selectionKey === "home" ? "Đội nhà đi tiếp / thắng chung cuộc" : "Đội khách đi tiếp / thắng chung cuộc",
             line: null,
             odds_multiplier: decimal(outcome.price),
             bookmaker: bookmaker.title || bookmaker.key,
@@ -2553,9 +2553,9 @@ async function ensureDefaultMarketsForMatches(matches) {
     const awayWinOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
     const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
     rows.push(
-      defaultMarket(match, "match_result", "Kết quả 1X2", "home", `${homeTeam.name || "Đội nhà"} thắng`, null, homeWinOdds, "internal"),
-      defaultMarket(match, "match_result", "Kết quả 1X2", "draw", "Hòa", null, drawOdds, "internal"),
-      defaultMarket(match, "match_result", "Kết quả 1X2", "away", `${awayTeam.name || "Đội khách"} thắng`, null, awayWinOdds, "internal"),
+      defaultMarket(match, "match_result", "Kết quả 1X2 (90 phút)", "home", `${homeTeam.name || "Đội nhà"} thắng sau 90 phút`, null, homeWinOdds, "internal"),
+      defaultMarket(match, "match_result", "Kết quả 1X2 (90 phút)", "draw", "Hòa sau 90 phút", null, drawOdds, "internal"),
+      defaultMarket(match, "match_result", "Kết quả 1X2 (90 phút)", "away", `${awayTeam.name || "Đội khách"} thắng sau 90 phút`, null, awayWinOdds, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", 2.5, 1.92, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", 2.5, 1.88, "internal"),
       defaultMarket(match, "btts", "Hai đội cùng ghi bàn", "yes", "Có", null, 1.95, "internal"),
@@ -2597,9 +2597,9 @@ async function resetProviderManagedMarketsToInternal(matches) {
     const awayWinOdds = teamWinMultiplier(awayStrength, homeStrength, 1.35, 4.50);
     const drawOdds = roundOdds(Math.max(2.70, Math.min(3.80, 2.95 + Math.abs(homeStrength - awayStrength) / 45)));
     rows.push(
-      defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "home", `${homeTeam.name || "Äá»™i nhÃ "} tháº¯ng`, null, homeWinOdds, "internal"),
-      defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "draw", "HÃ²a", null, drawOdds, "internal"),
-      defaultMarket(match, "match_result", "Káº¿t quáº£ 1X2", "away", `${awayTeam.name || "Äá»™i khÃ¡ch"} tháº¯ng`, null, awayWinOdds, "internal"),
+      defaultMarket(match, "match_result", "Ket qua 1X2 (90 phut)", "home", `${homeTeam.name || "Doi nha"} thang sau 90 phut`, null, homeWinOdds, "internal"),
+      defaultMarket(match, "match_result", "Ket qua 1X2 (90 phut)", "draw", "Hoa sau 90 phut", null, drawOdds, "internal"),
+      defaultMarket(match, "match_result", "Ket qua 1X2 (90 phut)", "away", `${awayTeam.name || "Doi khach"} thang sau 90 phut`, null, awayWinOdds, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "over", "Tài 2.5", 2.5, 1.92, "internal"),
       defaultMarket(match, "total_goals", "Tổng bàn thắng 2.5", "under", "Xỉu 2.5", 2.5, 1.88, "internal"),
       defaultMarket(match, "btts", "Hai đội cùng ghi bàn", "yes", "Có", null, 1.95, "internal"),

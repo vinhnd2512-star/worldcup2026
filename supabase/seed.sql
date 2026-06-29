@@ -238,7 +238,7 @@ where t.code = world_cup_history.code;
 insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
 values
   ('correct_score', 'Dự đoán tỷ số', 'score', 'correct_score', false, 6.00, 1),
-  ('match_result', 'Kết quả 1X2', 'single', 'match_result', false, 1.80, 2),
+  ('match_result', 'Kết quả 1X2 (90 phút)', 'single', 'match_result', false, 1.80, 2),
   ('draw_no_bet', 'Draw no bet', 'single', 'draw_no_bet', false, 1.65, 3),
   ('total_goals', 'Tổng bàn thắng', 'line', 'total_goals', false, 1.90, 4),
   ('btts', 'Hai đội cùng ghi bàn', 'single', 'btts', false, 1.95, 5),
@@ -255,7 +255,7 @@ set name = excluded.name,
     display_order = excluded.display_order;
 
 insert into public.market_definitions (key, name, market_type, settlement_rule, internal_only, default_multiplier, display_order)
-values ('match_winner', 'Doi di tiep', 'single', 'match_winner', false, 1.80, 3)
+values ('match_winner', 'Doi di tiep / thang chung cuoc', 'single', 'match_winner', false, 1.80, 3)
 on conflict (key) do update
 set name = excluded.name,
     market_type = excluded.market_type,
@@ -387,9 +387,9 @@ cross join lateral (
 cross join lateral (
   values
     ('correct_score', 'Dự đoán tỷ số', 'exact', 'Tỷ số chính xác', null::numeric, 6.00, 'internal'),
-    ('match_result', 'Kết quả 1X2', 'home', ht.name || ' thắng', null::numeric, public.team_win_multiplier(s.home_strength, s.away_strength, 1.35, 4.50), 'internal'),
-    ('match_result', 'Kết quả 1X2', 'draw', 'Hòa', null::numeric, round(greatest(2.70, least(3.80, 2.95 + abs(s.home_strength - s.away_strength) / 45))::numeric, 2), 'internal'),
-    ('match_result', 'Kết quả 1X2', 'away', at.name || ' thắng', null::numeric, public.team_win_multiplier(s.away_strength, s.home_strength, 1.35, 4.50), 'internal'),
+    ('match_result', 'Kết quả 1X2 (90 phút)', 'home', ht.name || ' thắng sau 90 phút', null::numeric, public.team_win_multiplier(s.home_strength, s.away_strength, 1.35, 4.50), 'internal'),
+    ('match_result', 'Kết quả 1X2 (90 phút)', 'draw', 'Hòa sau 90 phút', null::numeric, round(greatest(2.70, least(3.80, 2.95 + abs(s.home_strength - s.away_strength) / 45))::numeric, 2), 'internal'),
+    ('match_result', 'Kết quả 1X2 (90 phút)', 'away', at.name || ' thắng sau 90 phút', null::numeric, public.team_win_multiplier(s.away_strength, s.home_strength, 1.35, 4.50), 'internal'),
     ('draw_no_bet', 'Draw no bet', 'home', ht.name || ' DNB', null::numeric, public.team_win_multiplier(s.home_strength, s.away_strength, 1.15, 3.20), 'internal'),
     ('draw_no_bet', 'Draw no bet', 'away', at.name || ' DNB', null::numeric, public.team_win_multiplier(s.away_strength, s.home_strength, 1.15, 3.20), 'internal'),
     ('total_goals', 'Tổng bàn thắng 2.5', 'over', 'Tài 2.5', 2.5::numeric, 1.92, 'internal'),
