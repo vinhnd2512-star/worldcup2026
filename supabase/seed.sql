@@ -285,7 +285,7 @@ set name = excluded.name,
     display_order = excluded.display_order;
 
 update public.market_definitions
-set enabled = false
+set enabled = true
 where key = 'correct_score';
 
 with t as (select code, id from public.teams)
@@ -508,7 +508,7 @@ where public.outright_markets.source = 'internal';
 
 update public.match_markets
 set is_open = false
-where market_key = 'correct_score'
+where (market_key = 'correct_score' and source = 'internal')
   or (source = 'internal' and market_key in ('draw_no_bet', 'asian_handicap'));
 
 update public.outright_markets
