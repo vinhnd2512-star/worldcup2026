@@ -2318,8 +2318,23 @@ function extractEspnFixtures(payload) {
     if (!homeCode || !awayCode) continue;
     const statusName = String(comp.status?.type?.name || "").toUpperCase();
     const statusState = String(comp.status?.type?.state || "").toLowerCase();
+    const homePenalties = scoreOrNull(
+      homeComp.shootoutScore
+        ?? homeComp.shootout_score
+        ?? homeComp.penaltyScore
+        ?? homeComp.penalties
+        ?? null
+    );
+    const awayPenalties = scoreOrNull(
+      awayComp.shootoutScore
+        ?? awayComp.shootout_score
+        ?? awayComp.penaltyScore
+        ?? awayComp.penalties
+        ?? null
+    );
+    const hasShootoutScores = homePenalties !== null && awayPenalties !== null;
     let status = "SCHEDULED";
-    if (statusName === "STATUS_FINAL_PEN") status = "PEN";
+    if (statusName === "STATUS_FINAL_PEN" || hasShootoutScores) status = "PEN";
     else if (statusName === "STATUS_FINAL_AET") status = "AET";
     else if (statusName === "STATUS_FINAL" || statusState === "post") status = "FT";
     else if (statusState === "in") status = "1H";
@@ -2335,6 +2350,8 @@ function extractEspnFixtures(payload) {
       awayScore,
       homeFinalScore: homeScore,
       awayFinalScore: awayScore,
+      homePenalties,
+      awayPenalties,
       status,
       kickOff: ev.date || comp.date || null,
       provider: "espn",
