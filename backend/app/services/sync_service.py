@@ -116,15 +116,18 @@ def _apply_fixture(match: Match, payload: dict[str, Any]) -> bool:
     goals = payload.get("goals") or {}
     score = payload.get("score") or {}
     fulltime = score.get("fulltime") or {}
+    extratime = score.get("extratime") or {}
     penalty = score.get("penalty") or {}
 
     provider_status = status.get("short") or match.status
-    home_score = goals.get("home")
-    away_score = goals.get("away")
+    home_score = fulltime.get("home")
+    away_score = fulltime.get("away")
     if home_score is None:
-        home_score = fulltime.get("home")
+        home_score = goals.get("home")
     if away_score is None:
-        away_score = fulltime.get("away")
+        away_score = goals.get("away")
+    home_final_score = extratime.get("home") if extratime.get("home") is not None else home_score
+    away_final_score = extratime.get("away") if extratime.get("away") is not None else away_score
 
     changed = False
     if match.status != provider_status:
@@ -138,6 +141,12 @@ def _apply_fixture(match: Match, payload: dict[str, Any]) -> bool:
         changed = True
     if away_score is not None and match.away_score != away_score:
         match.away_score = int(away_score)
+        changed = True
+    if home_final_score is not None and match.home_final_score != home_final_score:
+        match.home_final_score = int(home_final_score)
+        changed = True
+    if away_final_score is not None and match.away_final_score != away_final_score:
+        match.away_final_score = int(away_final_score)
         changed = True
     if penalty.get("home") is not None and match.home_penalties != penalty.get("home"):
         match.home_penalties = int(penalty["home"])

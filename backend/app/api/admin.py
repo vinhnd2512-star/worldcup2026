@@ -165,6 +165,10 @@ def update_match_score(match_id: int, payload: UpdateScoreRequest, db: DbSession
         match.home_score = payload.home_score
     if payload.away_score is not None:
         match.away_score = payload.away_score
+    if payload.home_final_score is not None:
+        match.home_final_score = payload.home_final_score
+    if payload.away_final_score is not None:
+        match.away_final_score = payload.away_final_score
     match.home_penalties = payload.home_penalties
     match.away_penalties = payload.away_penalties
     if payload.status is not None:
@@ -176,6 +180,8 @@ def update_match_score(match_id: int, payload: UpdateScoreRequest, db: DbSession
         "match_id": match.id,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        "home_final_score": match.home_final_score,
+        "away_final_score": match.away_final_score,
         "home_penalties": match.home_penalties,
         "away_penalties": match.away_penalties,
         "status": match.status,

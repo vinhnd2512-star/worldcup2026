@@ -13,6 +13,8 @@ class MatchResult:
     status: str
     home_score: int | None = None
     away_score: int | None = None
+    home_final_score: int | None = None
+    away_final_score: int | None = None
     home_penalties: int | None = None
     away_penalties: int | None = None
     corners_home: int = 0
@@ -158,7 +160,22 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
                 reason="Total goals market pushed; stake refunded.",
             )
 
-    if bet.market_key == "handicap":
+    if bet.market_key == "penalty_score":
+        if result.status in {"PEN", "FT_PEN"} and (result.home_penalties is None or result.away_penalties is None):
+            return SettlementOutcome(
+                status="pending",
+                result="pending",
+                payout=Decimal("0.00"),
+                net_points=Decimal("0.00"),
+                prediction_bonus=Decimal("0.00"),
+                reason="Penalty shootout score is not final.",
+            )
+        won = (
+            result.status in {"PEN", "FT_PEN"}
+            and int(bet.selection.get("home_score", -1)) == result.home_penalties
+            and int(bet.selection.get("away_score", -1)) == result.away_penalties
+        )
+    elif bet.market_key in {"handicap", "asian_handicap"}:
         handicap_result = _handicap_adjusted_result(bet, result)
         if handicap_result == 0:
             return SettlementOutcome(
@@ -208,11 +225,13 @@ def prediction_bonus(market_key: str) -> Decimal:
     """
     bonuses = {
         "correct_score": Decimal("50.00"),
+        "penalty_score": Decimal("35.00"),
         "match_result": Decimal("10.00"),
         "match_winner": Decimal("10.00"),
         "qualification_method": Decimal("15.00"),
         "draw_no_bet": Decimal("8.00"),
         "handicap": Decimal("8.00"),
+        "asian_handicap": Decimal("8.00"),
         "total_goals": Decimal("8.00"),
         "btts": Decimal("8.00"),
         "corners_total": Decimal("6.00"),
@@ -247,7 +266,7 @@ def _is_winning_selection(bet: BetSelection, result: MatchResult) -> bool:
             bet.selection_key == "away" and result.away_score > result.home_score
         )
 
-    if bet.market_key == "handicap":
+    if bet.market_key in {"handicap", "asian_handicap"}:
         line = Decimal(str(bet.selection.get("line", "0")))
         if bet.selection_key == "home":
             return Decimal(result.home_score) + line > Decimal(result.away_score)
@@ -304,11 +323,13 @@ def _handicap_adjusted_result(bet: BetSelection, result: MatchResult) -> int:
 
 
 def _match_winner_selection_key(result: MatchResult) -> str | None:
-    if result.home_score is None or result.away_score is None:
+    home_final = result.home_final_score if result.home_final_score is not None else result.home_score
+    away_final = result.away_final_score if result.away_final_score is not None else result.away_score
+    if home_final is None or away_final is None:
         return None
-    if result.home_score > result.away_score:
+    if home_final > away_final:
         return "home"
-    if result.away_score > result.home_score:
+    if away_final > home_final:
         return "away"
     if result.status not in {"PEN", "FT_PEN"}:
         return None

@@ -36,7 +36,7 @@ class SettlementTests(unittest.TestCase):
     def test_match_winner_after_extra_time(self) -> None:
         outcome = settle_bet(
             BetSelection("match_winner", "away", Decimal("100"), Decimal("2.20"), {}),
-            MatchResult(status="AET", home_score=1, away_score=2),
+            MatchResult(status="AET", home_score=1, away_score=1, home_final_score=1, away_final_score=2),
         )
         self.assertEqual(outcome.status, "won")
         self.assertEqual(outcome.payout, Decimal("220.00"))
@@ -67,7 +67,7 @@ class SettlementTests(unittest.TestCase):
     def test_qualification_method_extra_time(self) -> None:
         outcome = settle_bet(
             BetSelection("qualification_method", "home_extra_time", Decimal("100"), Decimal("4.50"), {}),
-            MatchResult(status="AET", home_score=2, away_score=1),
+            MatchResult(status="AET", home_score=1, away_score=1, home_final_score=2, away_final_score=1),
         )
         self.assertEqual(outcome.status, "won")
         self.assertEqual(outcome.payout, Decimal("450.00"))
@@ -84,10 +84,31 @@ class SettlementTests(unittest.TestCase):
     def test_qualification_method_wrong_method_loses(self) -> None:
         outcome = settle_bet(
             BetSelection("qualification_method", "home_penalties", Decimal("100"), Decimal("5.50"), {}),
-            MatchResult(status="AET", home_score=2, away_score=1),
+            MatchResult(status="AET", home_score=1, away_score=1, home_final_score=2, away_final_score=1),
         )
         self.assertEqual(outcome.status, "lost")
         self.assertEqual(outcome.net_points, Decimal("-100.00"))
+
+    def test_penalty_score_win(self) -> None:
+        outcome = settle_bet(
+            BetSelection("penalty_score", "3-4", Decimal("100"), Decimal("12.00"), {"home_score": 3, "away_score": 4}),
+            MatchResult(status="PEN", home_score=1, away_score=1, home_penalties=3, away_penalties=4),
+        )
+        self.assertEqual(outcome.status, "won")
+
+    def test_penalty_score_loses_when_no_shootout(self) -> None:
+        outcome = settle_bet(
+            BetSelection("penalty_score", "3-4", Decimal("100"), Decimal("12.00"), {"home_score": 3, "away_score": 4}),
+            MatchResult(status="FT", home_score=1, away_score=0),
+        )
+        self.assertEqual(outcome.status, "lost")
+
+    def test_penalty_score_pending_when_shootout_score_missing(self) -> None:
+        outcome = settle_bet(
+            BetSelection("penalty_score", "3-4", Decimal("100"), Decimal("12.00"), {"home_score": 3, "away_score": 4}),
+            MatchResult(status="PEN", home_score=1, away_score=1),
+        )
+        self.assertEqual(outcome.status, "pending")
 
     def test_qualification_method_tied_without_penalties_is_pending(self) -> None:
         outcome = settle_bet(
@@ -132,6 +153,13 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(push.status, "refunded")
         self.assertEqual(push.result, "push")
         self.assertEqual(push.payout, Decimal("100.00"))
+
+    def test_handicap_uses_90_minute_score_not_extra_time(self) -> None:
+        outcome = settle_bet(
+            BetSelection("asian_handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-0.5"}),
+            MatchResult(status="AET", home_score=1, away_score=1, home_final_score=2, away_final_score=1),
+        )
+        self.assertEqual(outcome.status, "lost")
 
     def test_over_under_goals(self) -> None:
         over = settle_bet(

@@ -556,6 +556,8 @@ function completedMatchResultRows(matches, provider, source) {
       status: match.status,
       home_score: match.home_score,
       away_score: match.away_score,
+      home_final_score: match.home_final_score ?? match.home_score,
+      away_final_score: match.away_final_score ?? match.away_score,
       home_penalties: match.home_penalties ?? null,
       away_penalties: match.away_penalties ?? null,
       provider,
@@ -2111,6 +2113,8 @@ function extractFifaFantasyFixtures(payload) {
         awayCode,
         homeScore,
         awayScore,
+        homeFinalScore: scoreOrNull(f.homeFinalScore ?? f.finalScore?.home ?? f.fullTime?.home ?? homeScore),
+        awayFinalScore: scoreOrNull(f.awayFinalScore ?? f.finalScore?.away ?? f.fullTime?.away ?? awayScore),
         homePenalties: scoreOrNull(f.homePenaltyScore ?? f.homePenalties ?? f.penalties?.home ?? null),
         awayPenalties: scoreOrNull(f.awayPenaltyScore ?? f.awayPenalties ?? f.penalties?.away ?? null),
         status,
@@ -2151,6 +2155,8 @@ function extractFifaCalendarFixtures(payload) {
       awayCode,
       homeScore,
       awayScore,
+      homeFinalScore: scoreOrNull(m.HomeTeamFinalScore ?? m.HomeTeamFullTimeScore ?? home.ScoreFinal ?? home.Score ?? homeScore),
+      awayFinalScore: scoreOrNull(m.AwayTeamFinalScore ?? m.AwayTeamFullTimeScore ?? away.ScoreFinal ?? away.Score ?? awayScore),
       homePenalties: scoreOrNull(m.HomeTeamPenaltyScore ?? home.PenaltyScore ?? null),
       awayPenalties: scoreOrNull(m.AwayTeamPenaltyScore ?? away.PenaltyScore ?? null),
       status,
@@ -2168,7 +2174,7 @@ async function upsertMatchResultsByCode(fixtures) {
   const codes = [...new Set(fixtures.flatMap((f) => [f.homeCode, f.awayCode]))];
   const teamsByCode = await getTeamsByCodes(codes);
   const matchesRes = await supabaseFetch(
-    "/rest/v1/matches?select=id,provider_id,status,home_score,away_score,home_penalties,away_penalties,home_team_id,away_team_id,starts_at,updated_at&order=starts_at.asc"
+    "/rest/v1/matches?select=id,provider_id,status,home_score,away_score,home_final_score,away_final_score,home_penalties,away_penalties,home_team_id,away_team_id,starts_at,updated_at&order=starts_at.asc"
   );
   if (!matchesRes.ok) throw new Error(`Supabase read matches failed: ${matchesRes.status}`);
   const dbMatches = await matchesRes.json();
@@ -2182,14 +2188,19 @@ async function upsertMatchResultsByCode(fixtures) {
     if (!homeTeam || !awayTeam) continue;
     const dbMatch = findDbMatchForFixture(f, homeTeam, awayTeam, dbMatches);
     if (!dbMatch) continue;
-    const wasCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(dbMatch.status);
     const nowCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(f.status);
     const scoredResult = hasScoreFixture(f);
-    // Only update if score or status changed
+    const homeFinalScore = f.homeFinalScore ?? f.homeScore;
+    const awayFinalScore = f.awayFinalScore ?? f.awayScore;
+    const resultChanged = dbMatch.status !== f.status
+      || dbMatch.home_score !== f.homeScore
+      || dbMatch.away_score !== f.awayScore
+      || dbMatch.home_final_score !== homeFinalScore
+      || dbMatch.away_final_score !== awayFinalScore
+      || dbMatch.home_penalties !== (f.homePenalties ?? null)
+      || dbMatch.away_penalties !== (f.awayPenalties ?? null);
     if (
-      dbMatch.status === f.status &&
-      dbMatch.home_score === f.homeScore &&
-      dbMatch.away_score === f.awayScore
+      !resultChanged
     ) {
       if (scoredResult) {
         resultRows.push({
@@ -2199,6 +2210,8 @@ async function upsertMatchResultsByCode(fixtures) {
           status: f.status,
           home_score: f.homeScore,
           away_score: f.awayScore,
+          home_final_score: homeFinalScore,
+          away_final_score: awayFinalScore,
           home_penalties: f.homePenalties ?? null,
           away_penalties: f.awayPenalties ?? null,
           provider: f.provider || "unknown",
@@ -2219,6 +2232,8 @@ async function upsertMatchResultsByCode(fixtures) {
           status: f.status,
           home_score: f.homeScore,
           away_score: f.awayScore,
+          home_final_score: homeFinalScore,
+          away_final_score: awayFinalScore,
           home_penalties: f.homePenalties ?? null,
           away_penalties: f.awayPenalties ?? null,
           updated_at: new Date().toISOString()
@@ -2232,11 +2247,13 @@ async function upsertMatchResultsByCode(fixtures) {
         match_id: dbMatch.id,
         home_team_id: dbMatch.home_team_id,
         away_team_id: dbMatch.away_team_id,
-        status: f.status,
-        home_score: f.homeScore,
-        away_score: f.awayScore,
-        home_penalties: f.homePenalties ?? null,
-        away_penalties: f.awayPenalties ?? null,
+          status: f.status,
+          home_score: f.homeScore,
+          away_score: f.awayScore,
+          home_final_score: homeFinalScore,
+          away_final_score: awayFinalScore,
+          home_penalties: f.homePenalties ?? null,
+          away_penalties: f.awayPenalties ?? null,
         provider: f.provider || "unknown",
         source: f.source || f.provider || "provider",
         provider_payload: f.payload || {},
@@ -2244,7 +2261,7 @@ async function upsertMatchResultsByCode(fixtures) {
         synced_at: new Date().toISOString()
       });
     }
-    if (!wasCompleted && nowCompleted) completedMatchIds.push(dbMatch.id);
+    if (nowCompleted) completedMatchIds.push(dbMatch.id);
   }
   let resultUpserts = [];
   try {
@@ -2302,16 +2319,27 @@ function extractEspnFixtures(payload) {
     const statusName = String(comp.status?.type?.name || "").toUpperCase();
     const statusState = String(comp.status?.type?.state || "").toLowerCase();
     let status = "SCHEDULED";
-    if (statusName === "STATUS_FINAL" || statusState === "post") status = "FT";
+    if (statusName === "STATUS_FINAL_PEN") status = "PEN";
     else if (statusName === "STATUS_FINAL_AET") status = "AET";
-    else if (statusName === "STATUS_FINAL_PEN") status = "PEN";
+    else if (statusName === "STATUS_FINAL" || statusState === "post") status = "FT";
     else if (statusState === "in") status = "1H";
     else if (statusName === "STATUS_HALFTIME") status = "HT";
     else if (statusName === "STATUS_POSTPONED") status = "PST";
     else if (statusName === "STATUS_CANCELED" || statusName === "STATUS_CANCELLED") status = "CANC";
     const homeScore = statusState === "post" || statusState === "in" ? scoreOrNull(homeComp.score) : null;
     const awayScore = statusState === "post" || statusState === "in" ? scoreOrNull(awayComp.score) : null;
-    fixtures.push({ homeCode, awayCode, homeScore, awayScore, status, kickOff: ev.date || comp.date || null, provider: "espn", payload: ev });
+    fixtures.push({
+      homeCode,
+      awayCode,
+      homeScore,
+      awayScore,
+      homeFinalScore: homeScore,
+      awayFinalScore: awayScore,
+      status,
+      kickOff: ev.date || comp.date || null,
+      provider: "espn",
+      payload: ev
+    });
   }
   return fixtures;
 }
@@ -2428,8 +2456,10 @@ async function syncApiFootballFixtures() {
       away_team_id: teamIdMap.get(String(fixture.teams.away.id)),
       starts_at: fixture.fixture.date,
       status: normalizeStatus(fixture.fixture.status?.short),
-      home_score: fixture.goals.home,
-      away_score: fixture.goals.away,
+      home_score: fixture.score?.fulltime?.home ?? fixture.goals.home,
+      away_score: fixture.score?.fulltime?.away ?? fixture.goals.away,
+      home_final_score: fixture.score?.extratime?.home ?? fixture.score?.fulltime?.home ?? fixture.goals.home,
+      away_final_score: fixture.score?.extratime?.away ?? fixture.score?.fulltime?.away ?? fixture.goals.away,
       home_penalties: fixture.score?.penalty?.home ?? null,
       away_penalties: fixture.score?.penalty?.away ?? null,
       venue: fixture.fixture.venue?.name || null,
@@ -2491,8 +2521,10 @@ async function syncFootballDataFixtures() {
       away_team_id: teamIdMap.get(`fd-${match.awayTeam?.id}`),
       starts_at: match.utcDate,
       status: normalizeFootballDataStatus(match.status),
-      home_score: match.score?.fullTime?.home ?? match.score?.regularTime?.home ?? null,
-      away_score: match.score?.fullTime?.away ?? match.score?.regularTime?.away ?? null,
+      home_score: match.score?.regularTime?.home ?? match.score?.fullTime?.home ?? null,
+      away_score: match.score?.regularTime?.away ?? match.score?.fullTime?.away ?? null,
+      home_final_score: match.score?.fullTime?.home ?? match.score?.regularTime?.home ?? null,
+      away_final_score: match.score?.fullTime?.away ?? match.score?.regularTime?.away ?? null,
       home_penalties: match.score?.penalties?.home ?? null,
       away_penalties: match.score?.penalties?.away ?? null,
       venue: match.venue || null,
@@ -2565,6 +2597,9 @@ async function ensureDefaultMarketsForMatches(matches) {
       defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "over", "Tài thẻ 3.5", 3.5, 1.90, "internal"),
       defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal")
     );
+    if (isKnockoutMatch(match)) {
+      rows.push(defaultMarket(match, "penalty_score", "Tỷ số penalty", "exact", "Tỷ số luân lưu chính xác", null, 12.00, "internal"));
+    }
   }
   return upsertJsonMinimal("match_markets", rows, "match_id,market_key,selection_key,line_key");
 }
@@ -2609,6 +2644,9 @@ async function resetProviderManagedMarketsToInternal(matches) {
       defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "over", "Tài thẻ 3.5", 3.5, 1.90, "internal"),
       defaultMarket(match, "cards_total", "Tổng thẻ 3.5", "under", "Xỉu thẻ 3.5", 3.5, 1.90, "internal")
     );
+    if (isKnockoutMatch(match)) {
+      rows.push(defaultMarket(match, "penalty_score", "Ty so penalty", "exact", "Ty so luan luu chinh xac", null, 12.00, "internal"));
+    }
   }
   await upsertJson("match_markets", rows, "match_id,market_key,selection_key,line_key");
   return rows.length;

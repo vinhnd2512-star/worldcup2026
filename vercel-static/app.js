@@ -2594,7 +2594,7 @@ function modalMarketGroups(markets, group) {
   markets.forEach((market) => {
     groups.set(market.market_key, [...(groups.get(market.market_key) || []), market]);
   });
-  const order = group === "basic" ? ["correct_score", "match_result", "match_winner", "qualification_method", "total_goals", "asian_handicap"] : [];
+  const order = group === "basic" ? ["correct_score", "match_result", "match_winner", "qualification_method", "penalty_score", "total_goals", "asian_handicap"] : [];
   return [...groups.entries()]
     .map(([marketKey, items]) => ({ marketKey, label: modalMarketTitle(marketKey, items[0]?.label), markets: sortMarketsForDisplay(items) }))
     .sort((left, right) => {
@@ -2630,6 +2630,10 @@ function marketSelectionOrder(selectionKey) {
   return { home: 1, draw: 2, away: 3, home_extra_time: 4, away_extra_time: 5, home_penalties: 6, away_penalties: 7, over: 8, under: 9, yes: 10, no: 11, exact: 12 }[selectionKey] || 99;
 }
 
+function isExactScoreMarket(marketKey) {
+  return marketKey === "correct_score" || marketKey === "penalty_score";
+}
+
 function renderModalBetSection(match, group) {
   const draft = ensureBetModalDraft(match, group.marketKey, group.markets);
   const existing = existingOpenBet(match, group.marketKey);
@@ -2643,11 +2647,11 @@ function renderModalBetSection(match, group) {
   const existingCancelButton = existing && canCancelBet(existing)
     ? `<button class="danger-button compact-button" type="button" data-cancel-bet="${existing.id}" ${state.isSubmittingBet ? "disabled" : ""}>Hủy kèo</button>`
     : "";
-  const scorePicks = group.marketKey === "correct_score" ? correctScoreDraftPicks(draft) : [];
-  const multiplierText = group.marketKey === "correct_score"
+  const scorePicks = isExactScoreMarket(group.marketKey) ? correctScoreDraftPicks(draft) : [];
+  const multiplierText = isExactScoreMarket(group.marketKey)
     ? `${fmt.format(scorePicks.length)} tỷ số`
     : `x${fmtOne.format(displayMultiplier || number(group.markets[0]?.odds_multiplier || 1))}`;
-  const openCopy = group.marketKey === "correct_score" && existing
+  const openCopy = isExactScoreMarket(group.marketKey) && existing
     ? `Đang mở ${fmt.format(existingBets.length)} kèo tỷ số`
     : existing
       ? `Đang mở: ${escapeHtml(betDisplaySelectionLabel(existing))} · ${money(existing.stake)}`
@@ -2672,12 +2676,12 @@ function renderModalBetSection(match, group) {
         enabled
           ? `<div class="modal-market-card-body">
               ${
-                group.marketKey === "correct_score"
-                  ? renderCorrectScorePicks(match, selectedMarket, draft)
+                isExactScoreMarket(group.marketKey)
+                  ? renderCorrectScorePicks(match, selectedMarket, draft, group.marketKey)
                   : renderModalSelectionOptions(group, draft)
               }
               ${
-                group.marketKey === "correct_score"
+                isExactScoreMarket(group.marketKey)
                   ? ""
                   : `<div class="modal-stake-grid">
                       <label>Tiền cược<input data-modal-market-stake="${escapeHtml(group.marketKey)}" type="text" inputmode="numeric" autocomplete="off" value="${formatStakeInput(stake)}">${renderStakeWalletShare(stake, { marketKey: group.marketKey })}</label>
@@ -2687,7 +2691,7 @@ function renderModalBetSection(match, group) {
                       </div>
                     </div>`
               }
-              ${group.marketKey !== "correct_score" && existingCancelButton ? `<div class="modal-existing-bet-actions">${existingCancelButton}</div>` : ""}
+              ${!isExactScoreMarket(group.marketKey) && existingCancelButton ? `<div class="modal-existing-bet-actions">${existingCancelButton}</div>` : ""}
             </div>`
           : ""
       }
@@ -2702,12 +2706,14 @@ function renderModalSelectionOptions(group, draft) {
         const checked = Number(draft.marketId) === Number(market.id);
         const label = marketDisplaySelectionLabel(market);
         const detail = group.marketKey === "asian_handicap"
-          ? `${handicapLineGroupLabel(market)} - ${handicapOutcomeHint(market)}`
+          ? `${handicapLineGroupLabel(market)} - Tinh theo ty so 90 phut`
           : group.marketKey === "match_result"
             ? "Tính kết quả sau 90 phút chính thức"
             : group.marketKey === "match_winner"
               ? "Tính cả hiệp phụ và penalty, không có hòa"
-              : oddsFreshnessLabel(market);
+              : group.marketKey === "penalty_score"
+                ? "Chi tinh ty so luan luu, khong tinh ban thang tran dau"
+                : oddsFreshnessLabel(market);
         return `
           <label class="modal-selection-card ${checked ? "selected" : ""}">
             <input type="radio" name="modal-market-${escapeHtml(group.marketKey)}" data-modal-market-choice="${escapeHtml(group.marketKey)}" value="${market.id}" ${checked ? "checked" : ""}>
@@ -2755,6 +2761,7 @@ function marketDisplaySelectionLabel(market) {
   if (market?.market_key === "asian_handicap") return handicapSelectionLabel(market);
   if (market?.market_key === "match_result") return matchResultSelectionLabel(market);
   if (market?.market_key === "match_winner") return matchWinnerSelectionLabel(market);
+  if (market?.market_key === "penalty_score") return "Ty so luan luu chinh xac";
   return market?.selection_label;
 }
 
@@ -2792,20 +2799,27 @@ function modalMarketTitle(marketKey, fallback = "") {
     correct_score: "Dự đoán tỷ số",
     match_winner: "Thắng chung cuộc / đội đi tiếp",
     qualification_method: "Cach di tiep",
+    penalty_score: "Ty so penalty",
     match_result: "Thắng / hòa / thua sau 90 phút",
     draw_no_bet: "Draw no bet",
     total_goals: "Tài/Xỉu bàn thắng",
     btts: "Hai đội cùng ghi bàn",
     corners_total: "Tổng phạt góc",
     cards_total: "Tổng thẻ",
-    asian_handicap: "Kèo châu Á (Handicap)"
+    asian_handicap: "Kèo châu Á 90p (Handicap)"
   };
   return labels[marketKey] || fallback || marketKey;
 }
 
 function modalMarketHelpText(marketKey) {
   if (marketKey === "correct_score") {
-    return "He thong suy ra fair odds tung ty so tu rate 1X2 va Tai/Xiu hien tai bang mo hinh Poisson.";
+    return "Ty so chinh xac tinh trong 90 phut chinh thuc, khong tinh hiep phu hoac penalty.";
+  }
+  if (marketKey === "penalty_score") {
+    return "Ty so penalty la ty so loat luan luu rieng. Keo chi thang neu tran vao penalty va dung ty so pen.";
+  }
+  if (marketKey === "asian_handicap") {
+    return "Handicap tinh theo ty so 90 phut chinh thuc, khong tinh hiep phu hoac penalty. Neu ty so sau handicap bang nhau, cuoc duoc hoan tien.";
   }
   const notes = {
     match_result: "Kèo 1X2 tính kết quả sau 90 phút chính thức. Hòa chỉ tính trong 90 phút, không tính hiệp phụ hoặc penalty.",
@@ -2824,14 +2838,14 @@ function ensureBetModalDraft(match, marketKey, markets) {
   const existingMarket = existing ? markets.find((market) => Number(market.id) === Number(existing.market_id)) : null;
   const fallbackMarket = existingMarket || markets[0] || null;
   if (!state.betModalDraft[marketKey]) {
-    const score = marketKey === "correct_score" ? scoreFromExistingBet(existing) : { homeScore: 1, awayScore: 0 };
+    const score = isExactScoreMarket(marketKey) ? scoreFromExistingBet(existing) : { homeScore: 1, awayScore: 0 };
     state.betModalDraft[marketKey] = {
       enabled: Boolean(existing),
       stake: number(existing?.stake || 100),
       marketId: fallbackMarket?.id || null,
       homeScore: score.homeScore,
       awayScore: score.awayScore,
-      scorePicks: marketKey === "correct_score"
+      scorePicks: isExactScoreMarket(marketKey)
         ? [{ homeScore: score.homeScore, awayScore: score.awayScore, stake: number(existing?.stake || 100), betId: existing?.id || null }]
         : undefined
     };
@@ -2840,7 +2854,7 @@ function ensureBetModalDraft(match, marketKey, markets) {
   if (!markets.some((market) => Number(market.id) === Number(draft.marketId))) {
     draft.marketId = fallbackMarket?.id || null;
   }
-  if (marketKey === "correct_score") {
+  if (isExactScoreMarket(marketKey)) {
     correctScoreDraftPicks(draft);
   }
   return draft;
@@ -2892,6 +2906,7 @@ function selectedDraftMarket(markets, draft) {
 
 function modalMarketMultiplier(marketKey, market, draft = {}) {
   if (!market) return 0;
+  if (marketKey === "penalty_score") return number(market.odds_multiplier);
   if (marketKey !== "correct_score") return number(market.odds_multiplier);
   const homeScore = Math.max(0, number(draft.homeScore ?? 0));
   const awayScore = Math.max(0, number(draft.awayScore ?? 0));
@@ -2911,6 +2926,7 @@ function correctScoreOddsHint(market, draft = {}) {
   const score = `${homeScore}-${awayScore}`;
   const multiplier = correctScoreFairOdds(market, homeScore, awayScore);
   const extra = marketExtra(market);
+  if (market?.market_key === "penalty_score") return `Ty le pen ${score}: x${fmtOne.format(number(market.odds_multiplier || 0))}`;
   if (!extra.score_odds?.[score]) return `Ty le ${score}: chua co odds mo hinh`;
   return `Ty le ${score}: x${fmtOne.format(multiplier)} (tu odds nha cai)`;
 }
@@ -2942,13 +2958,13 @@ function syncBetModalDraftFromDom() {
     draft.enabled = Boolean(toggle?.checked);
     if (choice) draft.marketId = Number(choice.value);
     if (stake) draft.stake = parseStakeInput(stake.value);
-    if (marketKey === "correct_score") {
+    if (isExactScoreMarket(marketKey)) {
       const rows = [...card.querySelectorAll("[data-correct-score-row]")];
       draft.scorePicks = rows.map((row) => {
         const index = Number(row.dataset.correctScoreRow);
         return {
-          homeScore: Number(row.querySelector(`#modal-score-home-${index}`)?.value || 0),
-          awayScore: Number(row.querySelector(`#modal-score-away-${index}`)?.value || 0),
+          homeScore: Number(row.querySelector("[data-score-home]")?.value || 0),
+          awayScore: Number(row.querySelector("[data-score-away]")?.value || 0),
           stake: parseStakeInput(row.querySelector("[data-correct-score-stake]")?.value),
           betId: row.dataset.existingBetId ? Number(row.dataset.existingBetId) : null
         };
@@ -2982,15 +2998,15 @@ function updateModalDerivedValues() {
   for (const group of modalMarketGroups(allOpenMarkets, "all")) {
     const draft = state.betModalDraft?.[group.marketKey] || {};
     const selectedMarket = selectedDraftMarket(group.markets, draft);
-    if (group.marketKey === "correct_score") {
+    if (isExactScoreMarket(group.marketKey)) {
       const picks = correctScoreDraftPicks(draft);
       picks.forEach((pick, index) => {
         const multiplier = modalMarketMultiplier(group.marketKey, selectedMarket, pick);
-        const payoutNode = document.querySelector(`[data-correct-score-payout="${index}"]`);
+        const payoutNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] [data-correct-score-payout="${index}"]`);
         if (payoutNode) payoutNode.textContent = money(number(pick.stake) * multiplier);
-        const hintNode = document.querySelector(`[data-correct-score-hint="${index}"]`);
+        const hintNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] [data-correct-score-hint="${index}"]`);
         if (hintNode) hintNode.textContent = correctScoreOddsHint(selectedMarket, pick);
-        const stakeInput = document.getElementById(`modal-score-stake-${index}`);
+        const stakeInput = document.querySelector(`[data-bet-market-card="${group.marketKey}"] [data-correct-score-stake="${index}"]`);
         if (stakeInput) updateStakeShareForInput(stakeInput);
       });
       const pillNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-market-card-head .pill`);
@@ -3007,7 +3023,7 @@ function updateModalDerivedValues() {
     }
     const pillNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-market-card-head .pill`);
     if (pillNode) {
-      pillNode.textContent = group.marketKey === "correct_score" && !multiplier
+      pillNode.textContent = isExactScoreMarket(group.marketKey) && !multiplier
         ? "No odds"
         : `x${fmtOne.format(multiplier || number(selectedMarket?.odds_multiplier || 1))}`;
     }
@@ -3032,7 +3048,7 @@ function collectModalBetPayloads(match, options = {}) {
     const draft = state.betModalDraft?.[group.marketKey];
     if (!draft?.enabled) continue;
     const market = selectedDraftMarket(group.markets, draft);
-    if (group.marketKey === "correct_score") {
+    if (isExactScoreMarket(group.marketKey)) {
       const seenScores = new Set();
       for (const pick of correctScoreDraftPicks(draft)) {
         const stake = number(pick.stake);
@@ -3042,7 +3058,7 @@ function collectModalBetPayloads(match, options = {}) {
         }
         if (!modalMarketMultiplier(group.marketKey, market, pick)) {
           if (options.quiet) continue;
-          throw new Error("Ty so da chon chua co odds nha cai.");
+          throw new Error(group.marketKey === "penalty_score" ? "Ty so penalty chua co odds." : "Ty so da chon chua co odds nha cai.");
         }
         const homeScore = Math.max(0, number(pick.homeScore));
         const awayScore = Math.max(0, number(pick.awayScore));
@@ -3094,6 +3110,7 @@ function collectModalBetPayloads(match, options = {}) {
 function isBasicMarket(key, market = null) {
   if (key === "match_winner") return market?.source === "odds-api";
   if (key === "qualification_method") return market?.source === "odds-api";
+  if (key === "penalty_score") return true;
   if (key === "total_goals") return true;
   if (key === "draw_no_bet") return false;
   if (key === "asian_handicap") return market?.source === "odds-api";
@@ -3105,6 +3122,7 @@ function isBettableMarket(market) {
   if (!market || market.is_open !== true) return false;
   if (market.market_key === "match_winner") return market.source === "odds-api";
   if (market.market_key === "qualification_method") return market.source === "odds-api";
+  if (market.market_key === "penalty_score") return true;
   if (market.market_key === "draw_no_bet") return false;
   if (market.market_key === "asian_handicap") return market.source === "odds-api";
   if (market.market_key === "correct_score") return correctScoreMarketHasOdds(market);
@@ -3559,30 +3577,30 @@ function renderLeaderboard() {
     </div>
   `;
 }
-function renderCorrectScorePicks(match, market, draft) {
+function renderCorrectScorePicks(match, market, draft, marketKey = "correct_score") {
   const rows = correctScoreDraftPicks(draft);
   return `
     <div class="correct-score-picks">
-      ${rows.map((pick, index) => renderCorrectScorePickRow(match, market, pick, index, rows.length)).join("")}
-      <button class="ghost-button compact-button add-score-pick-button" type="button" data-add-correct-score>+ Dự đoán thêm kèo tỷ số</button>
+      ${rows.map((pick, index) => renderCorrectScorePickRow(match, market, pick, index, rows.length, marketKey)).join("")}
+      ${marketKey === "correct_score" ? `<button class="ghost-button compact-button add-score-pick-button" type="button" data-add-correct-score>+ Du doan them keo ty so</button>` : ""}
     </div>
   `;
 }
 
-function renderCorrectScorePickRow(match, market, pick, index, rowCount) {
-  const homeId = `modal-score-home-${index}`;
-  const awayId = `modal-score-away-${index}`;
-  const stakeId = `modal-score-stake-${index}`;
+function renderCorrectScorePickRow(match, market, pick, index, rowCount, marketKey = "correct_score") {
+  const homeId = `modal-score-${marketKey}-home-${index}`;
+  const awayId = `modal-score-${marketKey}-away-${index}`;
+  const stakeId = `modal-score-${marketKey}-stake-${index}`;
   const rowDraft = { homeScore: pick.homeScore, awayScore: pick.awayScore };
-  const payout = number(pick.stake) * modalMarketMultiplier("correct_score", market, rowDraft);
+  const payout = number(pick.stake) * modalMarketMultiplier(marketKey, market, rowDraft);
   const existingBet = pick.betId ? state.bets.find((bet) => Number(bet.id) === Number(pick.betId)) : null;
   const canCancel = existingBet && canCancelBet(existingBet);
   return `
     <div class="correct-score-pick-row" data-correct-score-row="${index}" data-existing-bet-id="${pick.betId || ""}">
       <div class="score-picker compact">
-        ${scoreStepper(homeId, match.home_team?.name || "Đội nhà", number(pick.homeScore ?? 1))}
+        ${scoreStepper(homeId, match.home_team?.name || "Doi nha", number(pick.homeScore ?? 1), "data-score-home")}
         <span class="vs-text">-</span>
-        ${scoreStepper(awayId, match.away_team?.name || "Đội khách", number(pick.awayScore ?? 0))}
+        ${scoreStepper(awayId, match.away_team?.name || "Doi khach", number(pick.awayScore ?? 0), "data-score-away")}
       </div>
       <div class="correct-score-row-meta">
         <small class="score-odds-hint" data-correct-score-hint="${index}">${escapeHtml(correctScoreOddsHint(market, rowDraft))}</small>
@@ -3946,7 +3964,7 @@ function renderUpcomingBetRow(bet) {
           ? `<div class="upcoming-bet-actions">
               <form class="update-bet-form" data-update-bet="${bet.id}">
                 ${
-                  bet.market_key === "correct_score"
+                  isExactScoreMarket(bet.market_key)
                     ? `<label>Home<input name="home_score" type="number" min="0" step="1" value="${homeScore}"></label>
                        <label>Away<input name="away_score" type="number" min="0" step="1" value="${awayScore}"></label>`
                     : `<label>Selection<input value="${escapeHtml(betDisplaySelectionLabel(bet))}" disabled></label>`
@@ -3980,6 +3998,7 @@ function marketForBet(bet, match = matchForBet(bet)) {
 function betDisplaySelectionLabel(bet) {
   if (!bet) return "-";
   if (bet.market_key === "correct_score") return scoreLabelFromBet(bet);
+  if (bet.market_key === "penalty_score") return `Pen ${scoreLabelFromBet(bet)}`;
   const match = matchForBet(bet);
   const pseudoMarket = {
     match_id: bet.match_id,
@@ -4044,7 +4063,12 @@ function matchScoreText(match) {
   const penalty = match.home_penalties !== null && match.home_penalties !== undefined && match.away_penalties !== null && match.away_penalties !== undefined
     ? ` · pens ${match.home_penalties}-${match.away_penalties}`
     : "";
-  return `${home} ${match.home_score}-${match.away_score} ${away}${penalty} · ${match.status || "FT"}`;
+  const finalHome = match.home_final_score ?? match.home_score;
+  const finalAway = match.away_final_score ?? match.away_score;
+  const finalText = finalHome !== match.home_score || finalAway !== match.away_score
+    ? ` · AET ${finalHome}-${finalAway}`
+    : "";
+  return `${home} ${match.home_score}-${match.away_score} ${away}${finalText}${penalty} · ${match.status || "FT"}`;
 }
 
 function matchResultText(match) {
@@ -4056,8 +4080,10 @@ function matchResultText(match) {
 
 function matchWinnerText(match) {
   if (!match || match.home_score === null || match.home_score === undefined || match.away_score === null || match.away_score === undefined) return "pending";
-  if (number(match.home_score) > number(match.away_score)) return `${match.home_team?.name || "Home"} advance`;
-  if (number(match.away_score) > number(match.home_score)) return `${match.away_team?.name || "Away"} advance`;
+  const finalHome = number(match.home_final_score ?? match.home_score);
+  const finalAway = number(match.away_final_score ?? match.away_score);
+  if (finalHome > finalAway) return `${match.home_team?.name || "Home"} advance`;
+  if (finalAway > finalHome) return `${match.away_team?.name || "Away"} advance`;
   if (!["PEN", "FT_PEN"].includes(String(match.status || ""))) return "Pending penalties";
   if (match.home_penalties === null || match.home_penalties === undefined || match.away_penalties === null || match.away_penalties === undefined) return "Pending penalties";
   if (number(match.home_penalties) > number(match.away_penalties)) return `${match.home_team?.name || "Home"} advance on penalties`;
@@ -4067,9 +4093,11 @@ function matchWinnerText(match) {
 
 function qualificationMethodText(match) {
   if (!match || match.home_score === null || match.home_score === undefined || match.away_score === null || match.away_score === undefined) return "pending";
+  const finalHome = number(match.home_final_score ?? match.home_score);
+  const finalAway = number(match.away_final_score ?? match.away_score);
   if (String(match.status || "") === "AET") {
-    if (number(match.home_score) > number(match.away_score)) return `${match.home_team?.name || "Home"} win in extra time`;
-    if (number(match.away_score) > number(match.home_score)) return `${match.away_team?.name || "Away"} win in extra time`;
+    if (finalHome > finalAway) return `${match.home_team?.name || "Home"} win in extra time`;
+    if (finalAway > finalHome) return `${match.away_team?.name || "Away"} win in extra time`;
   }
   if (["PEN", "FT_PEN"].includes(String(match.status || ""))) {
     if (match.home_penalties === null || match.home_penalties === undefined || match.away_penalties === null || match.away_penalties === undefined) return "Pending penalties";
@@ -4099,6 +4127,7 @@ function betActualText(bet) {
   const line = market?.line === null || market?.line === undefined ? null : number(market.line);
   if (bet.market_key === "match_winner") return `${matchScoreText(match)} · ${matchWinnerText(match)}`;
   if (bet.market_key === "qualification_method") return `${matchScoreText(match)} · ${qualificationMethodText(match)}`;
+  if (bet.market_key === "penalty_score") return `${matchScoreText(match)} · penalty score ${match.home_penalties ?? "?"}-${match.away_penalties ?? "?"}`;
   if (bet.market_key === "match_result") return `${matchScoreText(match)} · ${matchResultText(match)}`;
   if (bet.market_key === "draw_no_bet") return `${matchScoreText(match)} · ${matchResultText(match)}${number(match.home_score) === number(match.away_score) ? " · stake refunded" : ""}`;
   if (bet.market_key === "total_goals") return `${matchScoreText(match)} · total goals ${fmtOne.format(totalGoals)}${line !== null ? ` vs line ${fmtOne.format(line)}` : ""}`;
@@ -4322,7 +4351,8 @@ function renderAdmin() {
           <h2>Kết quả & settle</h2>
           <label>Trận<select id="result-match">${state.matches.map((match) => `<option value="${match.id}">${escapeHtml(match.home_team.code)} vs ${escapeHtml(match.away_team.code)}</option>`).join("")}</select></label>
           <label>Status<select id="result-status"><option>FT</option><option>AET</option><option>PEN</option><option>FT_PEN</option><option>PST</option><option>CANC</option><option>SCHEDULED</option></select></label>
-          <label>Tỷ số<input id="result-score" value="2-1"></label>
+          <label>Ty so 90p<input id="result-score" value="2-1"></label>
+          <label>Ty so sau hiep phu<input id="result-final-score" placeholder="Bo trong neu giong 90p"></label>
           <label>Penalty<input id="result-penalties" placeholder="5-4, chỉ dùng khi PEN/FT_PEN"></label>
           <button class="primary-button">Lưu & settle</button>
         </form>
@@ -4743,7 +4773,7 @@ function oddsTrackingMatches() {
     })
     .map((match) => {
       const trackedMarkets = (match.match_markets || [])
-        .filter((market) => market.is_open && ["correct_score", "match_winner", "qualification_method", "match_result", "total_goals", "asian_handicap"].includes(market.market_key))
+        .filter((market) => market.is_open && ["correct_score", "match_winner", "qualification_method", "penalty_score", "match_result", "total_goals", "asian_handicap"].includes(market.market_key))
         .map((market) => ({ ...market, extra: marketExtra(market), updatedAt: oddsMarketUpdatedAt(market) }));
       const providerMarkets = trackedMarkets.filter((market) => market.source === "odds-api");
       const latestUpdatedAt = providerMarkets
@@ -4783,7 +4813,7 @@ function renderOddsTrackingRow(row) {
     .filter((market) => market.market_key === "asian_handicap")
     .sort((left, right) => number(left.line) - number(right.line) || marketSelectionOrder(left.selection_key) - marketSelectionOrder(right.selection_key))
     .slice(0, 4);
-  const score = row.trackedMarkets.filter((market) => market.market_key === "correct_score").slice(0, 1);
+  const score = row.trackedMarkets.filter((market) => ["correct_score", "penalty_score"].includes(market.market_key)).slice(0, 2);
   const latestUpdatedAt = row.latestUpdatedAt || "";
   const coverageKind = row.providerSelections === 0 ? "internal" : row.providerSelections === row.totalSelections ? "complete" : "partial";
   const bookmakers = uniqueList(row.providerMarkets.map((market) => market.extra.bookmaker || market.extra.bookmaker_key || "").filter(Boolean)).slice(0, 3);
@@ -4812,6 +4842,7 @@ function shortSelectionLabel(market) {
   if (market.market_key === "qualification_method") {
     return { home_extra_time: "H ET", away_extra_time: "A ET", home_penalties: "H PEN", away_penalties: "A PEN" }[market.selection_key] || market.selection_key;
   }
+  if (market.market_key === "penalty_score") return "PEN";
   const line = market.line === null || market.line === undefined ? "" : ` ${fmtOne.format(number(market.line))}`;
   return `${String(market.selection_key || "").slice(0, 1).toUpperCase()}${line}`;
 }
@@ -5644,7 +5675,7 @@ function enhanceUpdateBetForms() {
   document.querySelectorAll(".update-bet-form").forEach((form) => {
     const bet = state.bets.find((item) => item.id === Number(form.dataset.updateBet));
     const match = matchForBet(bet || {});
-    if (!bet || !match || bet.market_key === "correct_score" || form.elements.market_id) return;
+    if (!bet || !match || isExactScoreMarket(bet.market_key) || form.elements.market_id) return;
     const markets = sortMarketsForDisplay((match.match_markets || [])
       .filter((market) => isBettableMarket(market) && market.market_key === bet.market_key));
     if (!markets.length) return;
@@ -5682,13 +5713,13 @@ async function updateBet(event) {
   }
 
   const stake = parseStakeInput(form.elements.stake.value);
-  const selectionJson = bet.market_key === "correct_score"
+  const selectionJson = isExactScoreMarket(bet.market_key)
     ? {
         home_score: Number(form.elements.home_score.value),
         away_score: Number(form.elements.away_score.value)
       }
     : { line: market.line };
-  const selectionKey = bet.market_key === "correct_score"
+  const selectionKey = isExactScoreMarket(bet.market_key)
     ? `${selectionJson.home_score}-${selectionJson.away_score}`
     : market.selection_key;
 
@@ -5955,6 +5986,10 @@ async function updateResultAndSettle(event) {
   const matchId = Number(document.getElementById("result-match").value);
   const status = document.getElementById("result-status").value;
   const [home, away] = document.getElementById("result-score").value.split("-").map((part) => Number(part.trim()));
+  const finalScoreValue = document.getElementById("result-final-score")?.value.trim() || "";
+  const [homeFinal, awayFinal] = finalScoreValue
+    ? finalScoreValue.split("-").map((part) => Number(part.trim()))
+    : [home, away];
   const penaltyValue = document.getElementById("result-penalties").value.trim();
   const [homePenalties, awayPenalties] = penaltyValue
     ? penaltyValue.split("-").map((part) => Number(part.trim()))
@@ -5965,6 +6000,8 @@ async function updateResultAndSettle(event) {
       status,
       home_score: home,
       away_score: away,
+      home_final_score: Number.isFinite(homeFinal) ? homeFinal : home,
+      away_final_score: Number.isFinite(awayFinal) ? awayFinal : away,
       home_penalties: Number.isFinite(homePenalties) ? homePenalties : null,
       away_penalties: Number.isFinite(awayPenalties) ? awayPenalties : null,
       updated_at: new Date().toISOString()
@@ -5986,6 +6023,8 @@ async function updateResultAndSettle(event) {
         status,
         home_score: home,
         away_score: away,
+        home_final_score: Number.isFinite(homeFinal) ? homeFinal : home,
+        away_final_score: Number.isFinite(awayFinal) ? awayFinal : away,
         home_penalties: Number.isFinite(homePenalties) ? homePenalties : null,
         away_penalties: Number.isFinite(awayPenalties) ? awayPenalties : null,
         provider: "admin",
@@ -6574,6 +6613,8 @@ function exportResultsCsv() {
       home_team: home.name || "",
       home_score: row.home_score,
       away_score: row.away_score,
+      home_final_score: row.home_final_score ?? row.home_score,
+      away_final_score: row.away_final_score ?? row.away_score,
       away_code: away.code || "",
       away_team: away.name || "",
       home_penalties: row.home_penalties ?? "",
@@ -6747,13 +6788,13 @@ function teamRatingLabel(team) {
   return team.rating_source ? `${team.rating_source} pending` : "Rating TBA";
 }
 
-function scoreStepper(id, label, value) {
+function scoreStepper(id, label, value, extraAttrs = "") {
   return `
     <div class="score-stepper">
       <span>${escapeHtml(label)}</span>
       <div class="stepper-control">
         <button type="button" data-dec="${id}">-</button>
-        <input id="${id}" class="score-stepper-input" type="number" min="0" step="1" inputmode="numeric" value="${value}" aria-label="${escapeHtml(label)}">
+        <input id="${id}" class="score-stepper-input" type="number" min="0" step="1" inputmode="numeric" value="${value}" aria-label="${escapeHtml(label)}" ${extraAttrs}>
         <button type="button" data-inc="${id}">+</button>
       </div>
     </div>

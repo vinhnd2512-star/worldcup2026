@@ -150,6 +150,8 @@ create table if not exists public.matches (
   status text not null default 'SCHEDULED',
   home_score integer,
   away_score integer,
+  home_final_score integer,
+  away_final_score integer,
   home_penalties integer,
   away_penalties integer,
   venue text,
@@ -160,6 +162,8 @@ create table if not exists public.matches (
 );
 
 alter table public.matches
+  add column if not exists home_final_score integer,
+  add column if not exists away_final_score integer,
   add column if not exists home_penalties integer,
   add column if not exists away_penalties integer;
 
@@ -171,6 +175,8 @@ create table if not exists public.match_results (
   status text not null,
   home_score integer,
   away_score integer,
+  home_final_score integer,
+  away_final_score integer,
   home_penalties integer,
   away_penalties integer,
   provider text not null default 'manual',
@@ -181,6 +187,8 @@ create table if not exists public.match_results (
 );
 
 alter table public.match_results
+  add column if not exists home_final_score integer,
+  add column if not exists away_final_score integer,
   add column if not exists home_penalties integer,
   add column if not exists away_penalties integer,
   add column if not exists provider text not null default 'manual',
@@ -523,6 +531,8 @@ insert into public.match_results (
   status,
   home_score,
   away_score,
+  home_final_score,
+  away_final_score,
   home_penalties,
   away_penalties,
   provider,
@@ -537,6 +547,8 @@ select
   m.status,
   m.home_score,
   m.away_score,
+  coalesce(m.home_final_score, m.home_score),
+  coalesce(m.away_final_score, m.away_score),
   m.home_penalties,
   m.away_penalties,
   'backfill',
@@ -551,6 +563,8 @@ on conflict (match_id) do update
 set status = excluded.status,
     home_score = excluded.home_score,
     away_score = excluded.away_score,
+    home_final_score = excluded.home_final_score,
+    away_final_score = excluded.away_final_score,
     home_penalties = excluded.home_penalties,
     away_penalties = excluded.away_penalties,
     synced_at = excluded.synced_at;
@@ -1034,21 +1048,24 @@ begin
      and not (v_market.extra_json ? 'score_odds') then
     raise exception 'correct score requires model odds';
   end if;
-  if v_market.market_key = 'correct_score' then
+  if v_market.market_key in ('correct_score', 'penalty_score') then
     if not (p_selection_json ? 'home_score') or not (p_selection_json ? 'away_score') then
-      raise exception 'correct score requires home_score and away_score';
+      raise exception 'exact score requires home_score and away_score';
     end if;
     if (p_selection_json->>'home_score')::integer < 0 or (p_selection_json->>'away_score')::integer < 0 then
-      raise exception 'correct score values must be non-negative';
+      raise exception 'exact score values must be non-negative';
     end if;
     v_selection_key := (p_selection_json->>'home_score') || '-' || (p_selection_json->>'away_score');
-    v_selection_label := (p_selection_json->>'home_score') || ' - ' || (p_selection_json->>'away_score');
+    v_selection_label := case
+      when v_market.market_key = 'penalty_score' then 'Pen ' || (p_selection_json->>'home_score') || ' - ' || (p_selection_json->>'away_score')
+      else (p_selection_json->>'home_score') || ' - ' || (p_selection_json->>'away_score')
+    end;
     v_selection_json := jsonb_build_object(
       'home_score', (p_selection_json->>'home_score')::integer,
       'away_score', (p_selection_json->>'away_score')::integer,
       'line', v_market.line
     );
-    if not ((v_market.extra_json->'score_odds') ? v_selection_key) then
+    if v_market.market_key = 'correct_score' and not ((v_market.extra_json->'score_odds') ? v_selection_key) then
       raise exception 'correct score odds are not available for selected score';
     end if;
   elsif p_selection_key <> v_market.selection_key then
@@ -1059,7 +1076,7 @@ begin
     v_selection_json := coalesce(p_selection_json, '{}') || jsonb_build_object('line', v_market.line);
   end if;
   v_locked_multiplier := coalesce((v_market.extra_json #>> array['score_odds', v_selection_key, 'fair_odds'])::numeric, v_market.odds_multiplier);
-  if v_market.market_key = 'correct_score' then
+  if v_market.market_key in ('correct_score', 'penalty_score') then
     v_selection_json := v_selection_json || jsonb_build_object('fair_odds', v_locked_multiplier);
   end if;
   if now() >= coalesce(v_market.closes_at, v_match.starts_at) then
@@ -1288,21 +1305,24 @@ begin
     raise exception 'betting is locked for this match';
   end if;
 
-  if v_market.market_key = 'correct_score' then
+  if v_market.market_key in ('correct_score', 'penalty_score') then
     if not (p_selection_json ? 'home_score') or not (p_selection_json ? 'away_score') then
-      raise exception 'correct score requires home_score and away_score';
+      raise exception 'exact score requires home_score and away_score';
     end if;
     if (p_selection_json->>'home_score')::integer < 0 or (p_selection_json->>'away_score')::integer < 0 then
-      raise exception 'correct score values must be non-negative';
+      raise exception 'exact score values must be non-negative';
     end if;
     v_selection_key := (p_selection_json->>'home_score') || '-' || (p_selection_json->>'away_score');
-    v_selection_label := (p_selection_json->>'home_score') || ' - ' || (p_selection_json->>'away_score');
+    v_selection_label := case
+      when v_market.market_key = 'penalty_score' then 'Pen ' || (p_selection_json->>'home_score') || ' - ' || (p_selection_json->>'away_score')
+      else (p_selection_json->>'home_score') || ' - ' || (p_selection_json->>'away_score')
+    end;
     v_selection_json := jsonb_build_object(
       'home_score', (p_selection_json->>'home_score')::integer,
       'away_score', (p_selection_json->>'away_score')::integer,
       'line', v_market.line
     );
-    if not ((v_market.extra_json->'score_odds') ? v_selection_key) then
+    if v_market.market_key = 'correct_score' and not ((v_market.extra_json->'score_odds') ? v_selection_key) then
       raise exception 'correct score odds are not available for selected score';
     end if;
   elsif p_selection_key <> v_market.selection_key then
@@ -1313,7 +1333,7 @@ begin
     v_selection_json := coalesce(p_selection_json, '{}') || jsonb_build_object('line', v_market.line);
   end if;
   v_locked_multiplier := coalesce((v_market.extra_json #>> array['score_odds', v_selection_key, 'fair_odds'])::numeric, v_market.odds_multiplier);
-  if v_market.market_key = 'correct_score' then
+  if v_market.market_key in ('correct_score', 'penalty_score') then
     v_selection_json := v_selection_json || jsonb_build_object('fair_odds', v_locked_multiplier);
   end if;
 
@@ -2373,6 +2393,18 @@ begin
       closes_at = excluded.closes_at
   where public.match_markets.source = 'internal';
 
+  if public.is_knockout_match(v_match) then
+    insert into public.match_markets (match_id, market_key, label, selection_key, selection_label, line, odds_multiplier, source, closes_at)
+    values
+      (v_match.id, 'penalty_score', 'Ty so penalty', 'exact', 'Ty so luan luu chinh xac', null, 12.00, 'internal', v_match.starts_at)
+    on conflict (match_id, market_key, selection_key, line_key) do update
+    set label = excluded.label,
+        selection_label = excluded.selection_label,
+        odds_multiplier = excluded.odds_multiplier,
+        closes_at = excluded.closes_at
+    where public.match_markets.source = 'internal';
+  end if;
+
   update public.match_markets
   set is_open = false
   where match_id = v_match.id
@@ -3403,17 +3435,21 @@ set search_path = public
 as $$
 declare
   v_match public.matches%rowtype;
+  v_home_final integer;
+  v_away_final integer;
 begin
   select * into v_match from public.matches where id = p_match_id;
   if not found or v_match.status not in ('FT', 'AET', 'PEN', 'FT_PEN') then
     return null;
   end if;
-  if v_match.home_score is null or v_match.away_score is null then
+  v_home_final := coalesce(v_match.home_final_score, v_match.home_score);
+  v_away_final := coalesce(v_match.away_final_score, v_match.away_score);
+  if v_home_final is null or v_away_final is null then
     return null;
   end if;
-  if v_match.home_score > v_match.away_score then
+  if v_home_final > v_away_final then
     return v_match.home_team_id;
-  elsif v_match.away_score > v_match.home_score then
+  elsif v_away_final > v_home_final then
     return v_match.away_team_id;
   elsif v_match.status in ('PEN', 'FT_PEN')
     and v_match.home_penalties is not null
@@ -3612,6 +3648,14 @@ begin
     elsif v_bet.market_key = 'correct_score' then
       v_won := (coalesce((v_bet.selection_json->>'home_score')::integer, -1) = v_match.home_score)
         and (coalesce((v_bet.selection_json->>'away_score')::integer, -1) = v_match.away_score);
+    elsif v_bet.market_key = 'penalty_score' then
+      if v_match.status in ('PEN', 'FT_PEN')
+        and (v_match.home_penalties is null or v_match.away_penalties is null) then
+        continue;
+      end if;
+      v_won := v_match.status in ('PEN', 'FT_PEN')
+        and (coalesce((v_bet.selection_json->>'home_score')::integer, -1) = v_match.home_penalties)
+        and (coalesce((v_bet.selection_json->>'away_score')::integer, -1) = v_match.away_penalties);
     elsif v_bet.market_key = 'match_result' then
       v_won := (v_bet.selection_key = 'home' and v_match.home_score > v_match.away_score)
         or (v_bet.selection_key = 'draw' and v_match.home_score = v_match.away_score)
@@ -3707,6 +3751,7 @@ begin
       v_delta := v_payout - v_bet.stake;
       v_bonus := case
         when v_bet.market_key = 'correct_score' then 50
+        when v_bet.market_key = 'penalty_score' then 35
         when v_bet.market_key = 'match_result' then 10
         when v_bet.market_key = 'match_winner' then 10
         when v_bet.market_key = 'qualification_method' then 15
@@ -3736,6 +3781,7 @@ begin
         case
           when v_bet.market_key = 'match_winner' then 'Selection matched the team that advanced; leaderboard bonus applied.'
           when v_bet.market_key = 'qualification_method' then 'Selection matched the knockout qualification method; leaderboard bonus applied.'
+          when v_bet.market_key = 'penalty_score' then 'Selection matched the penalty shootout score; leaderboard bonus applied.'
           else 'Selection matched the final 90-minute result; leaderboard bonus applied.'
         end
       );
@@ -3753,6 +3799,7 @@ begin
         case
           when v_bet.market_key = 'match_winner' then 'Selection did not match the team that advanced.'
           when v_bet.market_key = 'qualification_method' then 'Selection did not match the knockout qualification method.'
+          when v_bet.market_key = 'penalty_score' then 'Selection did not match the penalty shootout score.'
           else 'Selection did not match the final 90-minute result.'
         end
       );
