@@ -6,6 +6,7 @@ const state = {
   profile: null,
   matches: [],
   bracketMatches: [],
+  bracketSlots: [],
   teams: [],
   teamPlayers: [],
   teamLineups: [],
@@ -485,6 +486,11 @@ async function loadData() {
       .select("*,home_team:teams!bracket_matches_home_team_id_fkey(*),away_team:teams!bracket_matches_away_team_id_fkey(*),match:matches!bracket_matches_match_id_fkey(*,home_team:teams!matches_home_team_id_fkey(*),away_team:teams!matches_away_team_id_fkey(*))")
       .order("display_order", { ascending: true });
     state.bracketMatches = bracketResult.error ? [] : bracketResult.data || [];
+
+    const bracketSlotResult = await state.client
+      .from("bracket_slots")
+      .select("*");
+    state.bracketSlots = bracketSlotResult.error ? [] : bracketSlotResult.data || [];
 
     const outrightMarketKeys = ["tournament_winner", "golden_boot"];
     const outrightResults = await Promise.all(outrightMarketKeys.map((marketKey) => {
@@ -4078,16 +4084,35 @@ function matchResultText(match) {
   return "Draw";
 }
 
+function bracketWinnerTeamForMatch(match) {
+  if (!match) return null;
+  const source = state.bracketMatches.find((bracketMatch) => Number(bracketMatch.match_id) === Number(match.id));
+  if (!source) return null;
+  const slot = state.bracketSlots.find((bracketSlot) =>
+    Number(bracketSlot.source_match_no) === Number(source.match_no) && bracketSlot.source_type === "winner"
+  );
+  if (!slot) return null;
+  const target = state.bracketMatches.find((bracketMatch) => Number(bracketMatch.match_no) === Number(slot.match_no));
+  if (!target) return null;
+  const teamId = slot.slot === "home" ? target.home_team_id : target.away_team_id;
+  if (Number(teamId) === Number(match.home_team_id || match.home_team?.id)) return match.home_team || target.home_team || null;
+  if (Number(teamId) === Number(match.away_team_id || match.away_team?.id)) return match.away_team || target.away_team || null;
+  return null;
+}
+
 function matchWinnerText(match) {
   if (!match || match.home_score === null || match.home_score === undefined || match.away_score === null || match.away_score === undefined) return "pending";
   const finalHome = number(match.home_final_score ?? match.home_score);
   const finalAway = number(match.away_final_score ?? match.away_score);
   if (finalHome > finalAway) return `${match.home_team?.name || "Home"} advance`;
   if (finalAway > finalHome) return `${match.away_team?.name || "Away"} advance`;
+  if (match.home_penalties !== null && match.home_penalties !== undefined && match.away_penalties !== null && match.away_penalties !== undefined) {
+    if (number(match.home_penalties) > number(match.away_penalties)) return `${match.home_team?.name || "Home"} advance on penalties`;
+    if (number(match.away_penalties) > number(match.home_penalties)) return `${match.away_team?.name || "Away"} advance on penalties`;
+  }
+  const bracketWinner = bracketWinnerTeamForMatch(match);
+  if (bracketWinner) return `${bracketWinner.name || bracketWinner.code || "Winner"} advance`;
   if (!["PEN", "FT_PEN"].includes(String(match.status || ""))) return "Pending penalties";
-  if (match.home_penalties === null || match.home_penalties === undefined || match.away_penalties === null || match.away_penalties === undefined) return "Pending penalties";
-  if (number(match.home_penalties) > number(match.away_penalties)) return `${match.home_team?.name || "Home"} advance on penalties`;
-  if (number(match.away_penalties) > number(match.home_penalties)) return `${match.away_team?.name || "Away"} advance on penalties`;
   return "Pending penalties";
 }
 

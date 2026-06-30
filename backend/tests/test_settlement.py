@@ -49,6 +49,13 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(outcome.status, "won")
         self.assertEqual(outcome.reason, "Selection matched the team that advanced; leaderboard bonus applied.")
 
+    def test_match_winner_penalties_when_provider_status_is_ft(self) -> None:
+        outcome = settle_bet(
+            BetSelection("match_winner", "away", Decimal("100"), Decimal("2.00"), {}),
+            MatchResult(status="FT", home_score=1, away_score=1, home_penalties=3, away_penalties=4),
+        )
+        self.assertEqual(outcome.status, "won")
+
     def test_match_winner_tied_without_penalties_is_pending(self) -> None:
         outcome = settle_bet(
             BetSelection("match_winner", "home", Decimal("100"), Decimal("1.90"), {}),
@@ -81,6 +88,13 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(outcome.status, "won")
         self.assertEqual(outcome.reason, "Selection matched the knockout qualification method; leaderboard bonus applied.")
 
+    def test_qualification_method_penalties_when_provider_status_is_ft(self) -> None:
+        outcome = settle_bet(
+            BetSelection("qualification_method", "away_penalties", Decimal("100"), Decimal("5.00"), {}),
+            MatchResult(status="FT", home_score=1, away_score=1, home_penalties=3, away_penalties=4),
+        )
+        self.assertEqual(outcome.status, "won")
+
     def test_qualification_method_wrong_method_loses(self) -> None:
         outcome = settle_bet(
             BetSelection("qualification_method", "home_penalties", Decimal("100"), Decimal("5.50"), {}),
@@ -93,6 +107,13 @@ class SettlementTests(unittest.TestCase):
         outcome = settle_bet(
             BetSelection("penalty_score", "3-4", Decimal("100"), Decimal("12.00"), {"home_score": 3, "away_score": 4}),
             MatchResult(status="PEN", home_score=1, away_score=1, home_penalties=3, away_penalties=4),
+        )
+        self.assertEqual(outcome.status, "won")
+
+    def test_penalty_score_win_when_provider_status_is_ft(self) -> None:
+        outcome = settle_bet(
+            BetSelection("penalty_score", "3-4", Decimal("100"), Decimal("12.00"), {"home_score": 3, "away_score": 4}),
+            MatchResult(status="FT", home_score=1, away_score=1, home_penalties=3, away_penalties=4),
         )
         self.assertEqual(outcome.status, "won")
 

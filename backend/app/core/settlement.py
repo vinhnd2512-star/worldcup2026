@@ -113,11 +113,20 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
                 prediction_bonus=Decimal("0.00"),
                 reason="Knockout qualification method is not final until a team advances.",
             )
+        if _is_tied_after_final_score(result) and not _has_penalty_shootout(result) and result.status not in {"AET", "PEN", "FT_PEN"}:
+            return SettlementOutcome(
+                status="pending",
+                result="pending",
+                payout=Decimal("0.00"),
+                net_points=Decimal("0.00"),
+                prediction_bonus=Decimal("0.00"),
+                reason="Knockout qualification method is not final until a team advances.",
+            )
         won = (
             (bet.selection_key == "home_extra_time" and result.status == "AET" and winner == "home")
             or (bet.selection_key == "away_extra_time" and result.status == "AET" and winner == "away")
-            or (bet.selection_key == "home_penalties" and result.status in {"PEN", "FT_PEN"} and winner == "home")
-            or (bet.selection_key == "away_penalties" and result.status in {"PEN", "FT_PEN"} and winner == "away")
+            or (bet.selection_key == "home_penalties" and _has_penalty_shootout(result) and winner == "home")
+            or (bet.selection_key == "away_penalties" and _has_penalty_shootout(result) and winner == "away")
         )
         if won:
             payout = money(bet.stake * bet.multiplier)
@@ -161,7 +170,7 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
             )
 
     if bet.market_key == "penalty_score":
-        if result.status in {"PEN", "FT_PEN"} and (result.home_penalties is None or result.away_penalties is None):
+        if _has_penalty_shootout(result) and (result.home_penalties is None or result.away_penalties is None):
             return SettlementOutcome(
                 status="pending",
                 result="pending",
@@ -171,7 +180,7 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
                 reason="Penalty shootout score is not final.",
             )
         won = (
-            result.status in {"PEN", "FT_PEN"}
+            _has_penalty_shootout(result)
             and int(bet.selection.get("home_score", -1)) == result.home_penalties
             and int(bet.selection.get("away_score", -1)) == result.away_penalties
         )
@@ -331,8 +340,6 @@ def _match_winner_selection_key(result: MatchResult) -> str | None:
         return "home"
     if away_final > home_final:
         return "away"
-    if result.status not in {"PEN", "FT_PEN"}:
-        return None
     if result.home_penalties is None or result.away_penalties is None:
         return None
     if result.home_penalties > result.away_penalties:
@@ -340,3 +347,15 @@ def _match_winner_selection_key(result: MatchResult) -> str | None:
     if result.away_penalties > result.home_penalties:
         return "away"
     return None
+
+
+def _is_tied_after_final_score(result: MatchResult) -> bool:
+    home_final = result.home_final_score if result.home_final_score is not None else result.home_score
+    away_final = result.away_final_score if result.away_final_score is not None else result.away_score
+    return home_final is not None and away_final is not None and home_final == away_final
+
+
+def _has_penalty_shootout(result: MatchResult) -> bool:
+    return result.status in {"PEN", "FT_PEN"} or (
+        _is_tied_after_final_score(result) and result.home_penalties is not None and result.away_penalties is not None
+    )

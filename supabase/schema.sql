@@ -3437,6 +3437,7 @@ declare
   v_match public.matches%rowtype;
   v_home_final integer;
   v_away_final integer;
+  v_bracket_winner bigint;
 begin
   select * into v_match from public.matches where id = p_match_id;
   if not found or v_match.status not in ('FT', 'AET', 'PEN', 'FT_PEN') then
@@ -3451,8 +3452,7 @@ begin
     return v_match.home_team_id;
   elsif v_away_final > v_home_final then
     return v_match.away_team_id;
-  elsif v_match.status in ('PEN', 'FT_PEN')
-    and v_match.home_penalties is not null
+  elsif v_match.home_penalties is not null
     and v_match.away_penalties is not null then
     if v_match.home_penalties > v_match.away_penalties then
       return v_match.home_team_id;
@@ -3460,6 +3460,32 @@ begin
       return v_match.away_team_id;
     end if;
   end if;
+
+  select
+    case
+      when bs.slot = 'home' then bm.home_team_id
+      when bs.slot = 'away' then bm.away_team_id
+      else null
+    end
+  into v_bracket_winner
+  from public.bracket_matches source_bm
+  join public.bracket_slots bs
+    on bs.source_match_no = source_bm.match_no
+   and bs.source_type = 'winner'
+  join public.bracket_matches bm
+    on bm.match_no = bs.match_no
+  where source_bm.match_id = p_match_id
+    and (
+      (bs.slot = 'home' and bm.home_team_id in (v_match.home_team_id, v_match.away_team_id))
+      or (bs.slot = 'away' and bm.away_team_id in (v_match.home_team_id, v_match.away_team_id))
+    )
+  order by bm.match_no
+  limit 1;
+
+  if v_bracket_winner is not null then
+    return v_bracket_winner;
+  end if;
+
   return null;
 end;
 $$;
@@ -3581,6 +3607,7 @@ declare
   v_round_of_32 integer := 0;
   v_ah_adjusted numeric;
   v_winner_team_id bigint;
+  v_has_penalty_shootout boolean := false;
 begin
   if not (public.is_admin() or auth.role() = 'service_role') then
     raise exception 'admin role required';
@@ -3599,6 +3626,14 @@ begin
   v_total_corners := coalesce(v_stats.corners_home, 0) + coalesce(v_stats.corners_away, 0);
   v_total_cards := coalesce(v_stats.yellow_cards_home, 0) + coalesce(v_stats.yellow_cards_away, 0)
     + coalesce(v_stats.red_cards_home, 0) + coalesce(v_stats.red_cards_away, 0);
+  v_has_penalty_shootout := v_match.status in ('PEN', 'FT_PEN')
+    or (
+      v_match.home_penalties is not null
+      and v_match.away_penalties is not null
+      and coalesce(v_match.home_final_score, v_match.home_score) is not null
+      and coalesce(v_match.away_final_score, v_match.away_score) is not null
+      and coalesce(v_match.home_final_score, v_match.home_score) = coalesce(v_match.away_final_score, v_match.away_score)
+    );
 
   for v_bet in
     select b.*, mm.line
@@ -3641,19 +3676,30 @@ begin
       if v_winner_team_id is null then
         continue;
       end if;
+      if coalesce(v_match.home_final_score, v_match.home_score) = coalesce(v_match.away_final_score, v_match.away_score)
+        and v_match.status not in ('AET', 'PEN', 'FT_PEN')
+        and not v_has_penalty_shootout then
+        continue;
+      end if;
       v_won := (v_bet.selection_key = 'home_extra_time' and v_match.status = 'AET' and v_winner_team_id = v_match.home_team_id)
         or (v_bet.selection_key = 'away_extra_time' and v_match.status = 'AET' and v_winner_team_id = v_match.away_team_id)
-        or (v_bet.selection_key = 'home_penalties' and v_match.status in ('PEN', 'FT_PEN') and v_winner_team_id = v_match.home_team_id)
-        or (v_bet.selection_key = 'away_penalties' and v_match.status in ('PEN', 'FT_PEN') and v_winner_team_id = v_match.away_team_id);
+        or (v_bet.selection_key = 'home_penalties' and v_has_penalty_shootout and v_winner_team_id = v_match.home_team_id)
+        or (v_bet.selection_key = 'away_penalties' and v_has_penalty_shootout and v_winner_team_id = v_match.away_team_id);
     elsif v_bet.market_key = 'correct_score' then
       v_won := (coalesce((v_bet.selection_json->>'home_score')::integer, -1) = v_match.home_score)
         and (coalesce((v_bet.selection_json->>'away_score')::integer, -1) = v_match.away_score);
     elsif v_bet.market_key = 'penalty_score' then
-      if v_match.status in ('PEN', 'FT_PEN')
+      if v_has_penalty_shootout
         and (v_match.home_penalties is null or v_match.away_penalties is null) then
         continue;
       end if;
-      v_won := v_match.status in ('PEN', 'FT_PEN')
+      if not v_has_penalty_shootout
+        and v_match.status = 'FT'
+        and coalesce(v_match.home_final_score, v_match.home_score) = coalesce(v_match.away_final_score, v_match.away_score)
+        and public.match_winner_team_id(p_match_id) is not null then
+        continue;
+      end if;
+      v_won := v_has_penalty_shootout
         and (coalesce((v_bet.selection_json->>'home_score')::integer, -1) = v_match.home_penalties)
         and (coalesce((v_bet.selection_json->>'away_score')::integer, -1) = v_match.away_penalties);
     elsif v_bet.market_key = 'match_result' then
