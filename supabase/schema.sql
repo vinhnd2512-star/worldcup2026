@@ -3606,6 +3606,13 @@ declare
   v_advanced integer := 0;
   v_round_of_32 integer := 0;
   v_ah_adjusted numeric;
+  v_ah_margin numeric;
+  v_ah_selected_line numeric;
+  v_ah_half_stake numeric(18, 2);
+  v_ah_component numeric;
+  v_ah_status text;
+  v_ah_result text;
+  v_ah_reason text;
   v_winner_team_id bigint;
   v_has_penalty_shootout boolean := false;
 begin
@@ -3765,6 +3772,78 @@ begin
         or (v_bet.selection_key = 'under' and v_total_cards < v_bet.line);
     elsif v_bet.market_key = 'asian_handicap' then
       -- line is handicap applied to home team (negative = home gives goals, positive = home receives)
+      v_ah_selected_line := case
+        when v_bet.selection_key = 'away' then -coalesce(v_bet.line, 0)
+        else coalesce(v_bet.line, 0)
+      end;
+      v_ah_margin := case
+        when v_bet.selection_key = 'away' then coalesce(v_match.away_score, 0) - coalesce(v_match.home_score, 0)
+        else coalesce(v_match.home_score, 0) - coalesce(v_match.away_score, 0)
+      end;
+
+      if mod(abs((v_ah_selected_line * 100)::integer), 50) = 25 then
+        v_ah_half_stake := round(v_bet.stake / 2, 2);
+        v_payout := 0;
+
+        foreach v_ah_component in array array[v_ah_selected_line - 0.25, v_ah_selected_line + 0.25]
+        loop
+          if v_ah_margin + v_ah_component > 0 then
+            v_payout := v_payout + round(v_ah_half_stake * v_bet.locked_multiplier, 2);
+          elsif v_ah_margin + v_ah_component = 0 then
+            v_payout := v_payout + v_ah_half_stake;
+          end if;
+        end loop;
+
+        v_payout := round(v_payout, 2);
+        v_delta := v_payout - v_bet.stake;
+        v_bonus := case when v_delta > 0 then 8 else 0 end;
+        v_ah_status := case
+          when v_delta > 0 then 'won'
+          when v_delta = 0 then 'refunded'
+          else 'lost'
+        end;
+        v_ah_result := case
+          when v_payout = round(v_bet.stake * v_bet.locked_multiplier, 2) then 'win'
+          when v_delta > 0 then 'half_win'
+          when v_delta = 0 then 'push'
+          when v_payout > 0 then 'half_loss'
+          else 'loss'
+        end;
+        v_ah_reason := case
+          when v_ah_result = 'half_win' then 'Asian handicap quarter-line half win; half the stake won and half pushed.'
+          when v_ah_result = 'half_loss' then 'Asian handicap quarter-line half loss; half the stake was refunded.'
+          when v_ah_result = 'push' then 'Asian handicap pushed; stake refunded.'
+          when v_ah_result = 'win' then 'Selection matched the final 90-minute handicap result; leaderboard bonus applied.'
+          else 'Selection did not match the final 90-minute handicap result.'
+        end;
+
+        update public.bets
+        set status = v_ah_status,
+            points_delta = v_delta,
+            prediction_bonus = v_bonus,
+            settled_at = now()
+        where id = v_bet.id;
+
+        if v_payout > 0 then
+          update public.profiles set wallet_balance = wallet_balance + v_payout where id = v_bet.user_id;
+          insert into public.wallet_ledger (user_id, actor_id, amount, kind, reason, balance_after)
+          select
+            v_bet.user_id,
+            auth.uid(),
+            v_payout,
+            case when v_ah_status = 'won' then 'bet_payout' else 'bet_refund' end,
+            'Asian handicap settlement: ' || v_bet.selection_label,
+            wallet_balance
+          from public.profiles
+          where id = v_bet.user_id;
+        end if;
+
+        insert into public.settlements (bet_id, result, status, payout, reason)
+        values (v_bet.id, v_ah_result, v_ah_status, v_payout, v_ah_reason);
+        v_count := v_count + 1;
+        continue;
+      end if;
+
       v_ah_adjusted := coalesce(v_match.home_score, 0) + coalesce(v_bet.line, 0);
       if v_ah_adjusted = coalesce(v_match.away_score, 0) then
         -- Push: refund stake

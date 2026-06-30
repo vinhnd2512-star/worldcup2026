@@ -4210,10 +4210,12 @@ function betActualText(bet) {
 }
 
 function betOutcome(bet) {
+  const result = String(bet.settlement?.result || "");
+  if (result === "half_win") return { label: "HALF WIN", className: "success" };
+  if (result === "half_loss") return { label: "HALF LOSS", className: "error" };
   if (bet.status === "won") return { label: "WIN", className: "success" };
   if (bet.status === "lost") return { label: "LOSS", className: "error" };
   if (bet.status === "refunded") {
-    const result = String(bet.settlement?.result || "");
     if (result === "user_cancelled") return { label: "CANCELLED", className: "muted" };
     if (result === "admin_void") return { label: "VOID", className: "muted" };
     if (result === "push") return { label: "PUSH", className: "muted" };
@@ -4223,6 +4225,7 @@ function betOutcome(bet) {
 }
 
 function betReceivedAmount(bet) {
+  if (bet.settlement?.payout !== null && bet.settlement?.payout !== undefined) return number(bet.settlement.payout);
   if (bet.status === "won") return number(bet.potential_payout);
   if (bet.status === "refunded") return number(bet.stake);
   if (bet.status === "lost") return 0;

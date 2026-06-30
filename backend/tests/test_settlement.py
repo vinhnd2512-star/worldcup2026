@@ -175,6 +175,38 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(push.result, "push")
         self.assertEqual(push.payout, Decimal("100.00"))
 
+    def test_quarter_handicap_splits_half_results(self) -> None:
+        home_minus_quarter_draw = settle_bet(
+            BetSelection("asian_handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-0.25"}),
+            MatchResult(status="FT", home_score=1, away_score=1),
+        )
+        home_minus_half_draw = settle_bet(
+            BetSelection("asian_handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-0.5"}),
+            MatchResult(status="FT", home_score=1, away_score=1),
+        )
+        home_minus_three_quarter_win_by_one = settle_bet(
+            BetSelection("asian_handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-0.75"}),
+            MatchResult(status="FT", home_score=2, away_score=1),
+        )
+        home_minus_one_win_by_one = settle_bet(
+            BetSelection("asian_handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-1"}),
+            MatchResult(status="FT", home_score=2, away_score=1),
+        )
+
+        self.assertEqual(home_minus_quarter_draw.status, "lost")
+        self.assertEqual(home_minus_quarter_draw.result, "half_loss")
+        self.assertEqual(home_minus_quarter_draw.payout, Decimal("50.00"))
+        self.assertEqual(home_minus_quarter_draw.net_points, Decimal("-50.00"))
+        self.assertEqual(home_minus_half_draw.status, "lost")
+        self.assertEqual(home_minus_half_draw.payout, Decimal("0.00"))
+        self.assertEqual(home_minus_three_quarter_win_by_one.status, "won")
+        self.assertEqual(home_minus_three_quarter_win_by_one.result, "half_win")
+        self.assertEqual(home_minus_three_quarter_win_by_one.payout, Decimal("145.50"))
+        self.assertEqual(home_minus_three_quarter_win_by_one.net_points, Decimal("45.50"))
+        self.assertEqual(home_minus_one_win_by_one.status, "refunded")
+        self.assertEqual(home_minus_one_win_by_one.result, "push")
+        self.assertEqual(home_minus_one_win_by_one.payout, Decimal("100.00"))
+
     def test_handicap_uses_90_minute_score_not_extra_time(self) -> None:
         outcome = settle_bet(
             BetSelection("asian_handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-0.5"}),

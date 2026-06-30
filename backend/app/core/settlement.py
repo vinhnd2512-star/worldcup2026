@@ -185,6 +185,9 @@ def settle_bet(bet: BetSelection, result: MatchResult) -> SettlementOutcome:
             and int(bet.selection.get("away_score", -1)) == result.away_penalties
         )
     elif bet.market_key in {"handicap", "asian_handicap"}:
+        handicap_outcome = _settle_handicap(bet, result)
+        if handicap_outcome is not None:
+            return handicap_outcome
         handicap_result = _handicap_adjusted_result(bet, result)
         if handicap_result == 0:
             return SettlementOutcome(
@@ -329,6 +332,73 @@ def _handicap_adjusted_result(bet: BetSelection, result: MatchResult) -> int:
     if selected == opponent:
         return 0
     return -1
+
+
+def _settle_handicap(bet: BetSelection, result: MatchResult) -> SettlementOutcome | None:
+    line = Decimal(str(bet.selection.get("line", "0")))
+    if _is_quarter_handicap(line):
+        components = (line - Decimal("0.25"), line + Decimal("0.25"))
+    else:
+        return None
+
+    if bet.selection_key == "home":
+        margin = Decimal(result.home_score or 0) - Decimal(result.away_score or 0)
+    elif bet.selection_key == "away":
+        margin = Decimal(result.away_score or 0) - Decimal(result.home_score or 0)
+    else:
+        margin = Decimal("-999")
+
+    half_stake = bet.stake / Decimal("2")
+    payout = Decimal("0.00")
+    for component in components:
+        adjusted = margin + component
+        if adjusted > 0:
+            payout += half_stake * bet.multiplier
+        elif adjusted == 0:
+            payout += half_stake
+
+    payout = money(payout)
+    net = money(payout - bet.stake)
+    if net > 0:
+        status = "won"
+        bonus = prediction_bonus(bet.market_key)
+    elif net == 0:
+        status = "refunded"
+        bonus = Decimal("0.00")
+    else:
+        status = "lost"
+        bonus = Decimal("0.00")
+
+    full_payout = money(bet.stake * bet.multiplier)
+    if payout == full_payout:
+        result_key = "win"
+        reason = "Selection matched the final 90-minute handicap result; leaderboard bonus applied."
+    elif net > 0:
+        result_key = "half_win"
+        reason = "Asian handicap quarter-line half win; half the stake won and half pushed."
+    elif net == 0:
+        result_key = "push"
+        reason = "Handicap market pushed; stake refunded."
+    elif payout > 0:
+        result_key = "half_loss"
+        reason = "Asian handicap quarter-line half loss; half the stake was refunded."
+    else:
+        result_key = "loss"
+        reason = "Selection did not match the final 90-minute handicap result."
+
+    return SettlementOutcome(
+        status=status,
+        result=result_key,
+        payout=payout,
+        net_points=net,
+        prediction_bonus=bonus,
+        reason=reason,
+    )
+
+
+def _is_quarter_handicap(line: Decimal) -> bool:
+    cents = int(abs(line * Decimal("100")))
+    return cents % 50 == 25
 
 
 def _match_winner_selection_key(result: MatchResult) -> str | None:
