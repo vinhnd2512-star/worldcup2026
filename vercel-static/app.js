@@ -2654,9 +2654,12 @@ function renderModalBetSection(match, group) {
     ? `<button class="danger-button compact-button" type="button" data-cancel-bet="${existing.id}" ${state.isSubmittingBet ? "disabled" : ""}>Hủy kèo</button>`
     : "";
   const scorePicks = isExactScoreMarket(group.marketKey) ? correctScoreDraftPicks(draft) : [];
-  const multiplierText = isExactScoreMarket(group.marketKey)
+  let multiplierText = isExactScoreMarket(group.marketKey)
     ? `${fmt.format(scorePicks.length)} tỷ số`
     : `x${fmtOne.format(displayMultiplier || number(group.markets[0]?.odds_multiplier || 1))}`;
+  if (isExactScoreMarket(group.marketKey)) {
+    multiplierText = exactScoreRateText(group.marketKey, displayMultiplier, selectedMarket);
+  }
   const openCopy = isExactScoreMarket(group.marketKey) && existing
     ? `Đang mở ${fmt.format(existingBets.length)} kèo tỷ số`
     : existing
@@ -2919,6 +2922,11 @@ function modalMarketMultiplier(marketKey, market, draft = {}) {
   return correctScoreFairOdds(market, homeScore, awayScore);
 }
 
+function exactScoreRateText(marketKey, multiplier, market) {
+  if (marketKey === "correct_score" && !multiplier) return "No odds";
+  return `x${fmtOne.format(multiplier || number(market?.odds_multiplier || 0))}`;
+}
+
 function correctScoreFairOdds(market, homeScore, awayScore) {
   const extra = marketExtra(market);
   const score = `${Math.max(0, number(homeScore))}-${Math.max(0, number(awayScore))}`;
@@ -3017,6 +3025,11 @@ function updateModalDerivedValues() {
       });
       const pillNode = document.querySelector(`[data-bet-market-card="${group.marketKey}"] .modal-market-card-head .pill`);
       if (pillNode) pillNode.textContent = `${fmt.format(picks.length)} tỷ số`;
+      if (pillNode) {
+        const firstPick = picks[0] || {};
+        const firstMultiplier = modalMarketMultiplier(group.marketKey, selectedMarket, firstPick);
+        pillNode.textContent = exactScoreRateText(group.marketKey, firstMultiplier, selectedMarket);
+      }
       continue;
     }
     const multiplier = modalMarketMultiplier(group.marketKey, selectedMarket, draft);
@@ -6864,6 +6877,22 @@ function scoreStepper(id, label, value, extraAttrs = "") {
   `;
 }
 
+function isModalScoreStepperInput(input) {
+  if (!input) return false;
+  if (input.closest("[data-correct-score-row]") && (input.hasAttribute("data-score-home") || input.hasAttribute("data-score-away"))) {
+    return true;
+  }
+  const id = input.id || "";
+  return id === "modal-score-home"
+    || id === "modal-score-away"
+    || id.startsWith("modal-score-home-")
+    || id.startsWith("modal-score-away-")
+    || id.startsWith("modal-score-correct_score-home-")
+    || id.startsWith("modal-score-correct_score-away-")
+    || id.startsWith("modal-score-penalty_score-home-")
+    || id.startsWith("modal-score-penalty_score-away-");
+}
+
 function toDateTimeLocal(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -6891,7 +6920,7 @@ document.addEventListener("click", (event) => {
   if (!input) return;
   const next = Math.max(0, Number(input.value || 0) + (inc ? 1 : -1));
   input.value = String(next);
-  if (id === "modal-score-home" || id === "modal-score-away" || id.startsWith("modal-score-home-") || id.startsWith("modal-score-away-")) {
+  if (isModalScoreStepperInput(input)) {
     updateModalDerivedValues();
   }
 });
@@ -6901,7 +6930,7 @@ document.addEventListener("input", (event) => {
   if (!input) return;
   const next = Math.max(0, Math.trunc(Number(input.value || 0)));
   input.value = String(next);
-  if (input.id === "modal-score-home" || input.id === "modal-score-away" || input.id.startsWith("modal-score-home-") || input.id.startsWith("modal-score-away-")) {
+  if (isModalScoreStepperInput(input)) {
     updateModalDerivedValues();
   }
 });
