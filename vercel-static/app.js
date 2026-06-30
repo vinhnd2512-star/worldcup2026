@@ -3373,8 +3373,26 @@ function renderBracketRound(roundKey, fallbackLabel) {
   `;
 }
 
+function bracketTeamScore(match, side) {
+  if (!match || !["home", "away"].includes(side)) return "";
+  const score = side === "home"
+    ? match.home_final_score ?? match.home_score
+    : match.away_final_score ?? match.away_score;
+  if (score === null || score === undefined) return "";
+  const homePenalties = match.home_penalties;
+  const awayPenalties = match.away_penalties;
+  const hasPenalties = homePenalties !== null && homePenalties !== undefined && awayPenalties !== null && awayPenalties !== undefined;
+  const penaltyScore = side === "home" ? homePenalties : awayPenalties;
+  const text = hasPenalties ? `${score} (${penaltyScore})` : `${score}`;
+  const team = side === "home" ? match.home_team : match.away_team;
+  const winner = matchWinner(match);
+  const isWinner = winner && team && Number(winner.id) === Number(team.id);
+  return `<span class="bracket-score${isWinner ? " winner" : ""}" aria-label="${side === "home" ? "Home" : "Away"} score">${escapeHtml(text)}</span>`;
+}
+
 function renderBracketMatch(match) {
   const linked = match.match_id && match.match;
+  const linkedMatch = linked ? match.match : null;
   const displayDate = linked ? dateText(match.match.starts_at) : match.starts_at ? dateText(match.starts_at) : dateOnlyText(match.match_date);
   const homeLabel = linked ? match.match.home_team?.name : match.home_team?.name || match.home_label;
   const awayLabel = linked ? match.match.away_team?.name : match.away_team?.name || match.away_label;
@@ -3387,8 +3405,8 @@ function renderBracketMatch(match) {
       <span>Match ${fmt.format(match.match_no)}</span>
       <time>${escapeHtml(displayDate)}</time>
     </div>
-    <div class="bracket-team">${homeTeam ? `<span class="fixture-flag">${teamFlagContent(homeTeam)}</span>` : `<span class="slot-box"></span>`}<span>${escapeHtml(homeLabel)}</span></div>
-    <div class="bracket-team">${awayTeam ? `<span class="fixture-flag">${teamFlagContent(awayTeam)}</span>` : `<span class="slot-box"></span>`}<span>${escapeHtml(awayLabel)}</span></div>
+    <div class="bracket-team">${homeTeam ? `<span class="fixture-flag">${teamFlagContent(homeTeam)}</span>` : `<span class="slot-box"></span>`}${bracketTeamScore(linkedMatch, "home")}<span class="bracket-team-name">${escapeHtml(homeLabel)}</span></div>
+    <div class="bracket-team">${awayTeam ? `<span class="fixture-flag">${teamFlagContent(awayTeam)}</span>` : `<span class="slot-box"></span>`}${bracketTeamScore(linkedMatch, "away")}<span class="bracket-team-name">${escapeHtml(awayLabel)}</span></div>
     <small>${escapeHtml(location)} · ${escapeHtml(statusLabel)}</small>
   `;
   if (linked) {
@@ -3424,9 +3442,15 @@ function renderChampionCard() {
 
 function matchWinner(match) {
   if (!match || !["FT", "AET", "PEN", "FT_PEN"].includes(match.status)) return null;
-  if (number(match.home_score) > number(match.away_score)) return match.home_team;
-  if (number(match.away_score) > number(match.home_score)) return match.away_team;
-  return null;
+  const finalHome = number(match.home_final_score ?? match.home_score);
+  const finalAway = number(match.away_final_score ?? match.away_score);
+  if (finalHome > finalAway) return match.home_team;
+  if (finalAway > finalHome) return match.away_team;
+  if (match.home_penalties !== null && match.home_penalties !== undefined && match.away_penalties !== null && match.away_penalties !== undefined) {
+    if (number(match.home_penalties) > number(match.away_penalties)) return match.home_team;
+    if (number(match.away_penalties) > number(match.home_penalties)) return match.away_team;
+  }
+  return bracketWinnerTeamForMatch(match);
 }
 
 function leaderboardTotalBalance(row) {
