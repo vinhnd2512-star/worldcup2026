@@ -31,6 +31,18 @@ winner_slot as (
   order by bs.match_no
   limit 1
 ),
+updated_match as (
+  update public.matches m
+  set status = 'PEN',
+      home_score = coalesce(m.home_score, 1),
+      away_score = coalesce(m.away_score, 1),
+      home_final_score = coalesce(m.home_final_score, m.home_score, 1),
+      away_final_score = coalesce(m.away_final_score, m.away_score, 1),
+      updated_at = now()
+  from target_match tm
+  where m.id = tm.match_id
+  returning m.id
+),
 updated_home as (
   update public.bracket_matches bm
   set home_team_id = wt.id,
@@ -52,11 +64,60 @@ updated_away as (
   where bm.match_no = ws.match_no
     and ws.slot = 'away'
   returning bm.match_no
+),
+upsert_result as (
+  insert into public.match_results (
+    match_id,
+    home_team_id,
+    away_team_id,
+    status,
+    home_score,
+    away_score,
+    home_final_score,
+    away_final_score,
+    home_penalties,
+    away_penalties,
+    provider,
+    source,
+    finished_at,
+    synced_at
+  )
+  select
+    m.id,
+    m.home_team_id,
+    m.away_team_id,
+    m.status,
+    m.home_score,
+    m.away_score,
+    m.home_final_score,
+    m.away_final_score,
+    m.home_penalties,
+    m.away_penalties,
+    'admin',
+    'fix_ger_par_winner',
+    now(),
+    now()
+  from public.matches m
+  join target_match tm on tm.match_id = m.id
+  on conflict (match_id) do update
+  set status = excluded.status,
+      home_score = excluded.home_score,
+      away_score = excluded.away_score,
+      home_final_score = excluded.home_final_score,
+      away_final_score = excluded.away_final_score,
+      home_penalties = excluded.home_penalties,
+      away_penalties = excluded.away_penalties,
+      provider = excluded.provider,
+      source = excluded.source,
+      synced_at = excluded.synced_at
+  returning match_id
 )
 select
   tm.match_id,
   tm.match_no as source_match_no,
+  (select count(*) from updated_match) as updated_matches,
+  (select count(*) from updated_home) + (select count(*) from updated_away) as updated_winner_slots,
+  (select count(*) from upsert_result) as upserted_results,
   public.match_winner_team_id(tm.match_id) as winner_team_id,
   public.settle_match_bets(tm.match_id) as settled_bets
 from target_match tm;
-
