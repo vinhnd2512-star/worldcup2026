@@ -6211,11 +6211,25 @@ async function settleAllFt() {
     const unsettledIds = [...new Set((bets || []).map((b) => b.match_id))];
     if (!unsettledIds.length) { state.message = "Tất cả cược đã settle rồi."; renderApp(); return; }
     let total = 0;
+    const failed = [];
+    const skipped = [];
     for (const matchId of unsettledIds) {
       const { data, error } = await state.client.rpc("settle_match_bets", { p_match_id: matchId });
-      if (!error) total += Number(data) || 0;
+      if (error) {
+        failed.push({ matchId, message: error.message || String(error) });
+        continue;
+      }
+      const settledCount = Number(data) || 0;
+      total += settledCount;
+      if (settledCount === 0) skipped.push(matchId);
     }
-    state.message = `Settle xong ${total} cược từ ${unsettledIds.length} trận.`;
+    state.message = `Settle xong ${total} cuoc tu ${unsettledIds.length} tran.`;
+    if (skipped.length) {
+      state.message += ` ${skipped.length} tran bi bo qua vi chua xac dinh duoc winner/penalty.`;
+    }
+    if (failed.length) {
+      state.error = failed.slice(0, 3).map((item) => `Match ${item.matchId}: ${item.message}`).join(" | ");
+    }
   } catch (err) {
     state.error = err.message || String(err);
   }
