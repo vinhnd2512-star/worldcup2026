@@ -120,14 +120,8 @@ def _apply_fixture(match: Match, payload: dict[str, Any]) -> bool:
     penalty = score.get("penalty") or {}
 
     provider_status = status.get("short") or match.status
-    home_score = fulltime.get("home")
-    away_score = fulltime.get("away")
-    if home_score is None:
-        home_score = goals.get("home")
-    if away_score is None:
-        away_score = goals.get("away")
-    home_final_score = extratime.get("home") if extratime.get("home") is not None else home_score
-    away_final_score = extratime.get("away") if extratime.get("away") is not None else away_score
+    home_score, away_score = _regular_time_score(provider_status, fulltime, goals)
+    home_final_score, away_final_score = _final_score(provider_status, extratime, goals, home_score, away_score)
 
     changed = False
     if match.status != provider_status:
@@ -155,6 +149,42 @@ def _apply_fixture(match: Match, payload: dict[str, Any]) -> bool:
         match.away_penalties = int(penalty["away"])
         changed = True
     return changed
+
+
+def _regular_time_score(
+    status: str,
+    fulltime: dict[str, Any],
+    goals: dict[str, Any],
+) -> tuple[int | None, int | None]:
+    home_score = fulltime.get("home")
+    away_score = fulltime.get("away")
+    if home_score is not None and away_score is not None:
+        return int(home_score), int(away_score)
+    if status in {"AET", "PEN", "FT_PEN"}:
+        return None, None
+    home_goal = goals.get("home")
+    away_goal = goals.get("away")
+    if home_goal is None or away_goal is None:
+        return None, None
+    return int(home_goal), int(away_goal)
+
+
+def _final_score(
+    status: str,
+    extratime: dict[str, Any],
+    goals: dict[str, Any],
+    home_score: int | None,
+    away_score: int | None,
+) -> tuple[int | None, int | None]:
+    home_extra = extratime.get("home")
+    away_extra = extratime.get("away")
+    if home_extra is not None and away_extra is not None:
+        return int(home_extra), int(away_extra)
+    home_goal = goals.get("home")
+    away_goal = goals.get("away")
+    if status in {"AET", "PEN", "FT_PEN"} and home_goal is not None and away_goal is not None:
+        return int(home_goal), int(away_goal)
+    return home_score, away_score
 
 
 def _apply_statistics(db: Session, match: Match, payload: list[dict[str, Any]]) -> None:

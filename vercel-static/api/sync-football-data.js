@@ -2028,6 +2028,33 @@ function scoreOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function isExtraTimeFinalStatus(status) {
+  return ["AET", "PEN", "FT_PEN"].includes(String(status || ""));
+}
+
+function apiFootballFixtureScores(fixture, status) {
+  const fulltimeHome = scoreOrNull(fixture.score?.fulltime?.home);
+  const fulltimeAway = scoreOrNull(fixture.score?.fulltime?.away);
+  const goalsHome = scoreOrNull(fixture.goals?.home);
+  const goalsAway = scoreOrNull(fixture.goals?.away);
+  const extraHome = scoreOrNull(fixture.score?.extratime?.home);
+  const extraAway = scoreOrNull(fixture.score?.extratime?.away);
+  const hasFulltimePair = fulltimeHome !== null && fulltimeAway !== null;
+  const hasGoalsPair = goalsHome !== null && goalsAway !== null;
+  const hasExtraPair = extraHome !== null && extraAway !== null;
+  const mayUseGoalsAsRegularTime = !isExtraTimeFinalStatus(status);
+  const homeScore = hasFulltimePair ? fulltimeHome : (mayUseGoalsAsRegularTime && hasGoalsPair ? goalsHome : null);
+  const awayScore = hasFulltimePair ? fulltimeAway : (mayUseGoalsAsRegularTime && hasGoalsPair ? goalsAway : null);
+  return {
+    homeScore,
+    awayScore,
+    homeFinalScore: hasExtraPair ? extraHome : (isExtraTimeFinalStatus(status) && hasGoalsPair ? goalsHome : homeScore),
+    awayFinalScore: hasExtraPair ? extraAway : (isExtraTimeFinalStatus(status) && hasGoalsPair ? goalsAway : awayScore),
+    homePenalties: scoreOrNull(fixture.score?.penalty?.home),
+    awayPenalties: scoreOrNull(fixture.score?.penalty?.away)
+  };
+}
+
 function isFinalResultStatus(status) {
   return ["FT", "AET", "PEN", "FT_PEN"].includes(String(status || ""));
 }
@@ -2465,25 +2492,29 @@ async function syncApiFootballFixtures() {
   const teamSync = await upsertProviderTeamsByCode(teamsByProvider.values());
   const teamIdMap = await getTeamsByProviderIds([...teamsByProvider.keys()]);
   const matches = fixtures
-    .map((fixture) => ({
-      provider_id: String(fixture.fixture.id),
-      stage: fixture.league.round || "World Cup 2026",
-      group_name: fixture.league.round?.includes("Group") ? fixture.league.round : null,
-      home_team_id: teamIdMap.get(String(fixture.teams.home.id)),
-      away_team_id: teamIdMap.get(String(fixture.teams.away.id)),
-      starts_at: fixture.fixture.date,
-      status: normalizeStatus(fixture.fixture.status?.short),
-      home_score: fixture.score?.fulltime?.home ?? fixture.goals.home,
-      away_score: fixture.score?.fulltime?.away ?? fixture.goals.away,
-      home_final_score: fixture.score?.extratime?.home ?? fixture.score?.fulltime?.home ?? fixture.goals.home,
-      away_final_score: fixture.score?.extratime?.away ?? fixture.score?.fulltime?.away ?? fixture.goals.away,
-      home_penalties: fixture.score?.penalty?.home ?? null,
-      away_penalties: fixture.score?.penalty?.away ?? null,
-      venue: fixture.fixture.venue?.name || null,
-      city: fixture.fixture.venue?.city || null,
-      current_minute: fixture.fixture.status?.elapsed || null,
-      updated_at: new Date().toISOString()
-    }))
+    .map((fixture) => {
+      const status = normalizeStatus(fixture.fixture.status?.short);
+      const scores = apiFootballFixtureScores(fixture, status);
+      return {
+        provider_id: String(fixture.fixture.id),
+        stage: fixture.league.round || "World Cup 2026",
+        group_name: fixture.league.round?.includes("Group") ? fixture.league.round : null,
+        home_team_id: teamIdMap.get(String(fixture.teams.home.id)),
+        away_team_id: teamIdMap.get(String(fixture.teams.away.id)),
+        starts_at: fixture.fixture.date,
+        status,
+        home_score: scores.homeScore,
+        away_score: scores.awayScore,
+        home_final_score: scores.homeFinalScore,
+        away_final_score: scores.awayFinalScore,
+        home_penalties: scores.homePenalties,
+        away_penalties: scores.awayPenalties,
+        venue: fixture.fixture.venue?.name || null,
+        city: fixture.fixture.venue?.city || null,
+        current_minute: fixture.fixture.status?.elapsed || null,
+        updated_at: new Date().toISOString()
+      };
+    })
     .filter((match) => match.home_team_id && match.away_team_id);
 
   const syncedMatches = await upsertJson("matches", matches, "provider_id");

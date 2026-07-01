@@ -86,8 +86,13 @@ function initials(name: string): string {
 
 function scoreText(match: Match): string {
   const base = `${match.home_score ?? "?"} : ${match.away_score ?? "?"}`;
-  if (match.home_penalties == null || match.away_penalties == null) return base;
-  return `${base} (p ${match.home_penalties}:${match.away_penalties})`;
+  const hasScore = match.home_score != null && match.away_score != null;
+  const finalHome = match.home_final_score ?? match.home_score;
+  const finalAway = match.away_final_score ?? match.away_score;
+  const finalText = finalHome !== match.home_score || finalAway !== match.away_score ? ` · sau HP ${finalHome}:${finalAway}` : "";
+  const score = hasScore && finalText ? `${base} 90p${finalText}` : base;
+  if (match.home_penalties == null || match.away_penalties == null) return score;
+  return `${score} (p ${match.home_penalties}:${match.away_penalties})`;
 }
 
 export function LoginScreen({ loading, error, onLogin }: LoginScreenProps) {
@@ -812,7 +817,7 @@ export function AdminView({
       <section className="glass-card score-update-panel">
         <div className="section-heading inline">
           <h2>Cập nhật tỷ số</h2>
-          <span>Settle tự động khi kết thúc</span>
+          <span>Ô chính là tỷ số 90 phút; Tài/Xỉu và hòa 1X2 chỉ tính 90 phút</span>
         </div>
         <div className="score-update-grid">
           <select

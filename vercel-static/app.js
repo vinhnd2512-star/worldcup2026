@@ -2835,7 +2835,7 @@ function modalMarketHelpText(marketKey) {
     match_result: "Kèo 1X2 tính kết quả sau 90 phút chính thức. Hòa chỉ tính trong 90 phút, không tính hiệp phụ hoặc penalty.",
     match_winner: "Kèo đội đi tiếp/thắng chung cuộc tính cả hiệp phụ và penalty, không có lựa chọn hòa.",
     qualification_method: "Keo doi thang bang hiep phu hoac penalty chi mo khi nha cai tra dung market nay.",
-    total_goals: "Tài/Xỉu dùng đúng line nhà cái trả về cho từng trận. Nếu provider chưa có totals thì mới dùng fallback internal.",
+    total_goals: "Tài/Xỉu chỉ tính tổng bàn thắng trong 90 phút chính thức, không tính hiệp phụ hoặc penalty. Line dùng đúng nhà cái trả về; nếu provider chưa có totals thì mới dùng fallback internal.",
     asian_handicap: "Kèo châu Á chỉ mở khi có handicap/spreads từ nhà cái. Nếu tỷ số sau handicap bằng nhau, cược được hoàn tiền."
   };
   return notes[marketKey] || "";
@@ -4194,9 +4194,9 @@ function matchScoreText(match) {
   const finalHome = match.home_final_score ?? match.home_score;
   const finalAway = match.away_final_score ?? match.away_score;
   const finalText = finalHome !== match.home_score || finalAway !== match.away_score
-    ? ` · AET ${finalHome}-${finalAway}`
+    ? ` · sau HP ${finalHome}-${finalAway}`
     : "";
-  return `${home} ${match.home_score}-${match.away_score} ${away}${finalText}${penalty} · ${match.status || "FT"}`;
+  return `${home} ${match.home_score}-${match.away_score} ${away} (90p)${finalText}${penalty} · ${match.status || "FT"}`;
 }
 
 function matchResultText(match) {
@@ -4277,7 +4277,7 @@ function betActualText(bet) {
   if (bet.market_key === "penalty_score") return `${matchScoreText(match)} · penalty score ${match.home_penalties ?? "?"}-${match.away_penalties ?? "?"}`;
   if (bet.market_key === "match_result") return `${matchScoreText(match)} · ${matchResultText(match)}`;
   if (bet.market_key === "draw_no_bet") return `${matchScoreText(match)} · ${matchResultText(match)}${number(match.home_score) === number(match.away_score) ? " · stake refunded" : ""}`;
-  if (bet.market_key === "total_goals") return `${matchScoreText(match)} · total goals ${fmtOne.format(totalGoals)}${line !== null ? ` vs line ${fmtOne.format(line)}` : ""}`;
+  if (bet.market_key === "total_goals") return `${matchScoreText(match)} · total goals 90p ${fmtOne.format(totalGoals)}${line !== null ? ` vs line ${fmtOne.format(line)}` : ""}`;
   if (bet.market_key === "btts") return `${matchScoreText(match)} · BTTS ${number(match.home_score) > 0 && number(match.away_score) > 0 ? "Yes" : "No"}`;
   if (bet.market_key === "corners_total") {
     const totalCorners = stats ? number(stats.corners_home) + number(stats.corners_away) : null;
