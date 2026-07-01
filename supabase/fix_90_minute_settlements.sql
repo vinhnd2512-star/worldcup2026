@@ -23,10 +23,11 @@ create temporary table repair_match_scores (
   away_final integer not null
 ) on commit drop;
 
--- TODO: add affected rows here, for example:
--- insert into repair_match_scores (match_id, home_90, away_90, home_final, away_final)
--- values
---   (101, 1, 1, 2, 1);
+-- Belgium vs Senegal, bracket match_no 82:
+-- 90 minutes: 2-2; after extra time/final: Belgium 3-2 Senegal.
+insert into repair_match_scores (match_id, home_90, away_90, home_final, away_final)
+values
+  (954, 2, 2, 3, 2);
 
 -- Stop early if the placeholder has not been replaced.
 do $$
