@@ -16,6 +16,7 @@ const state = {
   leaderboard: [],
   selectedLeaderboardUserId: "",
   selectedLeaderboardBets: null,
+  selectedLeaderboardMatchId: "",
   leaderboardDetailError: "",
   leaderboardSort: {
     key: "total_balance",
@@ -3667,8 +3668,85 @@ function canInspectLeaderboardBets(userId) {
   return state.profile?.role === "admin" || state.profile?.id === userId;
 }
 
+function leaderboardBetMatchKey(bet) {
+  return bet?.match_id || bet?.match?.id ? String(bet.match_id || bet.match.id) : "outright";
+}
+
+function leaderboardBetMatchLabel(bet) {
+  const match = matchForBet(bet) || bet.match;
+  if (!match) return "Cược dài hạn / không gắn trận";
+  return `${match.home_team?.name || "Home"} vs ${match.away_team?.name || "Away"}`;
+}
+
+function leaderboardBetMatchMeta(bet) {
+  const match = matchForBet(bet) || bet.match;
+  if (!match?.starts_at) return "";
+  return dateText(match.starts_at);
+}
+
+function leaderboardBetMatchOptions(bets) {
+  const optionMap = new Map();
+  (bets || []).forEach((bet) => {
+    const key = leaderboardBetMatchKey(bet);
+    const current = optionMap.get(key) || {
+      key,
+      label: leaderboardBetMatchLabel(bet),
+      meta: leaderboardBetMatchMeta(bet),
+      latestPlacedAt: bet.placed_at || "",
+      count: 0
+    };
+    current.count += 1;
+    if (new Date(bet.placed_at || 0).getTime() > new Date(current.latestPlacedAt || 0).getTime()) {
+      current.latestPlacedAt = bet.placed_at || current.latestPlacedAt;
+    }
+    optionMap.set(key, current);
+  });
+  return [...optionMap.values()].sort((left, right) => {
+    if (left.key === "outright") return 1;
+    if (right.key === "outright") return -1;
+    return new Date(right.latestPlacedAt || 0).getTime() - new Date(left.latestPlacedAt || 0).getTime()
+      || left.label.localeCompare(right.label, "vi");
+  });
+}
+
+function selectedLeaderboardBetsForMatch(bets) {
+  const selected = state.selectedLeaderboardMatchId;
+  if (!selected) return bets || [];
+  const source = bets || [];
+  if (!source.some((bet) => leaderboardBetMatchKey(bet) === selected)) return source;
+  return source.filter((bet) => leaderboardBetMatchKey(bet) === selected);
+}
+
+function renderLeaderboardMatchFilter(bets, filteredBets) {
+  const options = leaderboardBetMatchOptions(bets);
+  if (options.length <= 1) return "";
+  const selected = options.some((option) => option.key === state.selectedLeaderboardMatchId)
+    ? state.selectedLeaderboardMatchId
+    : "";
+  return `
+    <div class="leaderboard-bet-filter">
+      <label>Ch&#7885;n tr&#7853;n
+        <select id="leaderboard-match-filter">
+          <option value="" ${selected ? "" : "selected"}>T&#7845;t c&#7843; tr&#7853;n (${fmt.format(bets.length)} k&egrave;o)</option>
+          ${options.map((option) => `
+            <option value="${escapeHtml(option.key)}" ${selected === option.key ? "selected" : ""}>
+              ${escapeHtml(option.label)}${option.meta ? ` - ${escapeHtml(option.meta)}` : ""} (${fmt.format(option.count)} k&egrave;o)
+            </option>
+          `).join("")}
+        </select>
+      </label>
+      <div>
+        <small>&#272;ang xem</small>
+        <strong>${fmt.format(filteredBets.length)}/${fmt.format(bets.length)} k&egrave;o</strong>
+      </div>
+      ${selected ? `<button class="ghost-button compact-button" type="button" data-clear-leaderboard-match>B&#7887; l&#7885;c</button>` : ""}
+    </div>
+  `;
+}
+
 function renderLeaderboardPlayerDetails(row, rank) {
   const bets = state.selectedLeaderboardBets;
+  const filteredBets = bets ? selectedLeaderboardBetsForMatch(bets) : [];
   return `
     <section class="glass-card panel leaderboard-detail-panel">
       <div class="section-heading">
@@ -3683,7 +3761,14 @@ function renderLeaderboardPlayerDetails(row, rank) {
         bets === null
           ? `<p>Loading player predictions...</p>`
           : bets.length
-            ? `<div class="stack compact-stack">${bets.map(renderLeaderboardBetRow).join("")}</div>`
+            ? `
+              ${renderLeaderboardMatchFilter(bets, filteredBets)}
+              ${
+                filteredBets.length
+                  ? `<div class="stack compact-stack">${filteredBets.map(renderLeaderboardBetRow).join("")}</div>`
+                  : `<p>Kh&ocirc;ng c&oacute; k&egrave;o n&agrave;o trong tr&#7853;n &#273;ang ch&#7885;n.</p>`
+              }
+            `
             : `<p>No readable predictions for this player.</p>`
       }
     </section>
@@ -5111,11 +5196,13 @@ async function selectLeaderboardUser(userId) {
   if (!canInspectLeaderboardBets(userId)) {
     state.selectedLeaderboardUserId = "";
     state.selectedLeaderboardBets = null;
+    state.selectedLeaderboardMatchId = "";
     state.leaderboardDetailError = "";
     return;
   }
   state.selectedLeaderboardUserId = userId;
   state.selectedLeaderboardBets = null;
+  state.selectedLeaderboardMatchId = "";
   state.leaderboardDetailError = "";
   renderApp();
   try {
@@ -5178,7 +5265,18 @@ function bindShellEvents() {
   document.querySelector("[data-clear-leaderboard-user]")?.addEventListener("click", () => {
     state.selectedLeaderboardUserId = "";
     state.selectedLeaderboardBets = null;
+    state.selectedLeaderboardMatchId = "";
     state.leaderboardDetailError = "";
+    renderApp();
+  });
+
+  document.getElementById("leaderboard-match-filter")?.addEventListener("change", (event) => {
+    state.selectedLeaderboardMatchId = event.target.value || "";
+    renderApp();
+  });
+
+  document.querySelector("[data-clear-leaderboard-match]")?.addEventListener("click", () => {
+    state.selectedLeaderboardMatchId = "";
     renderApp();
   });
 

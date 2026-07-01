@@ -2840,6 +2840,32 @@ select:focus {
   gap: 14px;
 }
 
+.leaderboard-bet-filter {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.leaderboard-bet-filter label {
+  margin: 0;
+}
+
+.leaderboard-bet-filter select {
+  min-height: 42px;
+  background: var(--surface);
+}
+
+.leaderboard-bet-filter > div {
+  display: grid;
+  gap: 3px;
+  min-width: 96px;
+}
+
 .compact-stack {
   gap: 10px;
 }
@@ -5288,6 +5314,11 @@ select {
 
   .bet-detail-row {
     grid-template-columns: 1fr;
+  }
+
+  .leaderboard-bet-filter {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .history-row b,
