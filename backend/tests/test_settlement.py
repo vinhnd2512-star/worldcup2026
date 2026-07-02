@@ -160,8 +160,12 @@ class SettlementTests(unittest.TestCase):
             MatchResult(status="FT", home_score=2, away_score=1),
         )
         away_plus_half = settle_bet(
-            BetSelection("handicap", "away", Decimal("100"), Decimal("1.91"), {"line": "0.5"}),
+            BetSelection("handicap", "away", Decimal("100"), Decimal("1.91"), {"line": "-0.5"}),
             MatchResult(status="FT", home_score=2, away_score=1),
+        )
+        away_plus_half_draw = settle_bet(
+            BetSelection("handicap", "away", Decimal("100"), Decimal("1.91"), {"line": "-0.5"}),
+            MatchResult(status="FT", home_score=1, away_score=1),
         )
         push = settle_bet(
             BetSelection("handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-1"}),
@@ -171,6 +175,7 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(home_minus_half.payout, Decimal("191.00"))
         self.assertEqual(home_minus_half.prediction_bonus, Decimal("8.00"))
         self.assertEqual(away_plus_half.status, "lost")
+        self.assertEqual(away_plus_half_draw.status, "won")
         self.assertEqual(push.status, "refunded")
         self.assertEqual(push.result, "push")
         self.assertEqual(push.payout, Decimal("100.00"))
@@ -182,6 +187,10 @@ class SettlementTests(unittest.TestCase):
         )
         home_minus_half_draw = settle_bet(
             BetSelection("asian_handicap", "home", Decimal("100"), Decimal("1.91"), {"line": "-0.5"}),
+            MatchResult(status="FT", home_score=1, away_score=1),
+        )
+        away_plus_half_draw = settle_bet(
+            BetSelection("asian_handicap", "away", Decimal("100"), Decimal("1.91"), {"line": "-0.5"}),
             MatchResult(status="FT", home_score=1, away_score=1),
         )
         home_minus_three_quarter_win_by_one = settle_bet(
@@ -199,6 +208,7 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(home_minus_quarter_draw.net_points, Decimal("-50.00"))
         self.assertEqual(home_minus_half_draw.status, "lost")
         self.assertEqual(home_minus_half_draw.payout, Decimal("0.00"))
+        self.assertEqual(away_plus_half_draw.status, "won")
         self.assertEqual(home_minus_three_quarter_win_by_one.status, "won")
         self.assertEqual(home_minus_three_quarter_win_by_one.result, "half_win")
         self.assertEqual(home_minus_three_quarter_win_by_one.payout, Decimal("145.50"))

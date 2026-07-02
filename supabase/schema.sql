@@ -3771,8 +3771,11 @@ begin
       v_won := (v_bet.selection_key = 'over' and v_total_cards > v_bet.line)
         or (v_bet.selection_key = 'under' and v_total_cards < v_bet.line);
     elsif v_bet.market_key = 'asian_handicap' then
-      -- line is handicap applied to home team (negative = home gives goals, positive = home receives)
+      -- Prefer the displayed signed handicap when present; otherwise fall back
+      -- to the home-perspective line convention used by provider sync.
       v_ah_selected_line := case
+        when v_bet.selection_label ~ '\+[0-9]+([.,][0-9]+)?' then abs(coalesce(v_bet.line, 0))
+        when v_bet.selection_label ~ '-[0-9]+([.,][0-9]+)?' then -abs(coalesce(v_bet.line, 0))
         when v_bet.selection_key = 'away' then -coalesce(v_bet.line, 0)
         else coalesce(v_bet.line, 0)
       end;
@@ -3844,8 +3847,7 @@ begin
         continue;
       end if;
 
-      v_ah_adjusted := coalesce(v_match.home_score, 0) + coalesce(v_bet.line, 0);
-      if v_ah_adjusted = coalesce(v_match.away_score, 0) then
+      if v_ah_margin + v_ah_selected_line = 0 then
         -- Push: refund stake
         v_payout := v_bet.stake;
         v_delta := 0;
@@ -3867,8 +3869,7 @@ begin
         v_count := v_count + 1;
         continue;
       end if;
-      v_won := (v_bet.selection_key = 'home' and v_ah_adjusted > coalesce(v_match.away_score, 0))
-        or (v_bet.selection_key = 'away' and v_ah_adjusted < coalesce(v_match.away_score, 0));
+      v_won := v_ah_margin + v_ah_selected_line > 0;
     end if;
 
     if v_won then

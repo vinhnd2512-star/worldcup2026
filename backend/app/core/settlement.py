@@ -318,7 +318,7 @@ def _is_winning_selection(bet: BetSelection, result: MatchResult) -> bool:
 
 
 def _handicap_adjusted_result(bet: BetSelection, result: MatchResult) -> int:
-    line = Decimal(str(bet.selection.get("line", "0")))
+    line = _selected_handicap_line(bet)
     if bet.selection_key == "home":
         selected = Decimal(result.home_score or 0) + line
         opponent = Decimal(result.away_score or 0)
@@ -335,7 +335,7 @@ def _handicap_adjusted_result(bet: BetSelection, result: MatchResult) -> int:
 
 
 def _settle_handicap(bet: BetSelection, result: MatchResult) -> SettlementOutcome | None:
-    line = Decimal(str(bet.selection.get("line", "0")))
+    line = _selected_handicap_line(bet)
     if _is_quarter_handicap(line):
         components = (line - Decimal("0.25"), line + Decimal("0.25"))
     else:
@@ -394,6 +394,13 @@ def _settle_handicap(bet: BetSelection, result: MatchResult) -> SettlementOutcom
         prediction_bonus=bonus,
         reason=reason,
     )
+
+
+def _selected_handicap_line(bet: BetSelection) -> Decimal:
+    line = Decimal(str(bet.selection.get("line", "0")))
+    if bet.selection_key == "away":
+        return -line
+    return line
 
 
 def _is_quarter_handicap(line: Decimal) -> bool:
