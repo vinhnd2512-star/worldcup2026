@@ -2382,7 +2382,8 @@ select:focus {
   --lb-player-col: 140px;
   --lb-total-col: 135px;
   --lb-staked-col: 168px;
-  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px var(--lb-staked-col) 75px 118px;
+  --lb-estimated-col: 145px;
+  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px var(--lb-staked-col) var(--lb-estimated-col) 75px 118px;
 }
 
 .guide-grid {
@@ -2502,9 +2503,9 @@ select:focus {
 }
 
 .table-row.leaderboard-row {
-  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px var(--lb-staked-col) 75px 118px;
+  grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px var(--lb-staked-col) var(--lb-estimated-col) 75px 118px;
   gap: 0;
-  min-width: 1186px;
+  min-width: 1331px;
   padding: 0;
 }
 
@@ -2547,7 +2548,52 @@ select:focus {
 }
 
 .leaderboard-scroll-table {
-  min-width: 1153px;
+  min-width: 1331px;
+}
+
+.leaderboard-port-card {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1fr) minmax(190px, 0.9fr);
+  gap: 12px;
+  align-items: stretch;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.leaderboard-port-card > div,
+.leaderboard-port-card label {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  min-width: 0;
+}
+
+.leaderboard-port-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.leaderboard-port-card strong {
+  color: var(--text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.35rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.leaderboard-port-card input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--surface-2);
+  font: 900 1rem "JetBrains Mono", monospace;
 }
 
 .leaderboard-table-title {
@@ -2593,6 +2639,22 @@ select:focus {
   color: var(--green);
   font-weight: var(--win-rate-weight, 700);
   white-space: nowrap;
+}
+
+.leaderboard-estimated-prize {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  color: var(--gold-soft);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.leaderboard-estimated-prize small {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 800;
 }
 
 .table-row.leaderboard-row > b {
@@ -4895,6 +4957,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .leaderboard-port-card {
+    grid-template-columns: 1fr;
+  }
+
   .account-chart {
     min-height: 150px;
   }
@@ -5051,7 +5117,7 @@ select {
   }
 
   .leaderboard-scroll-table {
-    min-width: 1169px;
+    min-width: 1350px;
   }
 
   .table-head.leaderboard-row {
@@ -5065,8 +5131,9 @@ select {
     --lb-player-col: 130px;
     --lb-total-col: 140px;
     --lb-staked-col: 176px;
-    grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px var(--lb-staked-col) 75px 118px;
-    min-width: 1205px;
+    --lb-estimated-col: 145px;
+    grid-template-columns: var(--lb-rank-col) var(--lb-player-col) var(--lb-total-col) 145px 145px 120px 80px var(--lb-staked-col) var(--lb-estimated-col) 75px 118px;
+    min-width: 1350px;
     align-items: center;
     gap: 0;
     padding: 0;
@@ -5079,6 +5146,10 @@ select {
     padding: 0 10px;
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  .table-row.leaderboard-row > .leaderboard-estimated-prize {
+    display: grid;
   }
 
   .table-row.leaderboard-row span:nth-child(3),

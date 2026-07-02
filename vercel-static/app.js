@@ -1,4 +1,13 @@
 const app = document.getElementById("app");
+const LEADERBOARD_PRIZE_POOL_STORAGE_KEY = "WCP_LEADERBOARD_PRIZE_POOL";
+const DEFAULT_LEADERBOARD_PRIZE_POOL = 19000000;
+
+function readLeaderboardPrizePool() {
+  const raw = localStorage.getItem(LEADERBOARD_PRIZE_POOL_STORAGE_KEY);
+  if (raw === null) return DEFAULT_LEADERBOARD_PRIZE_POOL;
+  const stored = Number(raw);
+  return Number.isFinite(stored) && stored >= 0 ? stored : DEFAULT_LEADERBOARD_PRIZE_POOL;
+}
 
 const state = {
   client: null,
@@ -22,6 +31,7 @@ const state = {
     key: "total_balance",
     direction: "desc"
   },
+  leaderboardPrizePool: readLeaderboardPrizePool(),
   users: [],
   report: null,
   syncRuns: [],
@@ -3499,6 +3509,17 @@ function leaderboardWinPct(row) {
   return row.accuracy;
 }
 
+function leaderboardTotalPool(rows = state.leaderboard) {
+  return rows.reduce((sum, row) => sum + Math.max(0, number(leaderboardTotalBalance(row))), 0);
+}
+
+function leaderboardEstimatedPrize(row, rows = state.leaderboard) {
+  const pool = Math.max(0, number(state.leaderboardPrizePool));
+  const totalPool = leaderboardTotalPool(rows);
+  if (!pool || !totalPool) return 0;
+  return pool * Math.max(0, number(leaderboardTotalBalance(row))) / totalPool;
+}
+
 const LEADERBOARD_SORTERS = {
   total_balance: leaderboardTotalBalance,
   available_balance: leaderboardAvailableBalance,
@@ -3507,7 +3528,8 @@ const LEADERBOARD_SORTERS = {
   profit_loss_pct: leaderboardProfitLossPct,
   total_staked: leaderboardTotalStaked,
   total_bets: leaderboardTotalBets,
-  accuracy: leaderboardWinPct
+  accuracy: leaderboardWinPct,
+  estimated_prize: (row) => leaderboardEstimatedPrize(row)
 };
 
 function sortedLeaderboardRows() {
@@ -3553,13 +3575,65 @@ function leaderboardWinRateStyle(row) {
   return `--win-rate-weight:${weight}`;
 }
 
+function parseLeaderboardPrizePoolInput(value) {
+  const normalized = String(value || "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function formatLeaderboardPrizePoolInput(value) {
+  return fmt.format(Math.max(0, number(value)));
+}
+
+function leaderboardEstimatedPrizeShare(row, rows) {
+  const totalPool = leaderboardTotalPool(rows);
+  if (!totalPool) return "0%";
+  return `${fmtOne.format(Math.max(0, number(leaderboardTotalBalance(row))) / totalPool * 100)}%`;
+}
+
+function persistLeaderboardPrizePool(value) {
+  state.leaderboardPrizePool = Math.max(0, number(value));
+  localStorage.setItem(LEADERBOARD_PRIZE_POOL_STORAGE_KEY, String(state.leaderboardPrizePool));
+}
+
+function refreshLeaderboardPrizePoolUi() {
+  const rows = sortedLeaderboardRows();
+  document.querySelector("[data-leaderboard-prize-total]")?.replaceChildren(document.createTextNode(money(state.leaderboardPrizePool)));
+  document.querySelectorAll("[data-leaderboard-estimated-bonus]").forEach((cell) => {
+    const row = rows.find((item) => item.user_id === cell.dataset.leaderboardEstimatedBonus);
+    if (!row) return;
+    const amount = document.createTextNode(money(leaderboardEstimatedPrize(row, rows)));
+    const share = document.createElement("small");
+    share.textContent = leaderboardEstimatedPrizeShare(row, rows);
+    cell.replaceChildren(amount, share);
+  });
+}
+
 function renderLeaderboard() {
   const sortedRows = sortedLeaderboardRows();
   const selectedRankIndex = sortedRows.findIndex((row) => row.user_id === state.selectedLeaderboardUserId);
   const selectedRow = selectedRankIndex >= 0 ? sortedRows[selectedRankIndex] : null;
+  const totalCurrentPool = leaderboardTotalPool(sortedRows);
   return `
     <div class="stack">
       <div class="section-heading"><div><h1>B&#7843;ng x&#7871;p h&#7841;ng</h1><p>T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i (1) = T&#7893;ng ti&#7873;n ch&#432;a c&#432;&#7907;c (2) + T&#7893;ng ti&#7873;n &#273;ang c&#432;&#7907;c (3).</p></div></div>
+      <section class="leaderboard-port-card">
+        <div>
+          <span>Port hi&#7879;n t&#7841;i</span>
+          <strong data-leaderboard-prize-total>${money(state.leaderboardPrizePool)}</strong>
+        </div>
+        <label>
+          <span>Ch&#7881;nh port</span>
+          <input id="leaderboard-prize-pool-input" inputmode="numeric" value="${escapeHtml(formatLeaderboardPrizePoolInput(state.leaderboardPrizePool))}" aria-label="Port hien tai">
+        </label>
+        <div>
+          <span>T&#7893;ng ti&#7873;n hi&#7879;n t&#7841;i</span>
+          <strong>${money(totalCurrentPool)}</strong>
+        </div>
+      </section>
       <section class="podium">
         ${sortedRows.slice(0, 3).map((row, index) => `
           <article class="podium-card podium-${leaderboardMedal(index)}">
@@ -3591,6 +3665,7 @@ function renderLeaderboard() {
             <span>${leaderboardSortButton("profit_loss", "L&atilde;i/l&#7895;")}</span>
             <span>${leaderboardSortButton("profit_loss_pct", "% L&atilde;i/l&#7895;")}</span>
             <span>${leaderboardSortButton("total_staked", "T&#7893;ng s&#7889; ti&#7873;n &#273;&atilde; c&#432;&#7907;c")}</span>
+            <span>${leaderboardSortButton("estimated_prize", "Th&#432;&#7903;ng &#432;&#7899;c t&#237;nh")}</span>
             <span>${leaderboardSortButton("total_bets", "S&#7889; l&#7879;nh &#273;&atilde; c&#432;&#7907;c")}</span>
             <span>${leaderboardSortButton("accuracy", "T&#7927; l&#7879; th&#7855;ng (%)")}</span>
           </div>
@@ -3600,6 +3675,7 @@ function renderLeaderboard() {
             const attrs = canInspect ? `type="button" data-leaderboard-user="${escapeHtml(row.user_id)}"` : "";
             const profitLoss = number(leaderboardProfitLoss(row));
             const profitClass = profitLoss >= 0 ? "success" : "error";
+            const estimatedPrize = leaderboardEstimatedPrize(row, sortedRows);
             return `
             <${tag} class="table-row leaderboard-row ${canInspect ? "clickable-row" : ""} ${state.selectedLeaderboardUserId === row.user_id ? "active" : ""}" ${attrs}>
               <strong>${leaderboardRankBadge(index)}</strong>
@@ -3610,6 +3686,7 @@ function renderLeaderboard() {
               <b class="${profitClass}">${profitLoss >= 0 ? "+" : ""}${money(profitLoss)}</b>
               <span class="leaderboard-profit-pct ${profitClass}">${fmtOne.format(number(leaderboardProfitLossPct(row)))}%</span>
               <span>${money(leaderboardTotalStaked(row))}</span>
+              <span class="leaderboard-estimated-prize" data-leaderboard-estimated-bonus="${escapeHtml(row.user_id)}">${money(estimatedPrize)}<small>${leaderboardEstimatedPrizeShare(row, sortedRows)}</small></span>
               <span>${fmt.format(number(leaderboardTotalBets(row)))}</span>
               <span class="leaderboard-win-rate" style="${leaderboardWinRateStyle(row)}">${fmtOne.format(number(leaderboardWinPct(row)))}%</span>
             </${tag}>
@@ -5262,6 +5339,19 @@ function bindShellEvents() {
     });
   });
 
+  const leaderboardPrizePoolInput = document.getElementById("leaderboard-prize-pool-input");
+  leaderboardPrizePoolInput?.addEventListener("input", (event) => {
+    persistLeaderboardPrizePool(parseLeaderboardPrizePoolInput(event.target.value));
+    refreshLeaderboardPrizePoolUi();
+  });
+  leaderboardPrizePoolInput?.addEventListener("blur", (event) => {
+    event.target.value = formatLeaderboardPrizePoolInput(state.leaderboardPrizePool);
+    refreshLeaderboardPrizePoolUi();
+  });
+  leaderboardPrizePoolInput?.addEventListener("focus", (event) => {
+    event.target.select();
+  });
+
   document.querySelector("[data-clear-leaderboard-user]")?.addEventListener("click", () => {
     state.selectedLeaderboardUserId = "";
     state.selectedLeaderboardBets = null;
@@ -6683,6 +6773,7 @@ function exportLeaderboardCsv() {
     "Lãi/lỗ": leaderboardProfitLoss(row),
     "% Lãi/lỗ": leaderboardProfitLossPct(row),
     "Tổng số tiền đã cược": leaderboardTotalStaked(row),
+    "Thưởng ước tính": leaderboardEstimatedPrize(row),
     "Số lệnh đã cược": leaderboardTotalBets(row),
     "Tỷ lệ thắng (%)": leaderboardWinPct(row)
   }));
