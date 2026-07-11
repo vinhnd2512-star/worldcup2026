@@ -16,6 +16,7 @@ const requiredFiles = [
   "vercel-static/api/admin-create-user.js",
   "vercel-static/api/admin-reset-password.js",
   "vercel-static/api/sync-football-data.js",
+  "scripts/test-sync-result-parser.mjs",
   "scripts/verify-deployment.mjs",
   "supabase/schema.sql",
   "supabase/seed.sql",
@@ -36,6 +37,7 @@ const jsFiles = [
   "vercel-static/api/admin-create-user.js",
   "vercel-static/api/admin-reset-password.js",
   "vercel-static/api/sync-football-data.js",
+  "scripts/test-sync-result-parser.mjs",
   "scripts/verify-deployment.mjs"
 ];
 
@@ -262,6 +264,10 @@ function checkJsSyntax() {
   }
 }
 
+function checkSyncResultParser() {
+  execFileSync("node", ["--test", "scripts/test-sync-result-parser.mjs"], { cwd: root, stdio: "pipe" });
+}
+
 function checkEnvExample() {
   const envText = read("vercel-static/.env.example");
   for (const key of requiredEnv) {
@@ -437,6 +443,7 @@ function main() {
     ["files", checkFiles],
     ["json", checkJson],
     ["js syntax", checkJsSyntax],
+    ["sync result parser", checkSyncResultParser],
     ["env example", checkEnvExample],
     ["secrets", checkNoHardcodedSecrets],
     ["contracts", checkStaticContracts],

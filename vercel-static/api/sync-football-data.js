@@ -2028,6 +2028,13 @@ function scoreOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function scorePairOrNull(homeValue, awayValue) {
+  const home = scoreOrNull(homeValue);
+  const away = scoreOrNull(awayValue);
+  if (home === null || away === null) return null;
+  return { home, away };
+}
+
 function isExtraTimeFinalStatus(status) {
   return ["AET", "PEN", "FT_PEN"].includes(String(status || ""));
 }
@@ -2065,6 +2072,86 @@ function hasScoreFixture(fixture) {
     && fixture.homeScore !== undefined
     && fixture.awayScore !== null
     && fixture.awayScore !== undefined;
+}
+
+function espnLineScoreValue(lineScore) {
+  return scoreOrNull(lineScore?.value ?? lineScore?.score ?? lineScore?.displayValue ?? null);
+}
+
+function espnRegularTimeScore(homeComp, awayComp) {
+  const homeLines = Array.isArray(homeComp?.linescores) ? homeComp.linescores : [];
+  const awayLines = Array.isArray(awayComp?.linescores) ? awayComp.linescores : [];
+  if (homeLines.length < 2 || awayLines.length < 2) return null;
+
+  let home = 0;
+  let away = 0;
+  for (let index = 0; index < 2; index += 1) {
+    const homePeriod = espnLineScoreValue(homeLines[index]);
+    const awayPeriod = espnLineScoreValue(awayLines[index]);
+    if (homePeriod === null || awayPeriod === null) return null;
+    home += homePeriod;
+    away += awayPeriod;
+  }
+  return { home, away };
+}
+
+function espnCompetition(event) {
+  return Array.isArray(event?.competitions) ? event.competitions[0] : null;
+}
+
+function espnNeedsPeriodScores(event) {
+  const competition = espnCompetition(event);
+  if (!competition) return false;
+  const statusName = String(competition.status?.type?.name || "").toUpperCase();
+  const competitors = Array.isArray(competition.competitors) ? competition.competitors : [];
+  const homeComp = competitors.find((candidate) => candidate.homeAway === "home");
+  const awayComp = competitors.find((candidate) => candidate.homeAway === "away");
+  const hasShootoutScores = scoreOrNull(homeComp?.shootoutScore) !== null
+    && scoreOrNull(awayComp?.shootoutScore) !== null;
+  const endedAfterRegulation = statusName === "STATUS_FINAL_AET"
+    || statusName === "STATUS_FINAL_PEN"
+    || hasShootoutScores;
+  return endedAfterRegulation && espnRegularTimeScore(homeComp, awayComp) === null;
+}
+
+function mergeEspnSummaryPeriodScores(event, summary) {
+  const competition = espnCompetition(event);
+  const summaryCompetition = summary?.header?.competitions?.[0];
+  if (!competition || !summaryCompetition) return false;
+
+  let merged = false;
+  for (const side of ["home", "away"]) {
+    const competitor = competition.competitors?.find((candidate) => candidate.homeAway === side);
+    const summaryCompetitor = summaryCompetition.competitors?.find((candidate) => candidate.homeAway === side);
+    if (!competitor || !Array.isArray(summaryCompetitor?.linescores) || summaryCompetitor.linescores.length < 2) continue;
+    competitor.linescores = summaryCompetitor.linescores;
+    merged = true;
+  }
+  return merged;
+}
+
+async function enrichEspnPeriodScores(payload) {
+  const events = Array.isArray(payload?.events) ? payload.events : [];
+  const targets = events.filter((event) => event?.id && espnNeedsPeriodScores(event));
+  let enriched = 0;
+  await Promise.all(targets.map(async (event) => {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(`${ESPN_SOCCER_BASE}/summary?event=${encodeURIComponent(event.id)}`, {
+        headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+        signal: ctrl.signal
+      });
+      if (!res.ok) return;
+      const summary = await res.json();
+      if (mergeEspnSummaryPeriodScores(event, summary)) enriched += 1;
+    } catch {
+      // Leave the 90-minute score unknown rather than grading it from the AET/PEN final score.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }));
+  return enriched;
 }
 
 function asArray(value) {
@@ -2216,12 +2303,20 @@ async function upsertMatchResultsByCode(fixtures) {
     const dbMatch = findDbMatchForFixture(f, homeTeam, awayTeam, dbMatches);
     if (!dbMatch) continue;
     const nowCompleted = ["FT", "AET", "PEN", "FT_PEN"].includes(f.status);
-    const scoredResult = hasScoreFixture(f);
-    const homeFinalScore = f.homeFinalScore ?? f.homeScore;
-    const awayFinalScore = f.awayFinalScore ?? f.awayScore;
+    const hasProviderRegularScore = hasScoreFixture(f);
+    const homeScore = f.homeScore ?? dbMatch.home_score ?? null;
+    const awayScore = f.awayScore ?? dbMatch.away_score ?? null;
+    const homeFinalScore = f.homeFinalScore ?? f.homeScore ?? dbMatch.home_final_score ?? dbMatch.home_score ?? null;
+    const awayFinalScore = f.awayFinalScore ?? f.awayScore ?? dbMatch.away_final_score ?? dbMatch.away_score ?? null;
+    const scoredResult = nowCompleted
+      && homeScore !== null
+      && homeScore !== undefined
+      && awayScore !== null
+      && awayScore !== undefined
+      && (hasProviderRegularScore || (dbMatch.home_score !== null && dbMatch.home_score !== undefined && dbMatch.away_score !== null && dbMatch.away_score !== undefined));
     const resultChanged = dbMatch.status !== f.status
-      || dbMatch.home_score !== f.homeScore
-      || dbMatch.away_score !== f.awayScore
+      || dbMatch.home_score !== homeScore
+      || dbMatch.away_score !== awayScore
       || dbMatch.home_final_score !== homeFinalScore
       || dbMatch.away_final_score !== awayFinalScore
       || dbMatch.home_penalties !== (f.homePenalties ?? null)
@@ -2235,8 +2330,8 @@ async function upsertMatchResultsByCode(fixtures) {
           home_team_id: dbMatch.home_team_id,
           away_team_id: dbMatch.away_team_id,
           status: f.status,
-          home_score: f.homeScore,
-          away_score: f.awayScore,
+          home_score: homeScore,
+          away_score: awayScore,
           home_final_score: homeFinalScore,
           away_final_score: awayFinalScore,
           home_penalties: f.homePenalties ?? null,
@@ -2257,8 +2352,8 @@ async function upsertMatchResultsByCode(fixtures) {
         headers: { Prefer: "return=minimal" },
         body: JSON.stringify({
           status: f.status,
-          home_score: f.homeScore,
-          away_score: f.awayScore,
+          home_score: homeScore,
+          away_score: awayScore,
           home_final_score: homeFinalScore,
           away_final_score: awayFinalScore,
           home_penalties: f.homePenalties ?? null,
@@ -2275,8 +2370,8 @@ async function upsertMatchResultsByCode(fixtures) {
         home_team_id: dbMatch.home_team_id,
         away_team_id: dbMatch.away_team_id,
           status: f.status,
-          home_score: f.homeScore,
-          away_score: f.awayScore,
+          home_score: homeScore,
+          away_score: awayScore,
           home_final_score: homeFinalScore,
           away_final_score: awayFinalScore,
           home_penalties: f.homePenalties ?? null,
@@ -2368,15 +2463,20 @@ function extractEspnFixtures(payload) {
     else if (statusName === "STATUS_HALFTIME") status = "HT";
     else if (statusName === "STATUS_POSTPONED") status = "PST";
     else if (statusName === "STATUS_CANCELED" || statusName === "STATUS_CANCELLED") status = "CANC";
-    const homeScore = statusState === "post" || statusState === "in" ? scoreOrNull(homeComp.score) : null;
-    const awayScore = statusState === "post" || statusState === "in" ? scoreOrNull(awayComp.score) : null;
+    const finalScore = statusState === "post" || statusState === "in"
+      ? scorePairOrNull(homeComp.score, awayComp.score)
+      : null;
+    const regularTimeScore = espnRegularTimeScore(homeComp, awayComp);
+    const scoreFor90Minutes = isExtraTimeFinalStatus(status)
+      ? regularTimeScore
+      : finalScore;
     fixtures.push({
       homeCode,
       awayCode,
-      homeScore,
-      awayScore,
-      homeFinalScore: homeScore,
-      awayFinalScore: awayScore,
+      homeScore: scoreFor90Minutes?.home ?? null,
+      awayScore: scoreFor90Minutes?.away ?? null,
+      homeFinalScore: finalScore?.home ?? scoreFor90Minutes?.home ?? null,
+      awayFinalScore: finalScore?.away ?? scoreFor90Minutes?.away ?? null,
       homePenalties,
       awayPenalties,
       status,
@@ -2402,6 +2502,7 @@ async function syncEspnResults() {
     await recordSyncRun({ provider: "espn", jobType: "results", status: "failed", requestCount: 1, message: String(err.message) });
     return { provider: "espn", status: "failed", requests: 1, updated: 0, completedMatchIds: [] };
   }
+  const enrichedPeriodScores = await enrichEspnPeriodScores(payload);
   const fixtures = extractEspnFixtures(payload);
   const { updated, results, completedScores, completedMatchIds } = await upsertMatchResultsByCode(fixtures);
   await recordSyncRun({
@@ -2409,10 +2510,17 @@ async function syncEspnResults() {
     jobType: "results",
     status: "success",
     requestCount: 1,
-    message: `ESPN: ${fixtures.length} fixtures parsed, ${updated} matches updated, ${results} result rows saved, ${completedScores} completed scores found, ${(completedMatchIds || []).length} newly completed.`
+    message: `ESPN: ${fixtures.length} fixtures parsed, ${enrichedPeriodScores} AET/PEN summaries enriched, ${updated} matches updated, ${results} result rows saved, ${completedScores} completed scores found, ${(completedMatchIds || []).length} newly completed.`
   });
   return { provider: "espn", status: "success", requests: 1, updated, results, completedScores, completedMatchIds };
 }
+
+export {
+  enrichEspnPeriodScores,
+  espnRegularTimeScore,
+  extractEspnFixtures,
+  mergeEspnSummaryPeriodScores
+};
 async function syncFifaFantasyResults() {
   let payload;
   try {
