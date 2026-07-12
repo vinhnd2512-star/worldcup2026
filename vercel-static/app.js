@@ -995,7 +995,7 @@ function renderFixtureBetSummaryItem(bet) {
   return `
     <div class="fixture-bet-item">
       <div><small>Kèo đã bet</small><b>${escapeHtml(betMarketTitle(bet))}</b></div>
-      <div><small>Dự đoán</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b><span>${money(bet.stake)} x${fmtOne.format(number(bet.locked_multiplier))}</span></div>
+      <div><small>Dự đoán</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b><span>${money(betDisplayStake(bet))} x${fmtOne.format(number(bet.locked_multiplier))}</span></div>
       <div><small>Thực tế</small><b>${escapeHtml(betActualText(bet))}</b></div>
       <div><small>Kết luận</small><b class="${escapeHtml(outcome.className)}">${escapeHtml(outcome.label)}</b><span>Nhận về: ${escapeHtml(receivedLabel)} | Điểm: ${score >= 0 ? "+" : ""}${money(score)}</span></div>
     </div>
@@ -1425,10 +1425,10 @@ function getSettlementNotifications() {
     .map((bet) => {
       const match = matchForBet(bet);
       const settledAt = new Date(bet.settled_at || bet.updated_at || bet.placed_at || Date.now());
-      const net = number(bet.points_delta) + number(bet.prediction_bonus);
+      const net = betScoreAmount(bet);
       const statusLabel = bet.status === "won" ? "Cược thắng" : bet.status === "refunded" ? "Hoàn tiền" : "Cược thua";
       const amountText = bet.status === "won"
-        ? `Ví nhận ${money(bet.potential_payout)}${net ? `, lãi ${net >= 0 ? "+" : ""}${money(net)}` : ""}`
+        ? `Ví nhận ${money(betReceivedAmount(bet))}${net ? `, lãi ${net >= 0 ? "+" : ""}${money(net)}` : ""}`
         : bet.status === "refunded"
           ? `Hoàn lại ${money(bet.stake)}`
           : `Đã ghi nhận thua ${money(Math.abs(net || number(bet.stake)))}`;
@@ -4386,7 +4386,29 @@ function betOutcome(bet) {
   return { label: "OPEN", className: "muted" };
 }
 
+// Display-only outcome swap for a specific mislabeled bet pair on the ARG vs SUI
+// match (bet 1197 "Xỉu 3" / bet 1198 "Argentina đi tiếp"): the two bets keep their
+// real stake, market and payout in the database, but the user asked to see each
+// one's stake/outcome shown as the other's on screen. No money or settlement data
+// changes; this only affects what render functions read.
+const OUTCOME_DISPLAY_SWAP = { 1197: 1198, 1198: 1197 };
+
+function outcomeDisplaySource(bet) {
+  const partnerId = OUTCOME_DISPLAY_SWAP[Number(bet?.id)];
+  if (!partnerId) return bet;
+  return (state.bets || []).find((item) => Number(item.id) === partnerId) || bet;
+}
+
+function betDisplayStake(bet) {
+  return number(outcomeDisplaySource(bet).stake);
+}
+
+function betDisplayBonus(bet) {
+  return number(outcomeDisplaySource(bet).prediction_bonus);
+}
+
 function betReceivedAmount(bet) {
+  bet = outcomeDisplaySource(bet);
   if (bet.settlement?.payout !== null && bet.settlement?.payout !== undefined) return number(bet.settlement.payout);
   if (bet.status === "won") return number(bet.potential_payout);
   if (bet.status === "refunded") return number(bet.stake);
@@ -4395,6 +4417,7 @@ function betReceivedAmount(bet) {
 }
 
 function betScoreAmount(bet) {
+  bet = outcomeDisplaySource(bet);
   return number(bet.points_delta) + number(bet.prediction_bonus);
 }
 
@@ -4422,14 +4445,14 @@ function renderBetDetailCells(bet, { includeUser = false, allowVoid = false } = 
   return `
     ${includeUser ? `<div><small>User</small><strong>${escapeHtml(bet.user?.display_name || bet.user_id)}</strong><small>${dateText(bet.placed_at)}</small></div>` : `<div><small>Match</small><strong>${escapeHtml(title)}</strong><small>${dateText(bet.placed_at)}</small></div>`}
     <div><small>Bet type</small><b>${escapeHtml(betMarketTitle(bet))}</b><small>${escapeHtml(bet.market_key)}</small></div>
-    <div class="prediction-cell ${escapeHtml(outcomeClass)}"><small>Prediction</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b><small>${money(bet.stake)} · x${fmtOne.format(number(bet.locked_multiplier))}</small></div>
+    <div class="prediction-cell ${escapeHtml(outcomeClass)}"><small>Prediction</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b><small>${money(betDisplayStake(bet))} · x${fmtOne.format(number(bet.locked_multiplier))}</small></div>
     <div><small>Actual</small><b>${escapeHtml(betActualText(bet))}</b></div>
     <div class="outcome-cell ${escapeHtml(outcomeClass)}">
       <small>Outcome</small>
       <b class="${escapeHtml(outcome.className)}">${escapeHtml(outcome.label)}</b>
       ${settlementDetail ? `<small>${escapeHtml(settlementDetail)}</small>` : ""}
       <small>Received: ${escapeHtml(receivedLabel)}</small>
-      <small>Score: ${score >= 0 ? "+" : ""}${money(score)}${number(bet.prediction_bonus) ? ` · bonus ${money(bet.prediction_bonus)}` : ""}</small>
+      <small>Score: ${score >= 0 ? "+" : ""}${money(score)}${betDisplayBonus(bet) ? ` · bonus ${money(betDisplayBonus(bet))}` : ""}</small>
       ${allowVoid && bet.status === "placed" ? `<button class="ghost-button compact-button" data-void-bet="${bet.id}">Void</button>` : ""}
     </div>
   `;
@@ -4458,13 +4481,14 @@ function renderHistoryRow(bet) {
   if (!isFinishedBet(bet)) return "";
   const match = matchForBet(bet) || bet.match;
   const title = match ? `${match.home_team.name} vs ${match.away_team.name}` : bet.market_key;
-  const delta = number(bet.points_delta);
-  const bonus = number(bet.prediction_bonus);
+  const source = outcomeDisplaySource(bet);
+  const delta = number(source.points_delta);
+  const bonus = number(source.prediction_bonus);
   return `
     <article class="history-row ${escapeHtml(bet.status)}">
       <div><strong>${escapeHtml(title)}</strong><small>${dateText(bet.settled_at || bet.placed_at)}</small></div>
       <div><small>D&#7921; &#273;o&aacute;n</small><b>${escapeHtml(betDisplaySelectionLabel(bet))}</b></div>
-      <div><small>Stake</small><b>${money(bet.stake)}</b></div>
+      <div><small>Stake</small><b>${money(betDisplayStake(bet))}</b></div>
       <div><small>${escapeHtml(bet.status)}${bonus ? ` &middot; bonus ${money(bonus)}` : ""}</small><b class="${delta + bonus >= 0 ? "success" : "error"}">${delta + bonus >= 0 ? "+" : ""}${money(delta + bonus)}</b></div>
     </article>
   `;
