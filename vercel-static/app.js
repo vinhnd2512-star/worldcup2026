@@ -4396,7 +4396,12 @@ const OUTCOME_DISPLAY_SWAP = { 1197: 1198, 1198: 1197 };
 function outcomeDisplaySource(bet) {
   const partnerId = OUTCOME_DISPLAY_SWAP[Number(bet?.id)];
   if (!partnerId) return bet;
-  return (state.bets || []).find((item) => Number(item.id) === partnerId) || bet;
+  const pools = [state.bets, state.selectedLeaderboardBets, state.adminBets];
+  for (const pool of pools) {
+    const match = (pool || []).find((item) => Number(item.id) === partnerId);
+    if (match) return match;
+  }
+  return bet;
 }
 
 function betDisplayStake(bet) {
