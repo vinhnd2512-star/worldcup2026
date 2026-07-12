@@ -1,14 +1,6 @@
--- One-off repair for Argentina vs Cabo Verde 90-minute settlement.
---
--- Use after the ESPN sync bug saved the final/extra-time score into
--- matches.home_score / matches.away_score. The match was 1-1 after 90 minutes.
---
--- This script:
--- 1. Finds Argentina vs Cabo Verde, preferring bracket match_no 86.
--- 2. Preserves the existing score as final score when final score is missing.
--- 3. Sets the 90-minute score to 1-1 in matches and match_results.
--- 4. Reverses prior payouts for markets settled from the wrong 90-minute score.
--- 5. Resets those bets to placed and runs settle_match_bets again.
+-- Repair Norway vs England after the pre-fix sync settled 90-minute markets
+-- from the 1-2 extra-time score instead of the 1-1 regulation-time score.
+-- User-cancelled bets are intentionally preserved.
 
 do $$
 declare
@@ -20,44 +12,44 @@ declare
 begin
   select
     m.id as match_id,
-    m.status,
     m.home_score,
     m.away_score,
     m.home_final_score,
-    m.away_final_score,
-    m.home_penalties,
-    m.away_penalties
+    m.away_final_score
   into v_match
   from public.matches m
   join public.teams ht on ht.id = m.home_team_id
   join public.teams at on at.id = m.away_team_id
-  left join public.bracket_matches bm on bm.match_id = m.id
-  where bm.match_no = 86
-     or ((ht.code = 'ARG' and at.code = 'CPV') or (ht.code = 'CPV' and at.code = 'ARG'))
-  order by case when bm.match_no = 86 then 0 else 1 end, m.id desc
+  where ht.code = 'NOR'
+    and at.code = 'ENG'
+    and m.starts_at >= timestamptz '2026-07-11 00:00:00+00'
+    and m.starts_at < timestamptz '2026-07-12 00:00:00+00'
+  order by m.id desc
   limit 1;
 
   if not found then
-    raise exception 'Argentina vs Cabo Verde match not found.';
+    raise exception 'Norway vs England match on 2026-07-11 not found.';
   end if;
 
   update public.matches
-  set home_final_score = coalesce(home_final_score, home_score),
-      away_final_score = coalesce(away_final_score, away_score),
-      home_score = 1,
+  set home_score = 1,
       away_score = 1,
+      home_final_score = 1,
+      away_final_score = 2,
+      status = 'AET',
       updated_at = now()
   where id = v_match.match_id;
 
   update public.match_results
-  set home_final_score = coalesce(home_final_score, home_score),
-      away_final_score = coalesce(away_final_score, away_score),
-      home_score = 1,
+  set home_score = 1,
       away_score = 1,
+      home_final_score = 1,
+      away_final_score = 2,
+      status = 'AET',
       synced_at = now(),
       provider_payload = coalesce(provider_payload, '{}') || jsonb_build_object(
         'admin_repair', true,
-        'repair_reason', 'Argentina vs Cabo Verde was 1-1 after 90 minutes'
+        'repair_reason', 'Norway vs England was 1-1 after 90 minutes and 1-2 after extra time'
       )
   where match_id = v_match.match_id;
 
@@ -65,7 +57,6 @@ begin
     select
       b.id,
       b.user_id,
-      b.market_key,
       b.selection_label,
       coalesce(s.payout, 0)::numeric(18, 2) as old_payout
     from public.bets b
@@ -95,7 +86,7 @@ begin
         auth.uid(),
         -v_bet.old_payout,
         'settlement_reversal',
-        'Reverse Argentina-Cabo Verde 90-minute settlement repair: ' || v_bet.selection_label,
+        'Reverse Norway-England incorrect 90-minute settlement: ' || v_bet.selection_label,
         v_balance
       );
     end if;
@@ -117,17 +108,18 @@ begin
   insert into public.audit_logs (actor_id, action, entity_type, entity_id, details_json)
   values (
     auth.uid(),
-    'repair.arg_cabo_regular_time',
+    'repair.nor_eng_regular_time',
     'match',
     v_match.match_id::text,
     jsonb_build_object(
       'regular_time_score', '1-1',
+      'final_score', '1-2',
       'reset_bets', v_reset_count,
       'settled_bets', v_settled_count
     )
   );
 
-  raise notice 'Argentina-Cabo Verde repair complete. match_id=%, reset_bets=%, settled_bets=%',
+  raise notice 'Norway-England repair complete. match_id=%, reset_bets=%, settled_bets=%',
     v_match.match_id,
     v_reset_count,
     v_settled_count;
@@ -136,11 +128,11 @@ end $$;
 select
   p.username,
   p.display_name,
+  b.id as bet_id,
   b.market_key,
   b.selection_key,
   b.selection_label,
   b.stake,
-  b.locked_multiplier,
   b.status,
   b.points_delta,
   b.prediction_bonus,
@@ -151,14 +143,16 @@ select
 from public.bets b
 join public.profiles p on p.id = b.user_id
 left join public.settlements s on s.bet_id = b.id
-where b.match_id in (
+where b.match_id = (
   select m.id
   from public.matches m
   join public.teams ht on ht.id = m.home_team_id
   join public.teams at on at.id = m.away_team_id
-  left join public.bracket_matches bm on bm.match_id = m.id
-  where bm.match_no = 86
-     or ((ht.code = 'ARG' and at.code = 'CPV') or (ht.code = 'CPV' and at.code = 'ARG'))
+  where ht.code = 'NOR'
+    and at.code = 'ENG'
+    and m.starts_at >= timestamptz '2026-07-11 00:00:00+00'
+    and m.starts_at < timestamptz '2026-07-12 00:00:00+00'
+  order by m.id desc
+  limit 1
 )
-  and b.market_key in ('match_result', 'correct_score', 'total_goals', 'btts', 'asian_handicap')
 order by p.display_name, p.username, b.market_key, b.id;

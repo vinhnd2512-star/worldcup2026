@@ -88,3 +88,39 @@ test("AET without period scores stays unsettled instead of using the final score
   assert.equal(fixture.homeFinalScore, 3);
   assert.equal(fixture.awayFinalScore, 2);
 });
+
+test("Norway vs England settles 90-minute markets at 1-1 and winner markets at 1-2", () => {
+  const event = {
+    id: "760512",
+    competitions: [{
+      status: { type: { name: "STATUS_FINAL_AET", state: "post" } },
+      competitors: [
+        competitor("home", "NOR", "1"),
+        competitor("away", "ENG", "2")
+      ]
+    }]
+  };
+  const summary = {
+    header: {
+      competitions: [{
+        competitors: [
+          competitor("home", "NOR", "1", ["1", "0", "0", "0"]),
+          competitor("away", "ENG", "2", ["0", "1", "0", "1"])
+        ]
+      }]
+    }
+  };
+
+  assert.equal(mergeEspnSummaryPeriodScores(event, summary), true);
+  const [fixture] = extractEspnFixtures({ events: [event] });
+  assert.deepEqual(
+    {
+      status: fixture.status,
+      homeScore: fixture.homeScore,
+      awayScore: fixture.awayScore,
+      homeFinalScore: fixture.homeFinalScore,
+      awayFinalScore: fixture.awayFinalScore
+    },
+    { status: "AET", homeScore: 1, awayScore: 1, homeFinalScore: 1, awayFinalScore: 2 }
+  );
+});
